@@ -147,11 +147,90 @@ async def upload_csv(
         )
 
 
+def generate_dummy_summary(name: str) -> str:
+    """Generate dummy summary for PDF"""
+    return f"""This PDF document "{name}" contains important information and has been successfully uploaded to the system. The document appears to be well-structured and contains multiple sections covering various topics. Key highlights include detailed information that can be analyzed and processed for insights. The document is ready for further analysis and question-answering interactions."""
+
+def generate_dummy_questions() -> list[str]:
+    """Generate dummy questions for PDF"""
+    return [
+        "What are the main topics covered in this document?",
+        "Can you summarize the key findings?",
+        "What are the recommendations mentioned?",
+        "What is the purpose of this document?",
+        "Who are the key stakeholders mentioned?"
+    ]
+
+def generate_dummy_report(name: str) -> str:
+    """Generate dummy report for PDF"""
+    return f"""# PDF Analysis Report
+
+## Document Overview
+**Document Name:** {name}
+**Status:** Uploaded and ready for analysis
+
+## Executive Summary
+This document has been successfully processed and is available for comprehensive analysis. The system has extracted the document structure and is ready to answer questions and provide insights.
+
+## Key Sections Identified
+- Introduction and context
+- Main content sections
+- Conclusions and recommendations
+
+## Analysis Status
+- Document parsing: Complete
+- Text extraction: Complete
+- Ready for AI analysis: Yes
+
+## Next Steps
+You can now interact with this document through the chat interface to get specific answers and insights."""
+
+def generate_dummy_summary(name: str) -> str:
+    """Generate dummy summary for PDF"""
+    return f"""This PDF document "{name}" contains important information and has been successfully uploaded to the system. The document appears to be well-structured and contains multiple sections covering various topics. Key highlights include detailed information that can be analyzed and processed for insights. The document is ready for further analysis and question-answering interactions."""
+
+def generate_dummy_questions() -> list[str]:
+    """Generate dummy questions for PDF"""
+    return [
+        "What are the main topics covered in this document?",
+        "Can you summarize the key findings?",
+        "What are the recommendations mentioned?",
+        "What is the purpose of this document?",
+        "Who are the key stakeholders mentioned?"
+    ]
+
+def generate_dummy_report(name: str) -> str:
+    """Generate dummy report for PDF"""
+    return f"""# PDF Analysis Report
+
+## Document Overview
+**Document Name:** {name}
+**Status:** Uploaded and ready for analysis
+
+## Executive Summary
+This document has been successfully processed and is available for comprehensive analysis. The system has extracted the document structure and is ready to answer questions and provide insights.
+
+## Key Sections Identified
+- Introduction and context
+- Main content sections
+- Conclusions and recommendations
+
+## Analysis Status
+- Document parsing: Complete
+- Text extraction: Complete
+- Ready for AI analysis: Yes
+
+## Next Steps
+You can now interact with this document through the chat interface to get specific answers and insights."""
+
 @router.post("/upload/pdf", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
 async def upload_pdf(
     file: UploadFile = File(...),
     name: str = Form(...),
     description: str = Form(None),
+    generate_summary: str = Form("true"),
+    generate_questions: str = Form("true"),
+    generate_report: str = Form("true"),
     current_user: User = Depends(get_current_user)
 ):
     """Upload a PDF file"""
@@ -222,6 +301,16 @@ async def upload_pdf(
             print(f"[UPLOAD] ✓ File stored locally: {drive_file_id}")
             storage_location = "local"
         
+        # Parse generation flags
+        gen_summary = generate_summary.lower() == "true"
+        gen_questions = generate_questions.lower() == "true"
+        gen_report = generate_report.lower() == "true"
+        
+        # Generate dummy content based on flags
+        summary = generate_dummy_summary(name) if gen_summary else None
+        questions = generate_dummy_questions() if gen_questions else None
+        report = generate_dummy_report(name) if gen_report else None
+        
         # Save dataset metadata to MongoDB
         db = get_database()
         dataset = Dataset(
@@ -231,7 +320,13 @@ async def upload_pdf(
             google_drive_file_id=drive_file_id,
             file_name=file.filename,
             file_size=file_size,
-            description=description
+            description=description,
+            summary=summary,
+            questions=questions,
+            report=report,
+            summary_generated=gen_summary,
+            questions_generated=gen_questions,
+            report_generated=gen_report
         )
         
         result = await db.datasets.insert_one(dataset.to_dict())
@@ -243,6 +338,12 @@ async def upload_pdf(
             file_name=dataset.file_name,
             file_size=dataset.file_size,
             description=dataset.description,
+            summary=dataset.summary,
+            questions=dataset.questions,
+            report=dataset.report,
+            summary_generated=dataset.summary_generated,
+            questions_generated=dataset.questions_generated,
+            report_generated=dataset.report_generated,
             uploaded_at=dataset.created_at,
             size=format_file_size(dataset.file_size)
         )
@@ -271,6 +372,12 @@ async def get_datasets(current_user: User = Depends(get_current_user)):
                 file_name=d["file_name"],
                 file_size=d["file_size"],
                 description=d.get("description"),
+                summary=d.get("summary"),
+                questions=d.get("questions"),
+                report=d.get("report"),
+                summary_generated=d.get("summary_generated", False),
+                questions_generated=d.get("questions_generated", False),
+                report_generated=d.get("report_generated", False),
                 uploaded_at=d["created_at"],
                 size=format_file_size(d["file_size"])
             )
@@ -409,6 +516,195 @@ async def get_dataset_data(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching dataset data: {str(e)}"
+        )
+
+
+@router.get("/{dataset_id}/download")
+async def download_dataset_file(
+    dataset_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Download a dataset file (PDF, CSV, Excel)"""
+    try:
+        db = get_database()
+        dataset_data = await db.datasets.find_one({
+            "_id": ObjectId(dataset_id),
+            "user_id": str(current_user._id)
+        })
+        
+        if not dataset_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dataset not found"
+            )
+        
+        # Get file content
+        file_id = dataset_data["google_drive_file_id"]
+        file_content = None
+        file_name = dataset_data["file_name"]
+        
+        # Try to get from Google Drive first
+        if drive_service.service:
+            try:
+                file_content = drive_service.download_file(file_id)
+            except:
+                pass
+        
+        # Fallback to local storage
+        if not file_content:
+            try:
+                file_content = local_storage.download_file(file_id)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"File not found in storage: {str(e)}"
+                )
+        
+        # Determine content type based on file extension
+        content_type_map = {
+            '.pdf': 'application/pdf',
+            '.csv': 'text/csv',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.xls': 'application/vnd.ms-excel'
+        }
+        
+        content_type = 'application/octet-stream'
+        for ext, ct in content_type_map.items():
+            if file_name.lower().endswith(ext):
+                content_type = ct
+                break
+        
+        # For PDFs, use inline disposition so they can be viewed in browser
+        # For other files, use attachment to download
+        disposition = 'inline' if content_type == 'application/pdf' else 'attachment'
+        
+        return StreamingResponse(
+            io.BytesIO(file_content),
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'{disposition}; filename="{file_name}"',
+                "Content-Type": content_type
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error downloading file: {str(e)}"
+        )
+
+
+@router.get("/{dataset_id}/extract-text")
+async def extract_pdf_text(
+    dataset_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Extract text from a PDF file"""
+    try:
+        db = get_database()
+        dataset_data = await db.datasets.find_one({
+            "_id": ObjectId(dataset_id),
+            "user_id": str(current_user._id)
+        })
+        
+        if not dataset_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dataset not found"
+            )
+        
+        if dataset_data["dataset_type"] != "pdf":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This endpoint only supports PDF files"
+            )
+        
+        # Get file content
+        file_id = dataset_data["google_drive_file_id"]
+        file_content = None
+        
+        # Try to get from Google Drive first
+        if drive_service.service:
+            try:
+                file_content = drive_service.download_file(file_id)
+            except:
+                pass
+        
+        # Fallback to local storage
+        if not file_content:
+            try:
+                file_content = local_storage.download_file(file_id)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"File not found in storage: {str(e)}"
+                )
+        
+        # Extract text using PyPDF2 or pdfplumber
+        try:
+            import PyPDF2
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            extracted_text = ""
+            header_footer_patterns = []
+            
+            for page_num in range(len(pdf_reader.pages)):
+                page = pdf_reader.pages[page_num]
+                page_text = page.extract_text()
+                
+                # Store first page text as potential header/footer patterns
+                if page_num == 0:
+                    lines = page_text.split('\n')
+                    if len(lines) > 0:
+                        # Get first few lines as potential header
+                        header_footer_patterns.extend([line.strip() for line in lines[:3] if line.strip()])
+                
+                extracted_text += f"\n--- Page {page_num + 1} ---\n"
+                extracted_text += page_text
+            
+            return {
+                "text": extracted_text,
+                "total_pages": len(pdf_reader.pages),
+                "dataset_id": dataset_id,
+                "note": "Text extracted as-is from PDF. Duplicate text at bottom may be from PDF structure (headers/footers)."
+            }
+        except ImportError:
+            # Fallback: try pdfplumber
+            try:
+                import pdfplumber
+                extracted_text = ""
+                total_pages = 0
+                with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                    total_pages = len(pdf.pages)
+                    for page_num, page in enumerate(pdf.pages):
+                        page_text = page.extract_text() or ""
+                        extracted_text += f"\n--- Page {page_num + 1} ---\n"
+                        extracted_text += page_text
+                
+                return {
+                    "text": extracted_text,
+                    "total_pages": total_pages,
+                    "dataset_id": dataset_id,
+                    "note": "Text extracted as-is from PDF. Duplicate text at bottom may be from PDF structure (headers/footers)."
+                }
+            except ImportError:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="PDF extraction libraries (PyPDF2 or pdfplumber) not installed"
+                )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error extracting text from PDF: {str(e)}"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error extracting PDF text: {str(e)}"
         )
 
 
@@ -598,6 +894,12 @@ async def get_dataset(dataset_id: str, current_user: User = Depends(get_current_
             file_name=dataset.file_name,
             file_size=dataset.file_size,
             description=dataset.description,
+            summary=dataset.summary,
+            questions=dataset.questions,
+            report=dataset.report,
+            summary_generated=dataset.summary_generated,
+            questions_generated=dataset.questions_generated,
+            report_generated=dataset.report_generated,
             uploaded_at=dataset.created_at,
             size=format_file_size(dataset.file_size)
         )
@@ -607,6 +909,198 @@ async def get_dataset(dataset_id: str, current_user: User = Depends(get_current_
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching dataset: {str(e)}"
+        )
+
+
+@router.post("/{dataset_id}/generate/summary", response_model=DatasetResponse)
+async def generate_summary(
+    dataset_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate summary for a PDF dataset"""
+    try:
+        db = get_database()
+        dataset_data = await db.datasets.find_one({
+            "_id": ObjectId(dataset_id),
+            "user_id": str(current_user._id),
+            "dataset_type": "pdf"
+        })
+        
+        if not dataset_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PDF dataset not found"
+            )
+        
+        dataset = Dataset.from_dict(dataset_data)
+        summary = generate_dummy_summary(dataset.name)
+        
+        # Update dataset with generated summary
+        await db.datasets.update_one(
+            {"_id": ObjectId(dataset_id)},
+            {
+                "$set": {
+                    "summary": summary,
+                    "summary_generated": True,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Return updated dataset
+        updated_data = await db.datasets.find_one({"_id": ObjectId(dataset_id)})
+        updated_dataset = Dataset.from_dict(updated_data)
+        
+        return DatasetResponse(
+            id=str(updated_dataset._id),
+            name=updated_dataset.name,
+            dataset_type=updated_dataset.dataset_type,
+            file_name=updated_dataset.file_name,
+            file_size=updated_dataset.file_size,
+            description=updated_dataset.description,
+            summary=updated_dataset.summary,
+            questions=updated_dataset.questions,
+            report=updated_dataset.report,
+            summary_generated=updated_dataset.summary_generated,
+            questions_generated=updated_dataset.questions_generated,
+            report_generated=updated_dataset.report_generated,
+            uploaded_at=updated_dataset.created_at,
+            size=format_file_size(updated_dataset.file_size)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating summary: {str(e)}"
+        )
+
+
+@router.post("/{dataset_id}/generate/questions", response_model=DatasetResponse)
+async def generate_questions(
+    dataset_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate questions for a PDF dataset"""
+    try:
+        db = get_database()
+        dataset_data = await db.datasets.find_one({
+            "_id": ObjectId(dataset_id),
+            "user_id": str(current_user._id),
+            "dataset_type": "pdf"
+        })
+        
+        if not dataset_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PDF dataset not found"
+            )
+        
+        dataset = Dataset.from_dict(dataset_data)
+        questions = generate_dummy_questions()
+        
+        # Update dataset with generated questions
+        await db.datasets.update_one(
+            {"_id": ObjectId(dataset_id)},
+            {
+                "$set": {
+                    "questions": questions,
+                    "questions_generated": True,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Return updated dataset
+        updated_data = await db.datasets.find_one({"_id": ObjectId(dataset_id)})
+        updated_dataset = Dataset.from_dict(updated_data)
+        
+        return DatasetResponse(
+            id=str(updated_dataset._id),
+            name=updated_dataset.name,
+            dataset_type=updated_dataset.dataset_type,
+            file_name=updated_dataset.file_name,
+            file_size=updated_dataset.file_size,
+            description=updated_dataset.description,
+            summary=updated_dataset.summary,
+            questions=updated_dataset.questions,
+            report=updated_dataset.report,
+            summary_generated=updated_dataset.summary_generated,
+            questions_generated=updated_dataset.questions_generated,
+            report_generated=updated_dataset.report_generated,
+            uploaded_at=updated_dataset.created_at,
+            size=format_file_size(updated_dataset.file_size)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating questions: {str(e)}"
+        )
+
+
+@router.post("/{dataset_id}/generate/report", response_model=DatasetResponse)
+async def generate_report(
+    dataset_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Generate report for a PDF dataset"""
+    try:
+        db = get_database()
+        dataset_data = await db.datasets.find_one({
+            "_id": ObjectId(dataset_id),
+            "user_id": str(current_user._id),
+            "dataset_type": "pdf"
+        })
+        
+        if not dataset_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PDF dataset not found"
+            )
+        
+        dataset = Dataset.from_dict(dataset_data)
+        report = generate_dummy_report(dataset.name)
+        
+        # Update dataset with generated report
+        await db.datasets.update_one(
+            {"_id": ObjectId(dataset_id)},
+            {
+                "$set": {
+                    "report": report,
+                    "report_generated": True,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        
+        # Return updated dataset
+        updated_data = await db.datasets.find_one({"_id": ObjectId(dataset_id)})
+        updated_dataset = Dataset.from_dict(updated_data)
+        
+        return DatasetResponse(
+            id=str(updated_dataset._id),
+            name=updated_dataset.name,
+            dataset_type=updated_dataset.dataset_type,
+            file_name=updated_dataset.file_name,
+            file_size=updated_dataset.file_size,
+            description=updated_dataset.description,
+            summary=updated_dataset.summary,
+            questions=updated_dataset.questions,
+            report=updated_dataset.report,
+            summary_generated=updated_dataset.summary_generated,
+            questions_generated=updated_dataset.questions_generated,
+            report_generated=updated_dataset.report_generated,
+            uploaded_at=updated_dataset.created_at,
+            size=format_file_size(updated_dataset.file_size)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating report: {str(e)}"
         )
 
 

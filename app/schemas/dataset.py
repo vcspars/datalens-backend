@@ -18,6 +18,12 @@ class DatasetResponse(BaseModel):
     file_name: str
     file_size: int
     description: Optional[str] = None
+    summary: Optional[str] = None
+    questions: Optional[list[str]] = None
+    report: Optional[str] = None
+    summary_generated: bool = False
+    questions_generated: bool = False
+    report_generated: bool = False
     uploaded_at: datetime
     size: str  # Human-readable size
     
