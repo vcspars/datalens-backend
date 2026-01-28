@@ -30,11 +30,55 @@ def format_file_size(size_bytes: int) -> str:
     return f"{s} {size_names[i]}"
 
 
+def generate_dummy_csv_summary(name: str) -> str:
+    """Generate dummy summary for CSV dataset"""
+    return f"""This CSV dataset "{name}" has been successfully uploaded and processed. The dataset contains structured data that can be analyzed, filtered, and visualized. The data appears to be well-formatted and ready for analysis. You can explore the data through various operations including column calculations, filtering, and data transformations."""
+
+def generate_dummy_csv_questions() -> list[str]:
+    """Generate dummy questions for CSV dataset"""
+    return [
+        "What are the main columns in this dataset?",
+        "What is the total number of rows?",
+        "What are the key insights from this data?",
+        "What patterns can be identified in the data?",
+        "What are the summary statistics for numeric columns?"
+    ]
+
+def generate_dummy_csv_report(name: str) -> str:
+    """Generate dummy report for CSV dataset"""
+    return f"""# CSV Dataset Analysis Report
+
+## Dataset Overview
+**Dataset Name:** {name}
+**Status:** Uploaded and ready for analysis
+
+## Executive Summary
+This dataset has been successfully processed and is available for comprehensive analysis. The data is structured and ready for various analytical operations including calculations, filtering, and visualization.
+
+## Data Structure
+- Data format: CSV/Excel
+- Ready for analysis: Yes
+- Data integrity: Verified
+
+## Available Operations
+- Column calculations (Sum, Average, Median, Min/Max)
+- Data filtering and sorting
+- Column operations (Add, Delete, Edit)
+- Data visualization
+- Statistical analysis
+
+## Next Steps
+You can now explore this dataset through the preview interface, perform calculations, and generate insights from your data."""
+
+
 @router.post("/upload/csv", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
 async def upload_csv(
     file: UploadFile = File(...),
     name: str = Form(...),
     description: str = Form(None),
+    generate_summary: str = Form("true"),
+    generate_questions: str = Form("true"),
+    generate_report: str = Form("true"),
     current_user: User = Depends(get_current_user)
 ):
     """Upload a CSV file"""
@@ -114,6 +158,16 @@ async def upload_csv(
             print(f"[UPLOAD] ✓ File stored locally: {drive_file_id}")
             storage_location = "local"
         
+        # Parse generation flags
+        gen_summary = generate_summary.lower() == "true"
+        gen_questions = generate_questions.lower() == "true"
+        gen_report = generate_report.lower() == "true"
+        
+        # Generate dummy content based on flags
+        summary = generate_dummy_csv_summary(name) if gen_summary else None
+        questions = generate_dummy_csv_questions() if gen_questions else None
+        report = generate_dummy_csv_report(name) if gen_report else None
+        
         # Save dataset metadata to MongoDB
         db = get_database()
         dataset = Dataset(
@@ -123,7 +177,13 @@ async def upload_csv(
             google_drive_file_id=drive_file_id,
             file_name=file.filename,
             file_size=file_size,
-            description=description
+            description=description,
+            summary=summary,
+            questions=questions,
+            report=report,
+            summary_generated=gen_summary,
+            questions_generated=gen_questions,
+            report_generated=gen_report
         )
         
         result = await db.datasets.insert_one(dataset.to_dict())
@@ -135,6 +195,12 @@ async def upload_csv(
             file_name=dataset.file_name,
             file_size=dataset.file_size,
             description=dataset.description,
+            summary=dataset.summary,
+            questions=dataset.questions,
+            report=dataset.report,
+            summary_generated=dataset.summary_generated,
+            questions_generated=dataset.questions_generated,
+            report_generated=dataset.report_generated,
             uploaded_at=dataset.created_at,
             size=format_file_size(dataset.file_size)
         )
@@ -146,44 +212,6 @@ async def upload_csv(
             detail=f"Error uploading CSV: {str(e)}"
         )
 
-
-def generate_dummy_summary(name: str) -> str:
-    """Generate dummy summary for PDF"""
-    return f"""This PDF document "{name}" contains important information and has been successfully uploaded to the system. The document appears to be well-structured and contains multiple sections covering various topics. Key highlights include detailed information that can be analyzed and processed for insights. The document is ready for further analysis and question-answering interactions."""
-
-def generate_dummy_questions() -> list[str]:
-    """Generate dummy questions for PDF"""
-    return [
-        "What are the main topics covered in this document?",
-        "Can you summarize the key findings?",
-        "What are the recommendations mentioned?",
-        "What is the purpose of this document?",
-        "Who are the key stakeholders mentioned?"
-    ]
-
-def generate_dummy_report(name: str) -> str:
-    """Generate dummy report for PDF"""
-    return f"""# PDF Analysis Report
-
-## Document Overview
-**Document Name:** {name}
-**Status:** Uploaded and ready for analysis
-
-## Executive Summary
-This document has been successfully processed and is available for comprehensive analysis. The system has extracted the document structure and is ready to answer questions and provide insights.
-
-## Key Sections Identified
-- Introduction and context
-- Main content sections
-- Conclusions and recommendations
-
-## Analysis Status
-- Document parsing: Complete
-- Text extraction: Complete
-- Ready for AI analysis: Yes
-
-## Next Steps
-You can now interact with this document through the chat interface to get specific answers and insights."""
 
 def generate_dummy_summary(name: str) -> str:
     """Generate dummy summary for PDF"""
@@ -917,23 +945,27 @@ async def generate_summary(
     dataset_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Generate summary for a PDF dataset"""
+    """Generate summary for a dataset (PDF or CSV)"""
     try:
         db = get_database()
         dataset_data = await db.datasets.find_one({
             "_id": ObjectId(dataset_id),
-            "user_id": str(current_user._id),
-            "dataset_type": "pdf"
+            "user_id": str(current_user._id)
         })
         
         if not dataset_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="PDF dataset not found"
+                detail="Dataset not found"
             )
         
         dataset = Dataset.from_dict(dataset_data)
-        summary = generate_dummy_summary(dataset.name)
+        
+        # Use appropriate generation function based on dataset type
+        if dataset.dataset_type == "csv":
+            summary = generate_dummy_csv_summary(dataset.name)
+        else:
+            summary = generate_dummy_summary(dataset.name)
         
         # Update dataset with generated summary
         await db.datasets.update_one(
@@ -981,23 +1013,27 @@ async def generate_questions(
     dataset_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Generate questions for a PDF dataset"""
+    """Generate questions for a dataset (PDF or CSV)"""
     try:
         db = get_database()
         dataset_data = await db.datasets.find_one({
             "_id": ObjectId(dataset_id),
-            "user_id": str(current_user._id),
-            "dataset_type": "pdf"
+            "user_id": str(current_user._id)
         })
         
         if not dataset_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="PDF dataset not found"
+                detail="Dataset not found"
             )
         
         dataset = Dataset.from_dict(dataset_data)
-        questions = generate_dummy_questions()
+        
+        # Use appropriate generation function based on dataset type
+        if dataset.dataset_type == "csv":
+            questions = generate_dummy_csv_questions()
+        else:
+            questions = generate_dummy_questions()
         
         # Update dataset with generated questions
         await db.datasets.update_one(
@@ -1045,23 +1081,27 @@ async def generate_report(
     dataset_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Generate report for a PDF dataset"""
+    """Generate report for a dataset (PDF or CSV)"""
     try:
         db = get_database()
         dataset_data = await db.datasets.find_one({
             "_id": ObjectId(dataset_id),
-            "user_id": str(current_user._id),
-            "dataset_type": "pdf"
+            "user_id": str(current_user._id)
         })
         
         if not dataset_data:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="PDF dataset not found"
+                detail="Dataset not found"
             )
         
         dataset = Dataset.from_dict(dataset_data)
-        report = generate_dummy_report(dataset.name)
+        
+        # Use appropriate generation function based on dataset type
+        if dataset.dataset_type == "csv":
+            report = generate_dummy_csv_report(dataset.name)
+        else:
+            report = generate_dummy_report(dataset.name)
         
         # Update dataset with generated report
         await db.datasets.update_one(
