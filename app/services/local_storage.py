@@ -10,13 +10,31 @@ class LocalStorageService:
     
     def __init__(self):
         # Create storage directory if it doesn't exist
-        self.storage_dir = Path("backend/storage")
+        # Changed from "backend/storage" to "datasets"
+        self.storage_dir = Path("datasets")
         self.storage_dir.mkdir(parents=True, exist_ok=True)
     
-    def create_user_folder(self, user_id: str) -> str:
-        """Create a folder for a user in local storage"""
+    def create_user_folder(self, user_id: str, dataset_type: str = None) -> str:
+        """Create a folder for a user in local storage, optionally organized by dataset type"""
         user_folder = self.storage_dir / f"user_{user_id}"
         user_folder.mkdir(parents=True, exist_ok=True)
+        
+        # If dataset type is provided, create a subfolder for that type
+        if dataset_type:
+            # Normalize dataset type (csv, pdf, xls, xlsx -> csv, pdf, xls)
+            if dataset_type.lower() in ['xlsx', 'xls']:
+                type_folder = user_folder / "xls"
+            elif dataset_type.lower() == 'pdf':
+                type_folder = user_folder / "pdf"
+            elif dataset_type.lower() == 'csv':
+                type_folder = user_folder / "csv"
+            else:
+                # Default to a generic folder if type is unknown
+                type_folder = user_folder / dataset_type.lower()
+            
+            type_folder.mkdir(parents=True, exist_ok=True)
+            return str(type_folder)
+        
         return str(user_folder)
     
     def upload_file(

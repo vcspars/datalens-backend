@@ -30,3 +30,15 @@ class DatasetListResponse(BaseModel):
     datasets: list[DatasetResponse]
     total: int
 
+
+class ColumnCalculationRequest(BaseModel):
+    """Column calculation request schema"""
+    column_name: str
+    operation: str
+
+
+class SaveChangesRequest(BaseModel):
+    """Save changes request schema"""
+    columns: list[str]  # List of column names in order
+    data: list[dict]  # List of row data as dictionaries
+
