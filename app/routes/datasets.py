@@ -825,6 +825,23 @@ async def calculate_column_statistic(
         # Remove NaN values for calculations
         col_data_clean = col_data.dropna()
         
+        # "count unique" can work on any column (numeric or not)
+        if operation.lower() == "count unique":
+            raw_col = df[column_name].dropna()
+            if len(col_data_clean) > 0:
+                result = {"value": int(col_data_clean.nunique()), "formatted": str(col_data_clean.nunique())}
+                valid_count = len(col_data_clean)
+            else:
+                result = {"value": int(raw_col.nunique()), "formatted": str(raw_col.nunique())}
+                valid_count = len(raw_col)
+            return {
+                "column": column_name,
+                "operation": operation,
+                "result": result,
+                "total_values": len(df[column_name]),
+                "valid_numeric_values": valid_count,
+            }
+        
         if len(col_data_clean) == 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -834,7 +851,15 @@ async def calculate_column_statistic(
         result = {}
         
         # Perform calculation based on operation
-        if operation.lower() == "sum":
+        if operation.lower() == "percentiles":
+            q25 = float(col_data_clean.quantile(0.25))
+            q50 = float(col_data_clean.quantile(0.50))
+            q75 = float(col_data_clean.quantile(0.75))
+            result["p25"] = q25
+            result["p50"] = q50
+            result["p75"] = q75
+            result["formatted"] = f"25th: {q25:,.2f}, 50th: {q50:,.2f}, 75th: {q75:,.2f}"
+        elif operation.lower() == "sum":
             result["value"] = float(col_data_clean.sum())
             result["formatted"] = f"{col_data_clean.sum():,.2f}"
         elif operation.lower() == "average" or operation.lower() == "mean":
