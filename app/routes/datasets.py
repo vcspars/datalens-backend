@@ -2,18 +2,29 @@
 from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from app.database import get_database
-from app.schemas.dataset import DatasetResponse, DatasetListResponse, ColumnCalculationRequest, SaveChangesRequest
+from app.schemas.dataset import (
+    DatasetResponse,
+    DatasetListResponse,
+    ColumnCalculationRequest,
+    SaveChangesRequest,
+    AddIntelligentColumnRequest,
+)
 from app.models.dataset import Dataset
 from app.routes.auth import get_current_user
 from app.models.user import User
 from app.services.google_drive import drive_service
 from app.services.local_storage import local_storage
+from app.config import settings
 from bson import ObjectId
-from datetime import datetime
+from datetime import datetime, date
+import asyncio
 import math
 import csv
 import io
+from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
+import numpy as np
+from openai import OpenAI
 
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -381,6 +392,96 @@ async def upload_pdf(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error uploading PDF: {str(e)}"
+        )
+
+
+@router.post("/upload/database", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
+async def upload_database(
+    file: UploadFile = File(...),
+    name: str = Form(...),
+    description: str = Form(None),
+    current_user: User = Depends(get_current_user)
+):
+    """Upload a database file (SQLite, SQL dump, etc.)"""
+    try:
+        # Validate file type
+        allowed_extensions = ('.db', '.sqlite', '.sqlite3', '.sql', '.mdb', '.accdb')
+        if not file.filename or not file.filename.lower().endswith(allowed_extensions):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid file type. Supported: .db, .sqlite, .sqlite3, .sql, .mdb, .accdb"
+            )
+
+        file_content = await file.read()
+        file_size = len(file_content)
+
+        if file_size > 100 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File size exceeds 100MB limit"
+            )
+
+        mime_type = "application/x-sqlite3"
+        if file.filename.lower().endswith('.sql'):
+            mime_type = "application/sql"
+        elif file.filename.lower().endswith(('.mdb', '.accdb')):
+            mime_type = "application/octet-stream"
+
+        drive_file_id = None
+        use_local_storage = False
+
+        if drive_service.service and drive_service.base_folder_id:
+            try:
+                user_folder_id = drive_service.create_user_folder(str(current_user._id))
+                drive_file_id = drive_service.upload_file(
+                    file_content=file_content,
+                    file_name=file.filename,
+                    mime_type=mime_type,
+                    folder_id=user_folder_id
+                )
+            except Exception:
+                use_local_storage = True
+        else:
+            use_local_storage = True
+
+        if use_local_storage or not drive_file_id:
+            user_folder_path = local_storage.create_user_folder(str(current_user._id), dataset_type="database")
+            drive_file_id = local_storage.upload_file(
+                file_content=file_content,
+                file_name=file.filename,
+                mime_type=mime_type,
+                folder_path=user_folder_path
+            )
+
+        db = get_database()
+        dataset = Dataset(
+            user_id=str(current_user._id),
+            name=name,
+            dataset_type="database",
+            google_drive_file_id=drive_file_id,
+            file_name=file.filename,
+            file_size=file_size,
+            description=description
+        )
+
+        result = await db.datasets.insert_one(dataset.to_dict())
+
+        return DatasetResponse(
+            id=str(result.inserted_id),
+            name=dataset.name,
+            dataset_type=dataset.dataset_type,
+            file_name=dataset.file_name,
+            file_size=dataset.file_size,
+            description=dataset.description,
+            uploaded_at=dataset.created_at,
+            size=format_file_size(dataset.file_size)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error uploading database: {str(e)}"
         )
 
 
@@ -1394,5 +1495,267 @@ async def save_dataset_changes(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error saving changes: {str(e)}"
+        )
+
+
+def _process_chunk_gpt(
+    start_idx: int,
+    row_chunk: list[tuple],
+    prompt: str,
+    system_content: str,
+    api_key: str,
+) -> tuple[int, list[str]]:
+    """Sync helper: call OpenAI for one chunk of rows. Used from ThreadPoolExecutor."""
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is not set in .env")
+    client = OpenAI(api_key=api_key)
+    row_lines = "\n".join(
+        "\t".join(str(v) if v is not None and str(v) != "nan" else "" for v in row)
+        for row in row_chunk
+    )
+    user_content = f"{prompt}\n\nRow data (one row per line, values separated by tab):\n{row_lines}"
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": user_content},
+        ],
+        temperature=0,
+    )
+    text = (response.choices[0].message.content or "").strip()
+    vals = [line.strip() for line in text.split("\n") if line.strip()]
+    while len(vals) < len(row_chunk):
+        vals.append("")
+    return (start_idx, vals[: len(row_chunk)])
+
+
+def _load_full_dataframe(file_content: bytes, file_name: str) -> pd.DataFrame:
+    """Load full CSV/Excel file into a DataFrame (no pagination)."""
+    buf = io.BytesIO(file_content)
+    if file_name.endswith(".csv"):
+        encodings = ["utf-8", "latin-1", "iso-8859-1", "cp1252"]
+        df = None
+        for enc in encodings:
+            try:
+                buf.seek(0)
+                df = pd.read_csv(buf, encoding=enc, on_bad_lines="skip")
+                break
+            except (UnicodeDecodeError, Exception):
+                continue
+        if df is None:
+            buf.seek(0)
+            df = pd.read_csv(buf, encoding="utf-8", on_bad_lines="skip")
+    elif file_name.endswith((".xlsx", ".xls")):
+        buf.seek(0)
+        try:
+            df = pd.read_excel(buf, engine="openpyxl")
+        except Exception:
+            buf.seek(0)
+            df = pd.read_excel(buf, engine="xlrd")
+    else:
+        raise ValueError(f"Unsupported file format: {file_name}")
+    return df
+
+
+def _json_safe_value(v) -> str | int | float | bool | None:
+    """Convert a cell value to JSON-serializable type."""
+    if v is None or (isinstance(v, float) and np.isnan(v)):
+        return None
+    if isinstance(v, (np.integer, int)):
+        return int(v)
+    if isinstance(v, (np.floating, float)):
+        if np.isinf(v):
+            return None
+        return float(v)
+    if isinstance(v, (np.bool_, bool)):
+        return bool(v)
+    if isinstance(v, (pd.Timestamp, date, datetime)):
+        return v.isoformat() if hasattr(v, "isoformat") else str(v)
+    if isinstance(v, bytes):
+        return v.decode("utf-8", errors="ignore")
+    return str(v)
+
+
+@router.post("/{dataset_id}/add-intelligent-column")
+async def add_intelligent_column(
+    dataset_id: str,
+    request_data: AddIntelligentColumnRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generate an intelligent column using GPT and persist it. Uses concurrent threads for speed."""
+    try:
+        if not settings.OPENAI_API_KEY:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="OPENAI_API_KEY is not set. Add it to .env to use this feature.",
+            )
+        db = get_database()
+        dataset_data = await db.datasets.find_one(
+            {"_id": ObjectId(dataset_id), "user_id": str(current_user._id)}
+        )
+        if not dataset_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dataset not found",
+            )
+        if dataset_data["dataset_type"] not in ["csv", "xls", "xlsx"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This endpoint only supports CSV and Excel files",
+            )
+        file_id = dataset_data["google_drive_file_id"]
+        file_name = dataset_data.get("file_name", "dataset.csv")
+        file_content = None
+        if drive_service.service:
+            try:
+                file_content = drive_service.download_file(file_id)
+            except Exception:
+                pass
+        if not file_content:
+            try:
+                file_content = local_storage.download_file(file_id)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"File not found in storage: {str(e)}",
+                )
+        df = _load_full_dataframe(file_content, file_name)
+        source_columns = [c.strip() for c in request_data.source_columns if c.strip()]
+        if not source_columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="At least one source column is required",
+            )
+        missing = [c for c in source_columns if c not in df.columns]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Source columns not found in dataset: {missing}",
+            )
+        column_name = (request_data.new_column_name or "").strip()
+        if not column_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="new_column_name is required",
+            )
+        column_name = column_name[0].upper() + column_name[1:] if len(column_name) > 1 else column_name.upper()
+        if column_name in df.columns:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"A column named '{column_name}' already exists",
+            )
+        row_data = [
+            tuple(df.iloc[i][c] for c in source_columns)
+            for i in range(len(df))
+        ]
+        system_content = (
+            "You are a data-transformation assistant. "
+            "Return **only** one transformed value per row, each on its own line. No explanations."
+        )
+        chunk_size = 20
+        max_workers = 5
+        ordered: dict[int, list[str]] = {}
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                loop.run_in_executor(
+                    executor,
+                    _process_chunk_gpt,
+                    i,
+                    row_data[i : i + chunk_size],
+                    request_data.prompt,
+                    system_content,
+                    settings.OPENAI_API_KEY,
+                )
+                for i in range(0, len(row_data), chunk_size)
+            ]
+            results = await asyncio.gather(*futures)
+        for start_idx, vals in results:
+            ordered[start_idx] = vals
+        new_vals = []
+        for i in range(0, len(row_data), chunk_size):
+            new_vals.extend(ordered[i])
+        if len(new_vals) != len(df):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Row count mismatch: generated {len(new_vals)} values for {len(df)} rows",
+            )
+        df[column_name] = new_vals
+        df = df.replace({np.nan: None, np.inf: None, -np.inf: None})
+        df = df.map(_json_safe_value)
+        if file_name.endswith(".csv"):
+            buffer = io.BytesIO()
+            df.to_csv(buffer, index=False, encoding="utf-8")
+            file_content_out = buffer.getvalue()
+            mime_type = "text/csv"
+        elif file_name.endswith((".xlsx", ".xls")):
+            buffer = io.BytesIO()
+            df.to_excel(buffer, index=False, engine="openpyxl")
+            file_content_out = buffer.getvalue()
+            mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Unsupported file format",
+            )
+        saved = False
+        is_google_drive = len(file_id) > 20 and "/" not in file_id
+        if is_google_drive and drive_service.service:
+            try:
+                try:
+                    drive_service.service.files().delete(fileId=file_id).execute()
+                except Exception:
+                    pass
+                user_folder_id = drive_service.create_user_folder(str(current_user._id))
+                new_file_id = drive_service.upload_file(
+                    file_content=file_content_out,
+                    file_name=file_name,
+                    mime_type=mime_type,
+                    folder_id=user_folder_id,
+                )
+                await db.datasets.update_one(
+                    {"_id": ObjectId(dataset_id)},
+                    {"$set": {"google_drive_file_id": new_file_id}},
+                )
+                saved = True
+            except Exception:
+                pass
+        if not saved:
+            try:
+                local_storage.delete_file(file_id)
+            except Exception:
+                pass
+            file_ext = file_name.lower().split(".")[-1] if "." in file_name else "csv"
+            user_folder_path = local_storage.create_user_folder(
+                str(current_user._id), dataset_type=file_ext
+            )
+            new_file_id = local_storage.upload_file(
+                file_content=file_content_out,
+                file_name=file_name,
+                mime_type=mime_type,
+                folder_path=user_folder_path,
+            )
+            await db.datasets.update_one(
+                {"_id": ObjectId(dataset_id)},
+                {"$set": {"google_drive_file_id": new_file_id}},
+            )
+        await db.datasets.update_one(
+            {"_id": ObjectId(dataset_id)},
+            {"$set": {"file_size": len(file_content_out)}},
+        )
+        return {
+            "success": True,
+            "new_column_name": column_name,
+            "new_column_data": new_vals,
+            "message": "Column generated and saved successfully.",
+            "row_count": len(df),
+            "column_count": len(df.columns),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error adding intelligent column: {str(e)}",
         )
 

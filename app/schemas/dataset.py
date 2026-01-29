@@ -48,3 +48,10 @@ class SaveChangesRequest(BaseModel):
     columns: list[str]  # List of column names in order
     data: list[dict]  # List of row data as dictionaries
 
+
+class AddIntelligentColumnRequest(BaseModel):
+    """Add intelligent column request schema (GPT-based transformation)"""
+    source_columns: list[str]  # Column names to use as context for GPT
+    prompt: str
+    new_column_name: str
+

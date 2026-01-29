@@ -22,7 +22,9 @@ class Settings(BaseSettings):
         "http://localhost:8080",
         "http://localhost:8081"
     ]
-    
+
+    OPENAI_API_KEY: str = ""
+
     class Config:
         env_file = ".env"
         case_sensitive = True
