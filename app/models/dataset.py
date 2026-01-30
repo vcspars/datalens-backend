@@ -11,7 +11,7 @@ class Dataset:
         self,
         user_id: str,
         name: str,
-        dataset_type: str,  # 'pdf', 'csv', 'database'
+        dataset_type: str,  # 'pdf', 'csv'
         google_drive_file_id: str,
         file_name: str,
         file_size: int,
