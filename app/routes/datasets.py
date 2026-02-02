@@ -14,6 +14,7 @@ from app.routes.auth import get_current_user
 from app.models.user import User
 from app.services.google_drive import drive_service
 from app.services.local_storage import local_storage
+from app.services.pdf_generation import generate_pdf_summary_questions_report
 from app.config import settings
 from bson import ObjectId
 from datetime import datetime, date
@@ -345,12 +346,7 @@ async def upload_pdf(
         gen_questions = generate_questions.lower() == "true"
         gen_report = generate_report.lower() == "true"
         
-        # Generate dummy content based on flags
-        summary = generate_dummy_summary(name) if gen_summary else None
-        questions = generate_dummy_questions() if gen_questions else None
-        report = generate_dummy_report(name) if gen_report else None
-        
-        # Save dataset metadata to MongoDB
+        # Save dataset metadata to MongoDB first (so we have dataset_id for .md storage)
         db = get_database()
         dataset = Dataset(
             user_id=str(current_user._id),
@@ -360,31 +356,64 @@ async def upload_pdf(
             file_name=file.filename,
             file_size=file_size,
             description=description,
-            summary=summary,
-            questions=questions,
-            report=report,
-            summary_generated=gen_summary,
-            questions_generated=gen_questions,
-            report_generated=gen_report
+            summary=None,
+            questions=None,
+            report=None,
+            summary_generated=False,
+            questions_generated=False,
+            report_generated=False,
         )
         
         result = await db.datasets.insert_one(dataset.to_dict())
+        dataset_id = str(result.inserted_id)
+        
+        # If user checked any of summary/questions/report, generate with LangChain + PyMuPDF (3 threads, .md files)
+        if gen_summary or gen_questions or gen_report:
+            try:
+                summary, questions, report = await asyncio.to_thread(
+                    generate_pdf_summary_questions_report,
+                    file_content,
+                    name,
+                    str(current_user._id),
+                    dataset_id,
+                )
+                await db.datasets.update_one(
+                    {"_id": ObjectId(dataset_id)},
+                    {
+                        "$set": {
+                            "summary": summary,
+                            "questions": questions,
+                            "report": report,
+                            "summary_generated": gen_summary,
+                            "questions_generated": gen_questions,
+                            "report_generated": gen_report,
+                            "updated_at": datetime.utcnow(),
+                        }
+                    }
+                )
+            except Exception as e:
+                # If generation fails, leave dataset as-is (no summary/questions/report) and don't fail upload
+                print(f"[UPLOAD] PDF generation failed: {e}")
+        
+        # Fetch final dataset for response
+        updated_data = await db.datasets.find_one({"_id": ObjectId(dataset_id)})
+        final = Dataset.from_dict(updated_data)
         
         return DatasetResponse(
-            id=str(result.inserted_id),
-            name=dataset.name,
-            dataset_type=dataset.dataset_type,
-            file_name=dataset.file_name,
-            file_size=dataset.file_size,
-            description=dataset.description,
-            summary=dataset.summary,
-            questions=dataset.questions,
-            report=dataset.report,
-            summary_generated=dataset.summary_generated,
-            questions_generated=dataset.questions_generated,
-            report_generated=dataset.report_generated,
-            uploaded_at=dataset.created_at,
-            size=format_file_size(dataset.file_size)
+            id=str(final._id),
+            name=final.name,
+            dataset_type=final.dataset_type,
+            file_name=final.file_name,
+            file_size=final.file_size,
+            description=final.description,
+            summary=final.summary,
+            questions=final.questions,
+            report=final.report,
+            summary_generated=final.summary_generated,
+            questions_generated=final.questions_generated,
+            report_generated=final.report_generated,
+            uploaded_at=final.created_at,
+            size=format_file_size(final.file_size)
         )
     except HTTPException:
         raise
@@ -981,7 +1010,7 @@ async def generate_summary(
     dataset_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Generate summary for a dataset (PDF or CSV)"""
+    """Generate summary for a dataset (PDF or CSV). For PDF uses LangChain + PyMuPDF and writes .md files."""
     try:
         db = get_database()
         dataset_data = await db.datasets.find_one({
@@ -997,23 +1026,49 @@ async def generate_summary(
         
         dataset = Dataset.from_dict(dataset_data)
         
-        # Use appropriate generation function based on dataset type
         if dataset.dataset_type == "csv":
             summary = generate_dummy_csv_summary(dataset.name)
+            await db.datasets.update_one(
+                {"_id": ObjectId(dataset_id)},
+                {"$set": {"summary": summary, "summary_generated": True, "updated_at": datetime.utcnow()}}
+            )
         else:
-            summary = generate_dummy_summary(dataset.name)
-        
-        # Update dataset with generated summary
-        await db.datasets.update_one(
-            {"_id": ObjectId(dataset_id)},
-            {
-                "$set": {
-                    "summary": summary,
-                    "summary_generated": True,
-                    "updated_at": datetime.utcnow()
+            # PDF: get file content, run LangChain + PyMuPDF (summary, questions, report in 3 threads), write .md
+            file_id = dataset_data["google_drive_file_id"]
+            file_content = None
+            if drive_service.service:
+                try:
+                    file_content = drive_service.download_file(file_id)
+                except Exception:
+                    file_content = None
+            if not file_content:
+                try:
+                    file_content = local_storage.download_file(file_id)
+                except Exception:
+                    pass
+            if not file_content:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not load PDF file.")
+            summary, questions, report = await asyncio.to_thread(
+                generate_pdf_summary_questions_report,
+                file_content,
+                dataset.name,
+                str(current_user._id),
+                dataset_id,
+            )
+            await db.datasets.update_one(
+                {"_id": ObjectId(dataset_id)},
+                {
+                    "$set": {
+                        "summary": summary,
+                        "questions": questions,
+                        "report": report,
+                        "summary_generated": True,
+                        "questions_generated": True,
+                        "report_generated": True,
+                        "updated_at": datetime.utcnow(),
+                    }
                 }
-            }
-        )
+            )
         
         # Return updated dataset
         updated_data = await db.datasets.find_one({"_id": ObjectId(dataset_id)})
@@ -1049,7 +1104,7 @@ async def generate_questions(
     dataset_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Generate questions for a dataset (PDF or CSV)"""
+    """Generate questions for a dataset (PDF or CSV). For PDF uses LangChain + PyMuPDF and writes .md files."""
     try:
         db = get_database()
         dataset_data = await db.datasets.find_one({
@@ -1065,23 +1120,48 @@ async def generate_questions(
         
         dataset = Dataset.from_dict(dataset_data)
         
-        # Use appropriate generation function based on dataset type
         if dataset.dataset_type == "csv":
             questions = generate_dummy_csv_questions()
+            await db.datasets.update_one(
+                {"_id": ObjectId(dataset_id)},
+                {"$set": {"questions": questions, "questions_generated": True, "updated_at": datetime.utcnow()}}
+            )
         else:
-            questions = generate_dummy_questions()
-        
-        # Update dataset with generated questions
-        await db.datasets.update_one(
-            {"_id": ObjectId(dataset_id)},
-            {
-                "$set": {
-                    "questions": questions,
-                    "questions_generated": True,
-                    "updated_at": datetime.utcnow()
+            file_id = dataset_data["google_drive_file_id"]
+            file_content = None
+            if drive_service.service:
+                try:
+                    file_content = drive_service.download_file(file_id)
+                except Exception:
+                    file_content = None
+            if not file_content:
+                try:
+                    file_content = local_storage.download_file(file_id)
+                except Exception:
+                    pass
+            if not file_content:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not load PDF file.")
+            summary, questions, report = await asyncio.to_thread(
+                generate_pdf_summary_questions_report,
+                file_content,
+                dataset.name,
+                str(current_user._id),
+                dataset_id,
+            )
+            await db.datasets.update_one(
+                {"_id": ObjectId(dataset_id)},
+                {
+                    "$set": {
+                        "summary": summary,
+                        "questions": questions,
+                        "report": report,
+                        "summary_generated": True,
+                        "questions_generated": True,
+                        "report_generated": True,
+                        "updated_at": datetime.utcnow(),
+                    }
                 }
-            }
-        )
+            )
         
         # Return updated dataset
         updated_data = await db.datasets.find_one({"_id": ObjectId(dataset_id)})
@@ -1117,7 +1197,7 @@ async def generate_report(
     dataset_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Generate report for a dataset (PDF or CSV)"""
+    """Generate report for a dataset (PDF or CSV). For PDF uses LangChain + PyMuPDF and writes .md files."""
     try:
         db = get_database()
         dataset_data = await db.datasets.find_one({
@@ -1133,23 +1213,48 @@ async def generate_report(
         
         dataset = Dataset.from_dict(dataset_data)
         
-        # Use appropriate generation function based on dataset type
         if dataset.dataset_type == "csv":
             report = generate_dummy_csv_report(dataset.name)
+            await db.datasets.update_one(
+                {"_id": ObjectId(dataset_id)},
+                {"$set": {"report": report, "report_generated": True, "updated_at": datetime.utcnow()}}
+            )
         else:
-            report = generate_dummy_report(dataset.name)
-        
-        # Update dataset with generated report
-        await db.datasets.update_one(
-            {"_id": ObjectId(dataset_id)},
-            {
-                "$set": {
-                    "report": report,
-                    "report_generated": True,
-                    "updated_at": datetime.utcnow()
+            file_id = dataset_data["google_drive_file_id"]
+            file_content = None
+            if drive_service.service:
+                try:
+                    file_content = drive_service.download_file(file_id)
+                except Exception:
+                    file_content = None
+            if not file_content:
+                try:
+                    file_content = local_storage.download_file(file_id)
+                except Exception:
+                    pass
+            if not file_content:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Could not load PDF file.")
+            summary, questions, report = await asyncio.to_thread(
+                generate_pdf_summary_questions_report,
+                file_content,
+                dataset.name,
+                str(current_user._id),
+                dataset_id,
+            )
+            await db.datasets.update_one(
+                {"_id": ObjectId(dataset_id)},
+                {
+                    "$set": {
+                        "summary": summary,
+                        "questions": questions,
+                        "report": report,
+                        "summary_generated": True,
+                        "questions_generated": True,
+                        "report_generated": True,
+                        "updated_at": datetime.utcnow(),
+                    }
                 }
-            }
-        )
+            )
         
         # Return updated dataset
         updated_data = await db.datasets.find_one({"_id": ObjectId(dataset_id)})

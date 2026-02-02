@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     ]
 
     OPENAI_API_KEY: str = ""
+    # OpenAI model for PDF summary/questions/report (e.g. gpt-4o, gpt-4.1, gpt-4-turbo)
+    OPENAI_MODEL: str = "gpt-4o"
 
     class Config:
         env_file = ".env"
