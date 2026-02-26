@@ -8,6 +8,16 @@ class Settings(BaseSettings):
     MONGODB_URL: str = "mongodb://localhost:27017"
     DATABASE_NAME: str = "datalens_db"
     
+    # OpenAI
+    OPENAI_API_KEY: str = ""
+    
+    # SQL Server (for LangChain chat with database)
+    SQL_SERVER: str = ""
+    SQL_DATABASE: str = ""
+    SQL_USER: str = ""
+    SQL_PASSWORD: str = ""
+    SQL_DRIVER: str = "ODBC Driver 17 for SQL Server"
+    
     # JWT settings
     SECRET_KEY: str = "your-secret-key-change-this-in-production-use-env-variable"
     ALGORITHM: str = "HS256"

@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from app.database import get_database
 from app.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse
 from app.models.user import User
+from app.models.chat import ChatSession
 from app.utils.security import (
     verify_password,
     get_password_hash,
@@ -14,10 +15,27 @@ from datetime import timedelta
 from app.config import settings
 from bson import ObjectId
 
+print("[AuthRoute] Router initialized")
+
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+
+
+async def _ensure_chat_session(db, user_id: str) -> str:
+    """Create a chat session for the user if one doesn't exist yet."""
+    existing = await db.chat_sessions.find_one({"user_id": user_id})
+    if existing:
+        session_id = str(existing["_id"])
+        print(f"[AuthRoute] Chat session already exists for user {user_id}: {session_id}")
+        return session_id
+
+    session = ChatSession(user_id=user_id)
+    result = await db.chat_sessions.insert_one(session.to_dict())
+    session_id = str(result.inserted_id)
+    print(f"[AuthRoute] Created chat session for user {user_id}: {session_id}")
+    return session_id
 
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -95,7 +113,11 @@ async def signup(signup_data: SignupRequest):
             data={"sub": str(result.inserted_id), "email": user.email},
             expires_delta=access_token_expires
         )
-        
+
+        # Auto-create chat session for new user
+        await _ensure_chat_session(db, str(result.inserted_id))
+        print(f"[AuthRoute] Signup complete for {user.email}")
+
         return TokenResponse(access_token=access_token, token_type="bearer")
     except HTTPException:
         raise
@@ -134,7 +156,12 @@ async def login(login_data: LoginRequest):
         data={"sub": str(user._id), "email": user.email},
         expires_delta=access_token_expires
     )
-    
+
+    # Ensure chat session exists for this user
+    db = get_database()
+    await _ensure_chat_session(db, str(user._id))
+    print(f"[AuthRoute] Login complete for {user.email}")
+
     return TokenResponse(access_token=access_token, token_type="bearer")
 
 

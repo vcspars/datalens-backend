@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 from app.config import settings
 from app.database import connect_to_mongo, close_mongo_connection
 from app.routes import auth, datasets
+from app.routes import chat as chat_routes
+from app.routes import dashboard as dashboard_routes
 
 
 @asynccontextmanager
@@ -59,6 +61,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Include routers
 app.include_router(auth.router, prefix="/api")
 app.include_router(datasets.router, prefix="/api")
+app.include_router(chat_routes.router, prefix="/api")
+app.include_router(dashboard_routes.router, prefix="/api")
 
 
 @app.get("/")
