@@ -28,6 +28,8 @@ class SaveTableRequest(BaseModel):
     table_data: list
     table_columns: list
     source_question: Optional[str] = ""
+    source_prompt: Optional[str] = ""
+    source_response: Optional[str] = ""
 
 
 class SaveGraphRequest(BaseModel):
@@ -37,6 +39,8 @@ class SaveGraphRequest(BaseModel):
     table_data: Optional[list] = []
     table_columns: Optional[list] = []
     source_question: Optional[str] = ""
+    source_prompt: Optional[str] = ""
+    source_response: Optional[str] = ""
 
 
 class GenerateReportRequest(BaseModel):
@@ -57,6 +61,8 @@ class DashboardItemOut(BaseModel):
     report_content: Optional[str]
     report_template: Optional[str]
     source_question: Optional[str]
+    source_prompt: Optional[str]
+    source_response: Optional[str]
     created_at: str
 
 
@@ -77,6 +83,8 @@ def _serialize_item(doc: dict) -> DashboardItemOut:
         report_content=doc.get("report_content"),
         report_template=doc.get("report_template"),
         source_question=doc.get("source_question"),
+        source_prompt=doc.get("source_prompt"),
+        source_response=doc.get("source_response"),
         created_at=created.isoformat() if isinstance(created, datetime) else str(created),
     )
 
@@ -123,6 +131,8 @@ async def save_table(
         table_data=request.table_data,
         table_columns=request.table_columns,
         source_question=request.source_question,
+        source_prompt=request.source_prompt,
+        source_response=request.source_response,
     )
     result = await db.dashboard_items.insert_one(item.to_dict())
     print(f"[DashboardRoute] Table saved: {result.inserted_id}")
@@ -149,6 +159,8 @@ async def save_graph(
         table_data=request.table_data,
         table_columns=request.table_columns,
         source_question=request.source_question,
+        source_prompt=request.source_prompt,
+        source_response=request.source_response,
     )
     result = await db.dashboard_items.insert_one(item.to_dict())
     print(f"[DashboardRoute] Graph saved: {result.inserted_id}")

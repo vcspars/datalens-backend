@@ -23,6 +23,8 @@ class DashboardItem:
         report_template: Optional[str] = None,
         # shared metadata
         source_question: Optional[str] = None,
+        source_prompt: Optional[str] = None,
+        source_response: Optional[str] = None,
         metadata: Optional[dict] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
@@ -39,6 +41,8 @@ class DashboardItem:
         self.report_content = report_content or ""
         self.report_template = report_template or ""
         self.source_question = source_question or ""
+        self.source_prompt = source_prompt or ""
+        self.source_response = source_response or ""
         self.metadata = metadata or {}
         self.created_at = created_at or datetime.utcnow()
         self.updated_at = updated_at or datetime.utcnow()
@@ -56,6 +60,8 @@ class DashboardItem:
             "report_content": self.report_content,
             "report_template": self.report_template,
             "source_question": self.source_question,
+            "source_prompt": self.source_prompt,
+            "source_response": self.source_response,
             "metadata": self.metadata,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -75,6 +81,8 @@ class DashboardItem:
             report_content=data.get("report_content", ""),
             report_template=data.get("report_template", ""),
             source_question=data.get("source_question", ""),
+            source_prompt=data.get("source_prompt", ""),
+            source_response=data.get("source_response", ""),
             metadata=data.get("metadata", {}),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
