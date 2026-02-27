@@ -533,6 +533,54 @@ async def delete_bookmark(
     print(f"[ChatRoute] Bookmark deleted | id={bookmark_id}")
 
 
+# ---------------------------------------------------------------------------
+# Graphs tab persistence (stored on chat_sessions)
+# ---------------------------------------------------------------------------
+
+class DbGraphInstance(BaseModel):
+    id: str
+    table_data: list
+    table_columns: list
+    graph_type: str
+    xKey: str
+    yKey: str
+    source_label: Optional[str] = None
+
+
+class SaveGraphsRequest(BaseModel):
+    graphs: list[DbGraphInstance]
+
+
+@router.get("/db/graphs")
+async def get_db_graphs(current_user: User = Depends(get_current_user)):
+    """Return the user's Graphs tab instances from their chat session."""
+    user_id = str(current_user._id)
+    print(f"[ChatRoute] GET /db/graphs | user={user_id}")
+    db = get_database()
+    session_doc = await db.chat_sessions.find_one({"user_id": user_id})
+    graphs = session_doc.get("graphs", []) if session_doc else []
+    print(f"[ChatRoute] Returning {len(graphs)} graph instances")
+    return {"graphs": graphs}
+
+
+@router.put("/db/graphs")
+async def save_db_graphs(
+    request: SaveGraphsRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Overwrite the user's Graphs tab instances on their chat session."""
+    user_id = str(current_user._id)
+    graphs = [g.model_dump() for g in request.graphs]
+    print(f"[ChatRoute] PUT /db/graphs | user={user_id} | count={len(graphs)}")
+    db = get_database()
+    await db.chat_sessions.update_one(
+        {"user_id": user_id},
+        {"$set": {"graphs": graphs, "updated_at": datetime.utcnow()}},
+        upsert=True,
+    )
+    return {"message": "Graphs saved", "count": len(graphs)}
+
+
 @router.delete("/history")
 async def clear_chat_history(current_user: User = Depends(get_current_user)):
     """Clear all chat messages for the current user."""

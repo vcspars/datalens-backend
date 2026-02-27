@@ -12,6 +12,8 @@ class ChatSession:
     - db_summary:   AI-generated markdown overview of the database (str)
     - db_questions: AI-generated suggested questions list (list[str])
     - db_report:    AI-generated database analysis report (str)
+    - bookmarks:    list of bookmarked questions
+    - graphs:       list of Graphs tab instances [{id, table_data, table_columns, graph_type, xKey, yKey, source_label}]
     """
 
     def __init__(
@@ -21,6 +23,7 @@ class ChatSession:
         db_questions: Optional[list] = None,
         db_report: str = "",
         bookmarks: Optional[list] = None,
+        graphs: Optional[list] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
         _id: Optional[ObjectId] = None,
@@ -32,6 +35,8 @@ class ChatSession:
         self.db_report = db_report
         # Each bookmark: {"id": str, "question": str, "created_at": datetime}
         self.bookmarks: list[dict] = bookmarks or []
+        # Graphs tab instances: [{id, table_data, table_columns, graph_type, xKey, yKey, source_label}]
+        self.graphs: list = graphs or []
         self.created_at = created_at or datetime.utcnow()
         self.updated_at = updated_at or datetime.utcnow()
 
@@ -43,6 +48,7 @@ class ChatSession:
             "db_questions": self.db_questions,
             "db_report": self.db_report,
             "bookmarks": self.bookmarks,
+            "graphs": self.graphs,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
         }
@@ -56,6 +62,7 @@ class ChatSession:
             db_questions=data.get("db_questions", []),
             db_report=data.get("db_report", ""),
             bookmarks=data.get("bookmarks", []),
+            graphs=data.get("graphs", []),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
         )
