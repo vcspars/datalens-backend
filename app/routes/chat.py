@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 from bson import ObjectId
 
@@ -14,6 +14,7 @@ from app.routes.auth import get_current_user
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage
 from app.services.langchain_agent import stream_chat_with_database
+from app.services.report_renderer import render_report_html, render_pdf_from_html
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -434,6 +435,50 @@ async def stream_db_report(current_user: User = Depends(get_current_user)):
         event_generator(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/db/report/pdf")
+async def download_db_report_pdf(current_user: User = Depends(get_current_user)):
+    """
+    Download the persisted database analysis report as a PDF.
+
+    Uses the same markdown stored on the chat session, rendered via the shared
+    report renderer used for dashboard reports.
+    """
+    user_id = str(current_user._id)
+    print(f"[ChatRoute] GET /db/report/pdf called | user={user_id}")
+
+    db = get_database()
+    session_doc = await db.chat_sessions.find_one({"user_id": user_id})
+    if not session_doc:
+        raise HTTPException(status_code=404, detail="No report available")
+
+    report_md = session_doc.get("db_report") or ""
+    if not report_md:
+        raise HTTPException(status_code=404, detail="No report available")
+
+    generated_at_str = session_doc.get("updated_at", datetime.utcnow())
+    if isinstance(generated_at_str, datetime):
+        generated_at_str = generated_at_str.isoformat()
+    else:
+        generated_at_str = str(generated_at_str)
+
+    html = render_report_html(
+        full_report_markdown=report_md,
+        items_for_report=[],
+        title="Database Analysis Report",
+        author=current_user.full_name,
+        generated_at=generated_at_str,
+    )
+    pdf_bytes = render_pdf_from_html(html)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'attachment; filename="database-report.pdf"',
+        },
     )
 
 
