@@ -414,6 +414,38 @@ def render_report_html(
     return html
 
 
+def render_simple_report_html(full_report_markdown: str, title: str | None = None) -> str:
+    """
+    Render markdown to HTML for a minimal PDF (no cover, no TOC, no extra sections).
+    Used for the chat-section Database Analysis Report download; differs from
+    dashboard reports which include cover page and table of contents.
+    """
+    body_html = markdown(
+        full_report_markdown or "",
+        extensions=["tables", "fenced_code"],
+    )
+    title_html = title or "Database Analysis Report"
+    html = f"""<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>{title_html}</title>
+    <style>
+    {BASE_CSS}
+    </style>
+  </head>
+  <body>
+    <div class="report-container">
+      <div class="report-body">
+        {body_html}
+      </div>
+    </div>
+  </body>
+</html>
+"""
+    return html
+
+
 def render_pdf_from_html(html: str) -> bytes:
     """Render a PDF bytes object from HTML using WeasyPrint."""
     return HTML(string=html).write_pdf()

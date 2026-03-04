@@ -14,7 +14,7 @@ from app.database import get_database
 from app.routes.auth import get_current_user
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage
-from app.services.report_renderer import render_report_html, render_pdf_from_html
+from app.services.report_renderer import render_simple_report_html, render_pdf_from_html
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -499,18 +499,9 @@ async def download_db_report_pdf(current_user: User = Depends(get_current_user))
     if not report_md:
         raise HTTPException(status_code=404, detail="No report available")
 
-    generated_at_str = session_doc.get("updated_at", datetime.utcnow())
-    if isinstance(generated_at_str, datetime):
-        generated_at_str = generated_at_str.isoformat()
-    else:
-        generated_at_str = str(generated_at_str)
-
-    html = render_report_html(
+    html = render_simple_report_html(
         full_report_markdown=report_md,
-        items_for_report=[],
         title="Database Analysis Report",
-        author=current_user.full_name,
-        generated_at=generated_at_str,
     )
     pdf_bytes = render_pdf_from_html(html)
 
