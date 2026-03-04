@@ -1,4 +1,5 @@
 """FastAPI application main file"""
+import asyncio
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -9,6 +10,7 @@ from app.database import connect_to_mongo, close_mongo_connection
 from app.routes import auth, datasets
 from app.routes import chat as chat_routes
 from app.routes import dashboard as dashboard_routes
+from app.services.langchain_agent import _get_sql_db
 
 
 @asynccontextmanager
@@ -16,6 +18,14 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
     # Startup
     await connect_to_mongo()
+    # Warm up LangChain SQLDatabase cache (read-only) so first query is fast
+    try:
+        print("[Main] Warming up SQLDatabase cache (read-only)...")
+        await asyncio.to_thread(_get_sql_db)
+        print("[Main] SQLDatabase cache ready")
+    except Exception as e:
+        # Do not block app startup if SQL Server is temporarily unavailable
+        print(f"[Main] SQLDatabase warm-up failed: {e}")
     yield
     # Shutdown
     await close_mongo_connection()

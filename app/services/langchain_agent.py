@@ -467,35 +467,32 @@ async def stream_chat_with_database(
     Yields:
         SSE-formatted strings.
     """
+    import time as _time
     print(f"[LangChainAgent] stream_chat_with_database called | question='{question[:100]}' | history_len={len(chat_history)}")
-
-    token_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
-    full_response_parts: list[str] = []
 
     try:
         # Build SQL DB connection
         sql_db = _get_sql_db()
 
-        # Callback handler to collect tokens
+        # Callback handler — only used for SQL capture & keepalive, NOT for token streaming
+        token_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
         handler = StreamingCallbackHandler(token_queue)
 
-        # LLM with streaming — callbacks on the LLM itself so tokens stream even inside agents
         llm = ChatOpenAI(
             model="gpt-4.1-mini",
             temperature=0,
-            streaming=True,
+            streaming=False,
             openai_api_key=settings.OPENAI_API_KEY,
-            callbacks=[handler],
         )
 
-        # Build context prefix from history (clear [User]/[Assistant] pairs, truncate long assistant content)
+        # Build context prefix from history
         context_prefix = _build_history_prefix(chat_history)
         if context_prefix:
             print(f"[LangChainAgent] Injecting {len(chat_history)} history messages as context")
 
         full_question = context_prefix + question
 
-        # Create SQL agent with DB knowledge prefix (views, schema, business rules)
+        # Create SQL agent with DB knowledge prefix
         db_prefix = (
             get_system_prompt()
             + "\n\nYou are an expert SQL agent. Use the database schema and views above. Dialect: {dialect}. When returning many rows, limit to at most {top_k} rows. Only execute SELECT."
@@ -506,6 +503,7 @@ async def stream_chat_with_database(
             + "\n3. In table headers, include units where applicable: e.g. 'Total Revenue ($)', 'Amount ($)', 'Price ($)', 'Quantity (units)', 'Count' so readers know what the numbers represent."
             + "\n4. Data representation: right-align numeric and currency columns (use ---: in the separator for those columns). Left-align text columns (use :---). Format numbers with thousands separators (e.g. 1,216,581.73)."
             + "\n5. Do NOT output the raw SQL in your response; only the markdown table and a brief one-line summary if needed."
+            + "\n6. Do NOT include your intermediate reasoning, retries, or error-handling steps in the final answer. Only present the final result."
         )
         print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
         try:
@@ -529,82 +527,56 @@ async def stream_chat_with_database(
             )
         print("[LangChainAgent] SQL agent created, invoking...")
 
-        # Run agent in a thread pool so we don't block the event loop
+        # Send a "thinking" keepalive so the frontend knows we're working
+        yield f"data: {json.dumps({'type': 'status', 'content': 'Querying database...'})}\n\n"
+
+        # Run agent synchronously in a thread — wait for final output (no intermediate streaming)
+        t0 = _time.time()
+
         async def run_agent():
-            try:
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: agent_executor.invoke(
-                        {"input": full_question},
-                        config={"callbacks": [handler]},
-                    ),
-                )
-                output = result.get("output", "") if isinstance(result, dict) else str(result)
-                print(f"[LangChainAgent] Agent invocation complete | output_len={len(output)}")
-                return output
-            except Exception as e:
-                print(f"[LangChainAgent] Agent error during invocation: {e}")
-                raise
-            finally:
-                # Signal the token consumer that we're done
-                await token_queue.put(None)
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: agent_executor.invoke(
+                    {"input": full_question},
+                    config={"callbacks": [handler]},
+                ),
+            )
+            output = result.get("output", "") if isinstance(result, dict) else str(result)
+            return output
 
-        # Start agent in background task
-        agent_task = asyncio.create_task(run_agent())
-
-        # Stream tokens as they arrive
-        # Timeout: 180s for first token (DB query can be slow), 60s between tokens after that
-        first_token_timeout = 180.0
-        between_token_timeout = 60.0
-        current_timeout = first_token_timeout
-        print(f"[LangChainAgent] Starting token stream (first_token_timeout={first_token_timeout}s)...")
-        while True:
-            try:
-                token = await asyncio.wait_for(token_queue.get(), timeout=current_timeout)
-            except asyncio.TimeoutError:
-                print(f"[LangChainAgent] Token queue timeout ({current_timeout}s), stopping stream")
-                break
-
-            if token is None:  # sentinel — agent finished
-                break
-
-            # Skip empty keepalive markers from on_agent_action
-            if token == "":
-                current_timeout = first_token_timeout
-                continue
-
-            full_response_parts.append(token)
-            sse_event = json.dumps({"type": "token", "content": token})
-            yield f"data: {sse_event}\n\n"
-            current_timeout = between_token_timeout
-
-        # Wait for agent to fully finish
         try:
-            agent_output = await asyncio.wait_for(agent_task, timeout=30.0)
+            agent_output = await asyncio.wait_for(run_agent(), timeout=300.0)
         except asyncio.TimeoutError:
-            print("[LangChainAgent] Agent task timeout after stream")
-            agent_output = "".join(full_response_parts)
+            print("[LangChainAgent] Agent timed out after 300s")
+            raise RuntimeError("The database query took too long. Please try a simpler question.")
 
-        # If streaming produced nothing but agent returned output, use that
-        full_response = "".join(full_response_parts) if full_response_parts else agent_output
-        if not full_response and isinstance(agent_output, str):
+        elapsed = _time.time() - t0
+        print(f"[LangChainAgent] Agent invocation complete | output_len={len(agent_output)} | {elapsed:.1f}s")
+
+        # Clean the final output: strip ```sql...``` blocks and intermediate reasoning
+        full_response = re.sub(
+            r"```\s*sql\s*.*?```",
+            "",
+            agent_output,
+            flags=re.IGNORECASE | re.DOTALL,
+        ).strip()
+        if not full_response:
             full_response = agent_output
 
         print(f"[LangChainAgent] Full response length: {len(full_response)} chars")
 
-        # Strip raw ```sql...``` blocks from final response so they never show in the UI
-        full_response_clean = re.sub(
-            r"```\s*sql\s*.*?```",
-            "",
-            full_response,
-            flags=re.IGNORECASE | re.DOTALL,
-        ).strip()
-        if not full_response_clean:
-            full_response_clean = full_response
+        # Simulate streaming: send the final response in small chunks so the UI feels responsive
+        chunk_size = 12
+        for i in range(0, len(full_response), chunk_size):
+            chunk = full_response[i:i + chunk_size]
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+            # Small delay every few chunks so the UI renders progressively
+            if (i // chunk_size) % 5 == 4:
+                await asyncio.sleep(0.01)
 
-        # Parse ALL tables from the response (markdown tables in LLM output)
-        all_tables = _parse_all_tables_from_markdown(full_response_clean)
+        # Parse markdown tables from the response
+        all_tables = _parse_all_tables_from_markdown(full_response)
         has_table = len(all_tables) > 0
         table_data = all_tables[0]["data"] if all_tables else []
         table_columns = all_tables[0]["columns"] if all_tables else []
@@ -622,14 +594,14 @@ async def stream_chat_with_database(
 
         sql_query = getattr(handler, "_last_sql", None) or ""
 
-        # Emit done event (include sql_query for frontend badge)
+        # Emit done event
         done_event = json.dumps({
             "type": "done",
             "has_table": has_table,
             "table_data": table_data,
             "table_columns": table_columns,
             "tables": all_tables,
-            "full_response": full_response_clean,
+            "full_response": full_response,
             "sql_query": sql_query,
         })
         yield f"data: {done_event}\n\n"

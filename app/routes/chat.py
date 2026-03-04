@@ -267,48 +267,49 @@ async def get_db_overview(current_user: User = Depends(get_current_user)):
 @router.post("/db/summary")
 async def stream_db_summary(current_user: User = Depends(get_current_user)):
     """
-    Stream an AI-generated overview/summary of the connected SQL Server database.
+    Stream an AI-generated management summary (Business at a Glance, Performance Pulse).
+    Uses real KPI data from the database; content is for top management, not technical/schema.
     Saves the full result to the user's chat_session document after streaming.
     """
     user_id = str(current_user._id)
     print(f"[ChatRoute] /db/summary called | user={user_id}")
 
-    from app.services.langchain_agent import stream_generate_report, get_table_row_counts
+    from app.services.langchain_agent import stream_generate_report
+    from app.services.management_kpis import fetch_management_kpis
 
     prompt = (
-        "Using the Data Context below (which includes actual table row counts from the database), "
-        "provide a comprehensive summary covering: "
-        "1) list of all available tables with a brief description of what each stores, "
-        "2) the exact row counts from the Data Context (use these numbers; do not guess), "
-        "3) key columns and data types, "
-        "4) notable relationships between tables. "
-        "Use markdown headers (##, ###) and bullet points for readability."
+        "Using ONLY the business metrics below, write a one-page summary for top management. "
+        "Include: (1) Business at a Glance: total revenue, total purchases, net profit margin, "
+        "inventory value, active customers, active vendors; (2) Performance Pulse: short bullets "
+        "on sales, purchases, inventory, profitability, and customers/vendors. "
+        "Use markdown (##, ###). Do NOT mention database, tables, schema, or row counts. "
+        "Format numbers with thousands separators and units (e.g. PKR/USD) where appropriate. "
+        "Use only the numbers provided; do not invent any values."
     )
 
     _summary_system = (
-        "You are a database analyst. Answer ONLY what is asked — do NOT prepend any title, "
-        "document heading, 'Data Summary Report', 'Executive Summary', or similar phrase. "
-        "Start your response directly with the first markdown section header (e.g. ## Tables). "
-        "Format output as clean markdown with proper spacing between sections. "
-        "Do NOT wrap the output in code fences. "
-        "For row counts, use ONLY the numbers provided in the Data Context; they come from SELECT COUNT(*) and are correct."
+        "You are an executive report writer for C-level readers. Answer ONLY what is asked. "
+        "Do NOT prepend any title, 'Data Summary Report', 'Executive Summary', or similar. "
+        "Start directly with the first markdown section header (e.g. ## Business at a Glance). "
+        "Format as clean markdown with proper spacing. Do NOT wrap output in code fences. "
+        "Do NOT mention database, tables, schema, columns, or technical terms. "
+        "Use ONLY the numbers from the Data Context; they are correct."
     )
 
     db = get_database()
 
-    # Fetch real row counts (read-only SELECT COUNT(*) per table) so the summary is accurate
     try:
-        row_counts_context = get_table_row_counts()
+        kpi_context = await fetch_management_kpis()
     except Exception as e:
-        print(f"[ChatRoute] get_table_row_counts failed: {e}")
-        row_counts_context = ""
+        print(f"[ChatRoute] fetch_management_kpis failed: {e}")
+        kpi_context = ""
 
     async def event_generator():
         full_content = ""
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context=row_counts_context,
+                items_context=kpi_context,
                 template="summary",
                 custom_system_prompt=_summary_system,
             ):
@@ -343,7 +344,8 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
 @router.post("/db/questions")
 async def stream_db_questions(current_user: User = Depends(get_current_user)):
     """
-    Stream AI-generated suggested questions for the connected SQL Server database.
+    Stream AI-generated suggested questions for top management (revenue, profit, growth, etc.).
+    Questions are answerable with business data; no technical or schema questions.
     Parses the numbered list and saves it to the user's chat_session document.
     """
     user_id = str(current_user._id)
@@ -351,14 +353,20 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
 
     from app.services.langchain_agent import stream_generate_report
 
+    _questions_context = (
+        "Available data: Total Revenue, Total Purchases, Total Profit, Net Profit Margin, "
+        "Inventory Value, Active Customers, Active Vendors, "
+        "Total Invoices, Total Quantity Sold, Items Below Reorder Level, Purchase Orders On-Time Rate (all global/all-time metrics)."
+    )
+
     prompt = (
-        "Based on the SQL Server database structure, generate exactly 5 insightful questions "
-        "that a business analyst would want to ask. "
-        "Each question should be practical and answerable with a SQL query."
+        "Generate exactly 5 questions that a CEO or top management would ask about business performance. "
+        "Base them on the following available metrics only. Questions must be answerable with our business data. "
+        "Do NOT suggest technical or database-structure questions. Return only a numbered list: 1. ... 2. ..."
     )
 
     _questions_system = (
-        "You are a database analyst. Return ONLY a numbered list of 5 questions, "
+        "You are an analyst helping leadership. Return ONLY a numbered list of 5 questions, "
         "nothing else — no title, no preamble, no explanation, no closing remarks. "
         "Format exactly as:\n1. <question>\n2. <question>\n..."
     )
@@ -370,7 +378,7 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context="",
+                items_context=_questions_context,
                 template="summary",
                 custom_system_prompt=_questions_system,
             ):
@@ -411,36 +419,46 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
 @router.post("/db/report")
 async def stream_db_report(current_user: User = Depends(get_current_user)):
     """
-    Stream an AI-generated full analysis report of the database.
+    Stream an AI-generated full management report for the leadership team.
+    Uses real KPI data; content is for top management (Business at a Glance, Performance Pulse, etc.).
     Saves the full result to the user's chat_session document after streaming.
     """
     user_id = str(current_user._id)
     print(f"[ChatRoute] /db/report called | user={user_id}")
 
     from app.services.langchain_agent import stream_generate_report
+    from app.services.management_kpis import fetch_management_kpis
 
     prompt = (
-        "Generate a comprehensive database analysis report covering: "
-        "table structures, data volumes, key business entities, relationships, "
-        "and notable patterns or insights visible from the schema and data."
+        "Using ONLY the business metrics below, generate a full management report for the leadership team. "
+        "Sections: Business at a Glance (revenue, purchases, profit margin, inventory value, active customers/vendors); "
+        "Performance Pulse — Sales (revenue, orders, quantity sold); Purchases (spend, on-time rate if available, open POs if available); "
+        "Inventory (value, items below reorder if available); Profitability (margins); Customers & Vendors (counts, performance). "
+        "Use markdown with ## and ###. Do NOT mention database, tables, or schema. "
+        "Where a metric is missing or unavailable, say 'Not available' and move on. Use only the numbers provided."
     )
 
     _report_system = (
-        "You are a professional data analyst. Generate a detailed markdown report. "
-        "Do NOT add a document title or top-level heading — start directly with "
-        "the first section (e.g. ## Overview). "
-        "Use markdown headers (##, ###), bullet points, and blank lines between sections "
-        "for clear readability. Do NOT wrap the output in code fences."
+        "You are a report writer for top management. Generate a detailed markdown report from the data context only. "
+        "Do NOT add a document title or top-level heading — start directly with the first section (e.g. ## Business at a Glance). "
+        "Use markdown headers (##, ###), bullet points, and blank lines between sections. Do NOT wrap the output in code fences. "
+        "Do NOT mention database, tables, schema, or technical terms. Audience is C-level and leadership."
     )
 
     db = get_database()
+
+    try:
+        kpi_context = await fetch_management_kpis()
+    except Exception as e:
+        print(f"[ChatRoute] fetch_management_kpis failed: {e}")
+        kpi_context = ""
 
     async def event_generator():
         full_content = ""
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context="",
+                items_context=kpi_context,
                 template="technical",
                 custom_system_prompt=_report_system,
             ):
