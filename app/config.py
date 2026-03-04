@@ -17,7 +17,10 @@ class Settings(BaseSettings):
     SQL_USER: str = ""
     SQL_PASSWORD: str = ""
     SQL_DRIVER: str = "ODBC Driver 17 for SQL Server"
-    
+
+    # Chat with Database: True = Vanna AI, False = LangChain
+    USE_VANNA_AI: bool = False
+
     # JWT settings
     SECRET_KEY: str = "your-secret-key-change-this-in-production-use-env-variable"
     ALGORITHM: str = "HS256"

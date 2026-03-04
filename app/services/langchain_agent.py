@@ -20,6 +20,8 @@ from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import HumanMessage, AIMessage
 
 from app.config import settings
+from app.services.db_knowledge import get_system_prompt
+from app.services.sql_utils import is_read_only_sql
 
 print("[LangChainAgent] Module loaded")
 
@@ -60,18 +62,40 @@ def _build_connection_string() -> str:
     return conn
 
 
+_cached_sql_db: Optional[SQLDatabase] = None
+
+
 def _get_sql_db() -> SQLDatabase:
-    """Create and return a LangChain SQLDatabase instance."""
-    print("[LangChainAgent] Creating SQLDatabase connection...")
+    """Return a cached LangChain SQLDatabase instance. Reflects tables once; reused thereafter."""
+    global _cached_sql_db
+    if _cached_sql_db is not None:
+        print("[LangChainAgent] Reusing cached SQLDatabase connection")
+        return _cached_sql_db
+
+    import time
+    t0 = time.time()
+    print("[LangChainAgent] Creating SQLDatabase connection (read-only, first time — will be cached)...")
     conn_str = _build_connection_string()
     try:
-        db = SQLDatabase.from_uri(conn_str)
-        print("[LangChainAgent] SQLDatabase connected successfully")
+        db = SQLDatabase.from_uri(conn_str, sample_rows_in_table_info=0)
+        _original_run = db.run
+
+        def _run_read_only_only(command: str, *args, **kwargs):
+            if not is_read_only_sql(command):
+                raise ValueError(
+                    "Only read-only SQL (SELECT) is allowed. "
+                    "This application never updates, edits, or deletes anything in the database."
+                )
+            return _original_run(command, *args, **kwargs)
+
+        db.run = _run_read_only_only
+        _cached_sql_db = db
+        elapsed = time.time() - t0
+        print(f"[LangChainAgent] SQLDatabase connected & cached (read-only) | {elapsed:.1f}s")
         return db
     except Exception as e:
         msg = str(e)
         print(f"[LangChainAgent] SQLDatabase connection FAILED: {msg}")
-        # Surface a clean, actionable message to the user
         if "08001" in msg or "Error Locating Server" in msg or "Login timeout" in msg:
             raise ConnectionError(
                 f"Cannot reach SQL Server '{settings.SQL_SERVER}'. "
@@ -86,6 +110,49 @@ def _get_sql_db() -> SQLDatabase:
                 "Check SQL_USER and SQL_PASSWORD in .env."
             ) from e
         raise
+
+
+def get_table_row_counts() -> str:
+    """
+    Run read-only SELECT COUNT(*) for each table and return a text block for use as context.
+    Used so the summary LLM reports actual row counts instead of guessing (e.g. 3).
+    """
+    try:
+        db = _get_sql_db()
+        tables = db.get_usable_table_names()
+        if not tables:
+            return ""
+        lines = ["Table row counts (from SELECT COUNT(*) per table):"]
+        for name in sorted(tables):
+            try:
+                # Read-only: only SELECT
+                sql = f"SELECT COUNT(*) AS cnt FROM [{name}]"
+                out = db.run(sql)
+                # LangChain run() often returns "cnt\n123" or "(123,)" or just "123"
+                count = "?"
+                if out is not None:
+                    s = str(out).strip()
+                    if s.isdigit():
+                        count = s
+                    else:
+                        # Take last line or last number (header line is often first)
+                        for line in s.splitlines():
+                            line = line.strip()
+                            if line.isdigit():
+                                count = line
+                                break
+                        if count == "?":
+                            for part in re.sub(r"[\s,()]+", " ", s).split():
+                                if part.isdigit():
+                                    count = part
+                                    break
+                lines.append(f"  {name}: {count}")
+            except Exception as e:
+                lines.append(f"  {name}: (error: {e})")
+        return "\n".join(lines)
+    except Exception as e:
+        print(f"[LangChainAgent] get_table_row_counts failed: {e}")
+        return ""
 
 
 def _parse_single_table(table_lines: list[str]) -> Optional[dict]:
@@ -180,40 +247,203 @@ def _build_context_messages(history: list[dict]) -> list:
 # Streaming callback handler
 # ---------------------------------------------------------------------------
 
+def _parse_sql_tool_result_to_table(output: str) -> Optional[tuple[list[str], list[dict]]]:
+    """Parse sql_db_query tool output (e.g. '[(a, b), (c, d)]' or with Decimal) into table_columns and table_data."""
+    if not output or not isinstance(output, str):
+        return None
+    s = output.strip()
+    if not s.startswith("[") or "(" not in s:
+        return None
+    # LangChain often returns repr of list of tuples with Decimal(...) — literal_eval can't parse Decimal
+    s = re.sub(r"Decimal\s*\(\s*['\"]?([^'\"]+)['\"]?\s*\)", r"\1", s)
+    try:
+        import ast
+        rows = ast.literal_eval(s)
+    except (ValueError, SyntaxError):
+        return None
+    if not rows or not isinstance(rows, list):
+        return None
+    first = rows[0]
+    if isinstance(first, (list, tuple)):
+        ncols = len(first)
+    else:
+        return None
+    columns = [f"Column {i + 1}" for i in range(ncols)]
+    data = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) != ncols:
+            continue
+        data.append(dict(zip(columns, [str(c) for c in row])))
+    if not data:
+        return None
+    return (columns, data)
+
+
 class StreamingCallbackHandler(BaseCallbackHandler):
-    """Collects streamed tokens into a queue for async consumption."""
+    """Collects streamed tokens into a queue for async consumption; captures SQL from sql_db_query tool."""
 
     def __init__(self, token_queue: asyncio.Queue):
         super().__init__()
         self._queue = token_queue
-        self._loop = None
+        try:
+            self._loop = asyncio.get_running_loop()
+        except RuntimeError:
+            self._loop = None
+        self._last_sql: Optional[str] = None
+        self._query_result_columns: Optional[list[str]] = None
+        self._query_result_table: Optional[list[dict]] = None
+        self._last_tool_was_sql_query = False
+        # Suppress raw SQL code blocks in streamed response
+        self._stream_buffer = ""
+        self._in_sql_block = False
+        self._stream_buffer_max = 200
+
+    def _enqueue(self, item):
+        """Thread-safe enqueue: always use call_soon_threadsafe since callbacks run in executor thread."""
+        if self._loop is not None and self._loop.is_running():
+            self._loop.call_soon_threadsafe(self._queue.put_nowait, item)
+        else:
+            try:
+                self._queue.put_nowait(item)
+            except Exception:
+                pass
 
     def on_llm_new_token(self, token: str, **kwargs) -> None:
-        """Called by LangChain for each new streamed token."""
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            loop.call_soon_threadsafe(self._queue.put_nowait, token)
-        else:
-            self._queue.put_nowait(token)
+        """Stream only final-answer tokens; suppress tool-call chunks and ```sql...``` blocks."""
+        chunk = kwargs.get("chunk")
+        if chunk is not None:
+            msg = getattr(chunk, "message", None)
+            if msg is not None:
+                tcc = getattr(msg, "tool_call_chunks", None)
+                if tcc:
+                    return
+                tc = getattr(msg, "tool_calls", None)
+                if tc:
+                    return
+                ak = getattr(msg, "additional_kwargs", {})
+                if ak.get("tool_calls"):
+                    return
+        if not token:
+            return
+        # Buffer and suppress ```sql ... ``` blocks so raw SQL never appears in the stream
+        self._stream_buffer += token
+        if self._in_sql_block:
+            if "```" in self._stream_buffer and self._stream_buffer.rstrip().endswith("```"):
+                self._in_sql_block = False
+                self._stream_buffer = ""
+            return
+        # Detect start of ```sql block (exactly 6 chars or at boundary)
+        if len(self._stream_buffer) >= 6 and self._stream_buffer[:6].lower() == "```sql":
+            self._stream_buffer = self._stream_buffer[6:]
+            self._in_sql_block = True
+            return
+        if "```sql" in self._stream_buffer.lower():
+            idx = self._stream_buffer.lower().index("```sql")
+            for c in self._stream_buffer[:idx]:
+                self._enqueue(c)
+            self._stream_buffer = self._stream_buffer[idx + 6:]
+            self._in_sql_block = True
+            return
+        # Flush only when we have more than 5 chars (keep 5 so we don't split "```sql")
+        while len(self._stream_buffer) > 5:
+            self._enqueue(self._stream_buffer[0])
+            self._stream_buffer = self._stream_buffer[1:]
 
     def on_llm_error(self, error: Exception, **kwargs) -> None:
         print(f"[LangChainAgent][Callback] LLM error: {error}")
 
+    def on_llm_end(self, response, **kwargs) -> None:
+        """Flush any buffered tokens so we don't lose the last few chars of the response."""
+        if not self._in_sql_block and self._stream_buffer:
+            for c in self._stream_buffer:
+                self._enqueue(c)
+            self._stream_buffer = ""
+
     def on_agent_action(self, action, **kwargs) -> None:
         print(f"[LangChainAgent][Callback] Agent action: {action.tool} | input: {str(action.tool_input)[:200]}")
+        # Send a status marker so the frontend knows the agent is working (resets timeout)
+        self._enqueue("")
 
     def on_agent_finish(self, finish, **kwargs) -> None:
         print(f"[LangChainAgent][Callback] Agent finished")
 
+    def _is_sql_query_tool(self, name: str, serialized: dict, kwargs: dict) -> bool:
+        """True if this tool is the SQL *execution* tool (not checker/schema/list)."""
+        if not name:
+            name = kwargs.get("name") or ""
+        name_lower = (name or "").lower()
+        # Exclude checker, schema, list tools explicitly
+        if "checker" in name_lower or "schema" in name_lower or "list" in name_lower:
+            return False
+        if name in ("sql_db_query", "QuerySQLDatabaseTool"):
+            return True
+        if "sql" in name_lower and "query" in name_lower:
+            return True
+        sid = serialized.get("id") or []
+        if isinstance(sid, list) and sid:
+            last_part = (sid[-1] or "").lower()
+            if "query" in last_part and "sql" in last_part and "checker" not in last_part:
+                return True
+        return False
+
+    @staticmethod
+    def _extract_sql_from_input(input_str) -> Optional[str]:
+        """Extract the SQL query string from the tool input (dict, JSON string, or Python repr)."""
+        if isinstance(input_str, dict):
+            return input_str.get("query") or input_str.get("input")
+        if not isinstance(input_str, str):
+            return None
+        s = input_str.strip()
+        # Try JSON first
+        try:
+            data = json.loads(s)
+            if isinstance(data, dict):
+                return data.get("query") or data.get("input")
+        except (json.JSONDecodeError, ValueError):
+            pass
+        # Try Python dict repr (single quotes) — convert to JSON
+        if s.startswith("{") and "query" in s:
+            try:
+                import ast
+                data = ast.literal_eval(s)
+                if isinstance(data, dict):
+                    return data.get("query") or data.get("input")
+            except Exception:
+                pass
+        # Fallback: if it looks like raw SQL (starts with SELECT/WITH)
+        upper = s.lstrip().upper()
+        if upper.startswith("SELECT") or upper.startswith("WITH"):
+            return s
+        return None
+
     def on_tool_start(self, serialized, input_str, **kwargs) -> None:
-        print(f"[LangChainAgent][Callback] Tool start: {serialized.get('name')} | input: {str(input_str)[:200]}")
+        name = serialized.get("name") or (serialized.get("id") or [""])[0]
+        if not name and isinstance(serialized.get("id"), list):
+            name = serialized["id"][-1] if serialized["id"] else ""
+        print(f"[LangChainAgent][Callback] Tool start: name={name!r} | serialized_keys={list(serialized.keys())} | kwargs.name={kwargs.get('name')!r} | input: {str(input_str)[:200]}")
+        # Keepalive: reset token-consumer timeout while DB queries are running
+        self._enqueue("")
+        if self._is_sql_query_tool(name, serialized, kwargs):
+            self._last_tool_was_sql_query = True
+            query = self._extract_sql_from_input(input_str)
+            if isinstance(query, str) and query.strip():
+                self._last_sql = query.strip()
+                print(f"[LangChainAgent][Callback] Captured SQL (len={len(self._last_sql)}): {self._last_sql[:150]}...")
+        else:
+            self._last_tool_was_sql_query = False
 
     def on_tool_end(self, output, **kwargs) -> None:
         print(f"[LangChainAgent][Callback] Tool end: {str(output)[:200]}")
+        # Keepalive: reset token-consumer timeout while tools are still running
+        self._enqueue("")
+        if self._last_tool_was_sql_query and output is not None:
+            parsed = _parse_sql_tool_result_to_table(str(output))
+            if parsed:
+                cols, data = parsed
+                self._query_result_columns = cols
+                self._query_result_table = data
+                print(f"[LangChainAgent][Callback] Parsed query result: {len(data)} rows, {len(cols)} cols")
+        self._last_tool_was_sql_query = False
 
     def on_tool_error(self, error, **kwargs) -> None:
         print(f"[LangChainAgent][Callback] Tool error: {error}")
@@ -246,50 +476,69 @@ async def stream_chat_with_database(
         # Build SQL DB connection
         sql_db = _get_sql_db()
 
-        # LLM with streaming
+        # Callback handler to collect tokens
+        handler = StreamingCallbackHandler(token_queue)
+
+        # LLM with streaming — callbacks on the LLM itself so tokens stream even inside agents
         llm = ChatOpenAI(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             temperature=0,
             streaming=True,
             openai_api_key=settings.OPENAI_API_KEY,
+            callbacks=[handler],
         )
 
-        # Build context prefix from history
-        context_prefix = ""
-        if chat_history:
-            context_prefix = "Previous conversation context:\n"
-            for msg in chat_history:
-                role_label = "User" if msg["role"] == "user" else "Assistant"
-                context_prefix += f"{role_label}: {msg['content']}\n"
-            context_prefix += "\nCurrent question: "
+        # Build context prefix from history (clear [User]/[Assistant] pairs, truncate long assistant content)
+        context_prefix = _build_history_prefix(chat_history)
+        if context_prefix:
             print(f"[LangChainAgent] Injecting {len(chat_history)} history messages as context")
 
         full_question = context_prefix + question
 
-        # Callback handler to collect tokens
-        handler = StreamingCallbackHandler(token_queue)
-
-        # Create SQL agent
-        print("[LangChainAgent] Creating SQL agent...")
-        agent_executor = create_sql_agent(
-            llm=llm,
-            db=sql_db,
-            agent_type="openai-tools",
-            verbose=True,
-            handle_parsing_errors=True,
-            callbacks=[handler],
+        # Create SQL agent with DB knowledge prefix (views, schema, business rules)
+        db_prefix = (
+            get_system_prompt()
+            + "\n\nYou are an expert SQL agent. Use the database schema and views above. Dialect: {dialect}. When returning many rows, limit to at most {top_k} rows. Only execute SELECT."
+            + "\n\nIMPORTANT — Row counts: When asked for table row counts or how many rows are in a table, always run SELECT COUNT(*) FROM [table_name] for each table. Do NOT infer row count from the number of sample rows in table info (table info may show 0 sample rows; the only way to get the real count is COUNT(*))."
+            + "\n\nOUTPUT FORMAT — You MUST present query results as a markdown table, never as bullet lists or prose. Rules:"
+            + "\n1. Always use a markdown table: header row, then separator row (e.g. |---|:---|---:|), then one row per result."
+            + "\n2. NEVER use placeholders (e.g. [ProductName1], [Category1], [Value]). Every cell must show the ACTUAL value from the query result. Run the query and fill the table with the real data returned."
+            + "\n3. In table headers, include units where applicable: e.g. 'Total Revenue ($)', 'Amount ($)', 'Price ($)', 'Quantity (units)', 'Count' so readers know what the numbers represent."
+            + "\n4. Data representation: right-align numeric and currency columns (use ---: in the separator for those columns). Left-align text columns (use :---). Format numbers with thousands separators (e.g. 1,216,581.73)."
+            + "\n5. Do NOT output the raw SQL in your response; only the markdown table and a brief one-line summary if needed."
         )
+        print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
+        try:
+            agent_executor = create_sql_agent(
+                llm=llm,
+                db=sql_db,
+                agent_type="openai-tools",
+                verbose=True,
+                handle_parsing_errors=True,
+                prefix=db_prefix,
+            )
+        except TypeError:
+            print("[LangChainAgent] prefix not supported, injecting DB context into question")
+            full_question = db_prefix[:2000] + "\n\n---\n\n" + full_question
+            agent_executor = create_sql_agent(
+                llm=llm,
+                db=sql_db,
+                agent_type="openai-tools",
+                verbose=True,
+                handle_parsing_errors=True,
+            )
         print("[LangChainAgent] SQL agent created, invoking...")
 
         # Run agent in a thread pool so we don't block the event loop
-        sentinel = object()
-
         async def run_agent():
             try:
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
                     None,
-                    lambda: agent_executor.invoke({"input": full_question}),
+                    lambda: agent_executor.invoke(
+                        {"input": full_question},
+                        config={"callbacks": [handler]},
+                    ),
                 )
                 output = result.get("output", "") if isinstance(result, dict) else str(result)
                 print(f"[LangChainAgent] Agent invocation complete | output_len={len(output)}")
@@ -305,24 +554,34 @@ async def stream_chat_with_database(
         agent_task = asyncio.create_task(run_agent())
 
         # Stream tokens as they arrive
-        print("[LangChainAgent] Starting token stream...")
+        # Timeout: 180s for first token (DB query can be slow), 60s between tokens after that
+        first_token_timeout = 180.0
+        between_token_timeout = 60.0
+        current_timeout = first_token_timeout
+        print(f"[LangChainAgent] Starting token stream (first_token_timeout={first_token_timeout}s)...")
         while True:
             try:
-                token = await asyncio.wait_for(token_queue.get(), timeout=60.0)
+                token = await asyncio.wait_for(token_queue.get(), timeout=current_timeout)
             except asyncio.TimeoutError:
-                print("[LangChainAgent] Token queue timeout, stopping stream")
+                print(f"[LangChainAgent] Token queue timeout ({current_timeout}s), stopping stream")
                 break
 
             if token is None:  # sentinel — agent finished
                 break
 
+            # Skip empty keepalive markers from on_agent_action
+            if token == "":
+                current_timeout = first_token_timeout
+                continue
+
             full_response_parts.append(token)
             sse_event = json.dumps({"type": "token", "content": token})
             yield f"data: {sse_event}\n\n"
+            current_timeout = between_token_timeout
 
         # Wait for agent to fully finish
         try:
-            agent_output = await asyncio.wait_for(agent_task, timeout=10.0)
+            agent_output = await asyncio.wait_for(agent_task, timeout=30.0)
         except asyncio.TimeoutError:
             print("[LangChainAgent] Agent task timeout after stream")
             agent_output = "".join(full_response_parts)
@@ -334,24 +593,48 @@ async def stream_chat_with_database(
 
         print(f"[LangChainAgent] Full response length: {len(full_response)} chars")
 
-        # Parse ALL tables from the response
-        all_tables = _parse_all_tables_from_markdown(full_response)
+        # Strip raw ```sql...``` blocks from final response so they never show in the UI
+        full_response_clean = re.sub(
+            r"```\s*sql\s*.*?```",
+            "",
+            full_response,
+            flags=re.IGNORECASE | re.DOTALL,
+        ).strip()
+        if not full_response_clean:
+            full_response_clean = full_response
+
+        # Parse ALL tables from the response (markdown tables in LLM output)
+        all_tables = _parse_all_tables_from_markdown(full_response_clean)
         has_table = len(all_tables) > 0
-        # Keep first-table fields for backward compat
         table_data = all_tables[0]["data"] if all_tables else []
         table_columns = all_tables[0]["columns"] if all_tables else []
 
-        # Emit done event
+        # If LLM didn't output a markdown table but we captured query result from sql_db_query tool, use it
+        if not all_tables:
+            qcols = getattr(handler, "_query_result_columns", None)
+            qdata = getattr(handler, "_query_result_table", None)
+            if qcols and qdata:
+                all_tables = [{"columns": qcols, "data": qdata}]
+                table_data = qdata
+                table_columns = qcols
+                has_table = True
+                print(f"[LangChainAgent] Using captured query result: {len(qdata)} rows, {len(qcols)} cols")
+
+        sql_query = getattr(handler, "_last_sql", None) or ""
+
+        # Emit done event (include sql_query for frontend badge)
         done_event = json.dumps({
             "type": "done",
             "has_table": has_table,
             "table_data": table_data,
             "table_columns": table_columns,
-            # All tables for the frontend multi-table picker
             "tables": all_tables,
-            "full_response": full_response,
+            "full_response": full_response_clean,
+            "sql_query": sql_query,
         })
         yield f"data: {done_event}\n\n"
+        if sql_query:
+            print(f"[LangChainAgent] Emitted sql_query (len={len(sql_query)})")
         print("[LangChainAgent] Stream complete")
 
     except Exception as e:
@@ -360,6 +643,112 @@ async def stream_chat_with_database(
         traceback.print_exc()
         error_event = json.dumps({"type": "error", "content": str(e)})
         yield f"data: {error_event}\n\n"
+
+
+def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 500) -> str:
+    """Build [User]/[Assistant] history prefix for context (shared by SQL and simple chat)."""
+    if not chat_history:
+        return ""
+    parts = ["Previous conversation (oldest first):"]
+    for i, msg in enumerate(chat_history, 1):
+        role_label = "[User]" if msg.get("role") == "user" else "[Assistant]"
+        content = msg.get("content") or ""
+        if msg.get("role") == "assistant" and len(content) > max_assistant_chars:
+            content = content[:max_assistant_chars] + "... [truncated]"
+        parts.append(f"--- Pair {i} ---")
+        parts.append(f"{role_label}\n{content}")
+    parts.append("---")
+    parts.append("Current question:")
+    return "\n".join(parts) + " "
+
+
+async def stream_simple_chat(
+    question: str,
+    chat_history: list[dict],
+) -> AsyncGenerator[str, None]:
+    """
+    Stream a simple LLM response (no SQL agent). Used for greetings, thanks, follow-ups.
+    Yields same SSE format as stream_chat_with_database: token events, then done with
+    has_table=false, sql_query="".
+    """
+    print(f"[LangChainAgent] stream_simple_chat called | question='{question[:80]}' | history_len={len(chat_history)}")
+
+    token_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+    full_response_parts: list[str] = []
+
+    try:
+        handler = StreamingCallbackHandler(token_queue)
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0,
+            streaming=True,
+            openai_api_key=settings.OPENAI_API_KEY,
+            callbacks=[handler],
+        )
+        schema_context = get_system_prompt()
+        history_prefix = _build_history_prefix(chat_history)
+        full_prompt = (
+            f"{schema_context}\n\n"
+            "You are a helpful assistant for a database analytics app. "
+            "Answer briefly and naturally. Do not run SQL unless the user explicitly asks for data. "
+            "For greetings, thanks, or clarification requests, respond in a short friendly way.\n\n"
+            f"{history_prefix}{question}"
+        )
+
+        async def run_llm():
+            try:
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(
+                    None,
+                    lambda: llm.invoke(full_prompt, config={"callbacks": [handler]}),
+                )
+                return result.content if hasattr(result, "content") else str(result)
+            except Exception as e:
+                print(f"[LangChainAgent] stream_simple_chat LLM error: {e}")
+                raise
+            finally:
+                await token_queue.put(None)
+
+        llm_task = asyncio.create_task(run_llm())
+
+        print("[LangChainAgent] stream_simple_chat streaming tokens...")
+        while True:
+            try:
+                token = await asyncio.wait_for(token_queue.get(), timeout=60.0)
+            except asyncio.TimeoutError:
+                print("[LangChainAgent] stream_simple_chat token timeout")
+                break
+            if token is None:
+                break
+            if token == "":
+                continue
+            full_response_parts.append(token)
+            yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
+
+        try:
+            await asyncio.wait_for(llm_task, timeout=5.0)
+        except asyncio.TimeoutError:
+            pass
+
+        full_response = "".join(full_response_parts)
+        print(f"[LangChainAgent] stream_simple_chat complete | len={len(full_response)}")
+
+        done_event = json.dumps({
+            "type": "done",
+            "has_table": False,
+            "table_data": [],
+            "table_columns": [],
+            "tables": [],
+            "full_response": full_response,
+            "sql_query": "",
+        })
+        yield f"data: {done_event}\n\n"
+
+    except Exception as e:
+        print(f"[LangChainAgent] EXCEPTION in stream_simple_chat: {e}")
+        import traceback
+        traceback.print_exc()
+        yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
 
 
 # ---------------------------------------------------------------------------
@@ -392,8 +781,8 @@ async def stream_generate_report(
 
     try:
         llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            temperature=0.3,
+            model="gpt-4.1-mini",
+            temperature=0,
             streaming=True,
             openai_api_key=settings.OPENAI_API_KEY,
         )

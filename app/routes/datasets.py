@@ -6,7 +6,6 @@ from app.schemas.dataset import DatasetResponse, DatasetListResponse, ColumnCalc
 from app.models.dataset import Dataset
 from app.routes.auth import get_current_user
 from app.models.user import User
-from app.services.google_drive import drive_service
 from app.services.local_storage import local_storage
 from bson import ObjectId
 from datetime import datetime
@@ -64,63 +63,24 @@ async def upload_csv(
         elif file.filename.endswith('.xls'):
             mime_type = "application/vnd.ms-excel"
         
-        # Try Google Drive first, fallback to local storage
-        drive_file_id = None
-        use_local_storage = False
-        storage_location = "unknown"
-        
-        if drive_service.service and drive_service.base_folder_id:
-            try:
-                print(f"[UPLOAD] Attempting Google Drive upload for user {current_user._id}")
-                # Create user folder in Google Drive
-                user_folder_id = drive_service.create_user_folder(str(current_user._id))
-                print(f"[UPLOAD] Created/found user folder in Google Drive: {user_folder_id}")
-                
-                # Upload to Google Drive
-                drive_file_id = drive_service.upload_file(
-                    file_content=file_content,
-                    file_name=file.filename,
-                    mime_type=mime_type,
-                    folder_id=user_folder_id
-                )
-                print(f"[UPLOAD] ✓ Successfully uploaded to Google Drive. File ID: {drive_file_id}")
-                storage_location = "google_drive"
-            except Exception as e:
-                error_msg = str(e)
-                print(f"[UPLOAD] Google Drive upload failed: {error_msg}")
-                # If it's a storage quota error, use local storage
-                if 'storageQuotaExceeded' in error_msg or 'quota' in error_msg.lower() or 'cannot store files' in error_msg.lower():
-                    print(f"[UPLOAD] Quota error detected, falling back to local storage")
-                    use_local_storage = True
-                else:
-                    print(f"[UPLOAD] Other error, will try local storage as fallback")
-                    use_local_storage = True
-        else:
-            print(f"[UPLOAD] Google Drive not available (service={drive_service.service is not None}, base_folder={drive_service.base_folder_id}), using local storage")
-            use_local_storage = True
-        
-        if not drive_file_id or use_local_storage:
-            # Use local storage as fallback
-            print(f"[UPLOAD] Storing file locally...")
-            # Determine dataset type from file extension
-            file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else 'csv'
-            user_folder_path = local_storage.create_user_folder(str(current_user._id), dataset_type=file_ext)
-            drive_file_id = local_storage.upload_file(
-                file_content=file_content,
-                file_name=file.filename,
-                mime_type=mime_type,
-                folder_path=user_folder_path
-            )
-            print(f"[UPLOAD] ✓ File stored locally: {drive_file_id}")
-            storage_location = "local"
-        
+        # Store file locally
+        file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else 'csv'
+        user_folder_path = local_storage.create_user_folder(str(current_user._id), dataset_type=file_ext)
+        file_id = local_storage.upload_file(
+            file_content=file_content,
+            file_name=file.filename,
+            mime_type=mime_type,
+            folder_path=user_folder_path
+        )
+        print(f"[UPLOAD] ✓ File stored locally: {file_id}")
+
         # Save dataset metadata to MongoDB
         db = get_database()
         dataset = Dataset(
             user_id=str(current_user._id),
             name=name,
             dataset_type="csv",
-            google_drive_file_id=drive_file_id,
+            google_drive_file_id=file_id,
             file_name=file.filename,
             file_size=file_size,
             description=description
@@ -174,61 +134,23 @@ async def upload_pdf(
                 detail="File size exceeds 25MB limit"
             )
         
-        # Try Google Drive first, fallback to local storage
-        drive_file_id = None
-        use_local_storage = False
-        storage_location = "unknown"
-        
-        if drive_service.service and drive_service.base_folder_id:
-            try:
-                print(f"[UPLOAD] Attempting Google Drive upload for user {current_user._id}")
-                # Create user folder in Google Drive
-                user_folder_id = drive_service.create_user_folder(str(current_user._id))
-                print(f"[UPLOAD] Created/found user folder in Google Drive: {user_folder_id}")
-                
-                # Upload to Google Drive
-                drive_file_id = drive_service.upload_file(
-                    file_content=file_content,
-                    file_name=file.filename,
-                    mime_type="application/pdf",
-                    folder_id=user_folder_id
-                )
-                print(f"[UPLOAD] ✓ Successfully uploaded to Google Drive. File ID: {drive_file_id}")
-                storage_location = "google_drive"
-            except Exception as e:
-                error_msg = str(e)
-                print(f"[UPLOAD] Google Drive upload failed: {error_msg}")
-                # If it's a storage quota error, use local storage
-                if 'storageQuotaExceeded' in error_msg or 'quota' in error_msg.lower() or 'cannot store files' in error_msg.lower():
-                    print(f"[UPLOAD] Quota error detected, falling back to local storage")
-                    use_local_storage = True
-                else:
-                    print(f"[UPLOAD] Other error, will try local storage as fallback")
-                    use_local_storage = True
-        else:
-            print(f"[UPLOAD] Google Drive not available (service={drive_service.service is not None}, base_folder={drive_service.base_folder_id}), using local storage")
-            use_local_storage = True
-        
-        if not drive_file_id or use_local_storage:
-            # Use local storage as fallback
-            print(f"[UPLOAD] Storing file locally...")
-            user_folder_path = local_storage.create_user_folder(str(current_user._id), dataset_type="pdf")
-            drive_file_id = local_storage.upload_file(
-                file_content=file_content,
-                file_name=file.filename,
-                mime_type="application/pdf",
-                folder_path=user_folder_path
-            )
-            print(f"[UPLOAD] ✓ File stored locally: {drive_file_id}")
-            storage_location = "local"
-        
+        # Store file locally
+        user_folder_path = local_storage.create_user_folder(str(current_user._id), dataset_type="pdf")
+        file_id = local_storage.upload_file(
+            file_content=file_content,
+            file_name=file.filename,
+            mime_type="application/pdf",
+            folder_path=user_folder_path
+        )
+        print(f"[UPLOAD] ✓ File stored locally: {file_id}")
+
         # Save dataset metadata to MongoDB
         db = get_database()
         dataset = Dataset(
             user_id=str(current_user._id),
             name=name,
             dataset_type="pdf",
-            google_drive_file_id=drive_file_id,
+            google_drive_file_id=file_id,
             file_name=file.filename,
             file_size=file_size,
             description=description
@@ -312,26 +234,15 @@ async def get_dataset_data(
                 detail="This endpoint only supports CSV and Excel files"
             )
         
-        # Get file content
+        # Get file content from local storage
         file_id = dataset_data["google_drive_file_id"]
-        file_content = None
-        
-        # Try to get from Google Drive first
-        if drive_service.service:
-            try:
-                file_content = drive_service.download_file(file_id)
-            except:
-                pass
-        
-        # Fallback to local storage
-        if not file_content:
-            try:
-                file_content = local_storage.download_file(file_id)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"File not found in storage: {str(e)}"
-                )
+        try:
+            file_content = local_storage.download_file(file_id)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File not found in storage: {str(e)}"
+            )
         
         # Parse CSV/Excel file
         file_name = dataset_data["file_name"]
@@ -441,31 +352,20 @@ async def calculate_column_statistic(
                 detail="This endpoint only supports CSV and Excel files"
             )
         
-        # Get file content
+        # Get file content from local storage
         file_id = dataset_data["google_drive_file_id"]
-        file_content = None
-        
-        # Try to get from Google Drive first
-        if drive_service.service:
-            try:
-                file_content = drive_service.download_file(file_id)
-            except:
-                pass
-        
-        # Fallback to local storage
-        if not file_content:
-            try:
-                file_content = local_storage.download_file(file_id)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"File not found in storage: {str(e)}"
-                )
-        
+        try:
+            file_content = local_storage.download_file(file_id)
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File not found in storage: {str(e)}"
+            )
+
         # Parse CSV/Excel file
         file_name = dataset_data["file_name"]
         df = None
-        
+
         try:
             if file_name.endswith('.csv'):
                 encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
@@ -642,18 +542,10 @@ async def delete_dataset(dataset_id: str, current_user: User = Depends(get_curre
                 detail="You don't have permission to delete this dataset"
             )
         
-        # Delete from storage (Google Drive or local)
+        # Delete from local storage
         try:
             file_id = dataset_data["google_drive_file_id"]
-            # Try Google Drive first
-            if drive_service.service:
-                try:
-                    drive_service.delete_file(file_id)
-                except:
-                    # If Google Drive delete fails, try local storage
-                    local_storage.delete_file(file_id)
-            else:
-                local_storage.delete_file(file_id)
+            local_storage.delete_file(file_id)
         except Exception as e:
             # Log error but continue with MongoDB deletion
             print(f"Warning: Could not delete file from storage: {e}")
@@ -745,76 +637,30 @@ async def save_dataset_changes(
                 detail="Unsupported file format"
             )
         
-        # Save to storage (Google Drive or local)
-        # Delete old file and create new one with updated content
-        saved = False
-        
-        # Determine storage type from file_id format
-        # Google Drive IDs are typically long alphanumeric strings
-        # Local storage uses relative paths like "user_123/csv/file.csv"
-        is_google_drive = len(file_id) > 20 and '/' not in file_id
-        
-        if is_google_drive and drive_service.service:
-            # Update Google Drive file
+        # Save to local storage: delete old file and upload updated content
+        try:
             try:
-                # Delete old file
-                try:
-                    drive_service.service.files().delete(fileId=file_id).execute()
-                except:
-                    pass  # File might not exist
-                
-                # Get user folder
-                user_folder_id = drive_service.create_user_folder(str(current_user._id))
-                
-                # Upload new file
-                new_file_id = drive_service.upload_file(
-                    file_content=file_content,
-                    file_name=file_name,
-                    mime_type=mime_type,
-                    folder_id=user_folder_id
-                )
-                
-                # Update database with new file ID
-                await db.datasets.update_one(
-                    {"_id": ObjectId(dataset_id)},
-                    {"$set": {"google_drive_file_id": new_file_id}}
-                )
-                saved = True
-            except Exception as e:
-                print(f"[SAVE] Google Drive save failed: {str(e)}")
-        
-        # Fallback to local storage
-        if not saved:
-            try:
-                # Delete old file
-                try:
-                    local_storage.delete_file(file_id)
-                except:
-                    pass  # File might not exist
-                
-                # Get user folder path
-                file_ext = file_name.lower().split('.')[-1] if '.' in file_name else 'csv'
-                user_folder_path = local_storage.create_user_folder(str(current_user._id), dataset_type=file_ext)
-                
-                # Upload new file
-                new_file_id = local_storage.upload_file(
-                    file_content=file_content,
-                    file_name=file_name,
-                    mime_type=mime_type,
-                    folder_path=user_folder_path
-                )
-                
-                # Update database with new file ID
-                await db.datasets.update_one(
-                    {"_id": ObjectId(dataset_id)},
-                    {"$set": {"google_drive_file_id": new_file_id}}
-                )
-                saved = True
-            except Exception as e:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Failed to save file: {str(e)}"
-                )
+                local_storage.delete_file(file_id)
+            except Exception:
+                pass  # File might not exist
+
+            file_ext = file_name.lower().split('.')[-1] if '.' in file_name else 'csv'
+            user_folder_path = local_storage.create_user_folder(str(current_user._id), dataset_type=file_ext)
+            new_file_id = local_storage.upload_file(
+                file_content=file_content,
+                file_name=file_name,
+                mime_type=mime_type,
+                folder_path=user_folder_path
+            )
+            await db.datasets.update_one(
+                {"_id": ObjectId(dataset_id)},
+                {"$set": {"google_drive_file_id": new_file_id}}
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to save file: {str(e)}"
+            )
         
         # Update file size in database
         file_size = len(file_content)

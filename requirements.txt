@@ -23,3 +23,8 @@ pyodbc>=5.0.0
 sqlalchemy>=2.0.0
 markdown
 weasyprint
+
+# Vanna AI (optional: set USE_VANNA_AI=true in .env for chat-with-database)
+vanna
+chromadb
+python-dotenv

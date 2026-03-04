@@ -9,11 +9,11 @@ from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel
 from bson import ObjectId
 
+from app.config import settings
 from app.database import get_database
 from app.routes.auth import get_current_user
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage
-from app.services.langchain_agent import stream_chat_with_database
 from app.services.report_renderer import render_report_html, render_pdf_from_html
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -37,6 +37,7 @@ class ChatHistoryItem(BaseModel):
     table_data: list
     table_columns: list
     tables: list = []
+    sql_query: str = ""
     created_at: str
 
 
@@ -110,7 +111,28 @@ async def chat_stream(
         table_data = []
         table_columns = []
         all_tables: list = []
+        sql_query = ""
         error_occurred = False
+
+        if settings.USE_VANNA_AI:
+            from app.services.vanna_agent import stream_chat_with_database_vanna
+            stream_fn = stream_chat_with_database_vanna
+            print("[ChatRoute] Using Vanna AI agent")
+        else:
+            from app.services.intent_classifier import classify_intent
+            from app.services.langchain_agent import stream_chat_with_database, stream_simple_chat
+            loop = asyncio.get_event_loop()
+            intent = await loop.run_in_executor(
+                None,
+                lambda: classify_intent(question, history),
+            )
+            print(f"[ChatRoute] Intent classified: {intent!r}")
+            if intent == "sql":
+                stream_fn = stream_chat_with_database
+                print("[ChatRoute] Routing to LangChain SQL agent")
+            else:
+                stream_fn = stream_simple_chat
+                print("[ChatRoute] Routing to simple LLM (no SQL)")
 
         try:
             # Save user message first
@@ -123,8 +145,7 @@ async def chat_stream(
             await db.chat_messages.insert_one(user_msg.to_dict())
             print(f"[ChatRoute] Saved user message to MongoDB")
 
-            # Stream from LangChain agent
-            async for chunk in stream_chat_with_database(question, history):
+            async for chunk in stream_fn(question, history):
                 yield chunk
 
                 # Parse chunk to track state
@@ -138,6 +159,7 @@ async def chat_stream(
                             table_data = payload.get("table_data", [])
                             table_columns = payload.get("table_columns", [])
                             all_tables = payload.get("tables", [])
+                            sql_query = payload.get("sql_query", "") or ""
                         elif payload.get("type") == "error":
                             error_occurred = True
                 except Exception:
@@ -162,9 +184,10 @@ async def chat_stream(
                     table_data=table_data,
                     table_columns=table_columns,
                     tables=all_tables,
+                    sql_query=sql_query or "",
                 )
                 await db.chat_messages.insert_one(assistant_msg.to_dict())
-                print(f"[ChatRoute] Saved assistant message to MongoDB | has_table={has_table} | tables={len(all_tables)}")
+                print(f"[ChatRoute] Saved assistant message to MongoDB | has_table={has_table} | tables={len(all_tables)} | sql_query={bool(sql_query)}")
             else:
                 print(f"[ChatRoute] Skipping assistant message save | full_response empty={not full_response} | error={error_occurred}")
 
@@ -212,6 +235,7 @@ async def get_chat_history(
                 table_data=m.get("table_data", []),
                 table_columns=m.get("table_columns", []),
                 tables=m.get("tables", []),
+                sql_query=m.get("sql_query", "") or "",
                 created_at=m["created_at"].isoformat() if isinstance(m["created_at"], datetime) else str(m["created_at"]),
             )
             for m in messages
@@ -249,12 +273,13 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
     user_id = str(current_user._id)
     print(f"[ChatRoute] /db/summary called | user={user_id}")
 
-    from app.services.langchain_agent import stream_generate_report
+    from app.services.langchain_agent import stream_generate_report, get_table_row_counts
 
     prompt = (
-        "Connect to the SQL Server database and provide a comprehensive summary covering: "
+        "Using the Data Context below (which includes actual table row counts from the database), "
+        "provide a comprehensive summary covering: "
         "1) list of all available tables with a brief description of what each stores, "
-        "2) approximate row counts where possible, "
+        "2) the exact row counts from the Data Context (use these numbers; do not guess), "
         "3) key columns and data types, "
         "4) notable relationships between tables. "
         "Use markdown headers (##, ###) and bullet points for readability."
@@ -265,17 +290,25 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
         "document heading, 'Data Summary Report', 'Executive Summary', or similar phrase. "
         "Start your response directly with the first markdown section header (e.g. ## Tables). "
         "Format output as clean markdown with proper spacing between sections. "
-        "Do NOT wrap the output in code fences."
+        "Do NOT wrap the output in code fences. "
+        "For row counts, use ONLY the numbers provided in the Data Context; they come from SELECT COUNT(*) and are correct."
     )
 
     db = get_database()
+
+    # Fetch real row counts (read-only SELECT COUNT(*) per table) so the summary is accurate
+    try:
+        row_counts_context = get_table_row_counts()
+    except Exception as e:
+        print(f"[ChatRoute] get_table_row_counts failed: {e}")
+        row_counts_context = ""
 
     async def event_generator():
         full_content = ""
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context="",
+                items_context=row_counts_context,
                 template="summary",
                 custom_system_prompt=_summary_system,
             ):

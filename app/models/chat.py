@@ -81,6 +81,7 @@ class ChatMessage:
         table_data: Optional[list] = None,
         table_columns: Optional[list] = None,
         tables: Optional[list] = None,
+        sql_query: Optional[str] = None,
         created_at: Optional[datetime] = None,
         _id: Optional[ObjectId] = None,
     ):
@@ -94,6 +95,7 @@ class ChatMessage:
         self.table_columns = table_columns or []
         # All tables found in the response [{columns, data}, ...]
         self.tables: list = tables or []
+        self.sql_query = sql_query or ""
         self.created_at = created_at or datetime.utcnow()
 
     def to_dict(self) -> dict:
@@ -107,6 +109,7 @@ class ChatMessage:
             "table_data": self.table_data,
             "table_columns": self.table_columns,
             "tables": self.tables,
+            "sql_query": self.sql_query,
             "created_at": self.created_at,
         }
 
@@ -122,5 +125,6 @@ class ChatMessage:
             table_data=data.get("table_data", []),
             table_columns=data.get("table_columns", []),
             tables=data.get("tables", []),
+            sql_query=data.get("sql_query", ""),
             created_at=data.get("created_at"),
         )
