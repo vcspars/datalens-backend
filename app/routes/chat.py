@@ -267,49 +267,46 @@ async def get_db_overview(current_user: User = Depends(get_current_user)):
 @router.post("/db/summary")
 async def stream_db_summary(current_user: User = Depends(get_current_user)):
     """
-    Stream an AI-generated management summary (Business at a Glance, Performance Pulse).
-    Uses real KPI data from the database; content is for top management, not technical/schema.
+    Stream an AI-generated summary for top management.
+    Uses table row counts as context (no KPI SQL). Presents what data exists in business terms.
     Saves the full result to the user's chat_session document after streaming.
     """
     user_id = str(current_user._id)
     print(f"[ChatRoute] /db/summary called | user={user_id}")
 
-    from app.services.langchain_agent import stream_generate_report
-    from app.services.management_kpis import fetch_management_kpis
+    from app.services.langchain_agent import stream_generate_report, get_table_row_counts
 
     prompt = (
-        "Using ONLY the business metrics below, write a one-page summary for top management. "
-        "Include: (1) Business at a Glance: total revenue, total purchases, net profit margin, "
-        "inventory value, active customers, active vendors; (2) Performance Pulse: short bullets "
-        "on sales, purchases, inventory, profitability, and customers/vendors. "
-        "Use markdown (##, ###). Do NOT mention database, tables, schema, or row counts. "
-        "Format numbers with thousands separators and units (e.g. PKR/USD) where appropriate. "
-        "Use only the numbers provided; do not invent any values."
+        "Using the Data Context below (table list and row counts), write a one-page summary for top management. "
+        "Describe at a high level what business data the organization has: e.g. customers, products, sales, purchases, "
+        "inventory, vendors — and the scale of that data (use the row counts from the context). "
+        "Use markdown (##, ###). Keep language business-focused for leadership; avoid technical terms like schema or column names. "
+        "Use only the numbers from the Data Context; do not invent values. "
+        "Do NOT mention data gaps, missing data, or that any area has no records — we do not have that information."
     )
 
     _summary_system = (
         "You are an executive report writer for C-level readers. Answer ONLY what is asked. "
-        "Do NOT prepend any title, 'Data Summary Report', 'Executive Summary', or similar. "
-        "Start directly with the first markdown section header (e.g. ## Business at a Glance). "
-        "Format as clean markdown with proper spacing. Do NOT wrap output in code fences. "
-        "Do NOT mention database, tables, schema, columns, or technical terms. "
-        "Use ONLY the numbers from the Data Context; they are correct."
+        "Do NOT prepend a document title or 'Executive Summary'. Start with the first section header (e.g. ## Overview of Business Data). "
+        "Format as clean markdown. Do NOT wrap output in code fences. "
+        "Keep the tone suitable for leadership; use the row counts from the Data Context where relevant. "
+        "Do NOT include any section or sentence about data gaps, missing data, or unavailable areas — omit that entirely."
     )
 
     db = get_database()
 
     try:
-        kpi_context = await fetch_management_kpis()
+        row_counts_context = get_table_row_counts()
     except Exception as e:
-        print(f"[ChatRoute] fetch_management_kpis failed: {e}")
-        kpi_context = ""
+        print(f"[ChatRoute] get_table_row_counts failed: {e}")
+        row_counts_context = ""
 
     async def event_generator():
         full_content = ""
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context=kpi_context,
+                items_context=row_counts_context,
                 template="summary",
                 custom_system_prompt=_summary_system,
             ):
@@ -360,15 +357,15 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
     )
 
     prompt = (
-        "Generate exactly 5 questions that a CEO or top management would ask about business performance. "
+        "Generate exactly 10 questions that a CEO or top management would ask about business performance. "
         "Base them on the following available metrics only. Questions must be answerable with our business data. "
-        "Do NOT suggest technical or database-structure questions. Return only a numbered list: 1. ... 2. ..."
+        "Do NOT suggest technical or database-structure questions. Return only a numbered list: 1. ... 2. ... 10. ..."
     )
 
     _questions_system = (
-        "You are an analyst helping leadership. Return ONLY a numbered list of 5 questions, "
+        "You are an analyst helping leadership. Return ONLY a numbered list of 10 questions, "
         "nothing else — no title, no preamble, no explanation, no closing remarks. "
-        "Format exactly as:\n1. <question>\n2. <question>\n..."
+        "Format exactly as:\n1. <question>\n2. <question>\n...\n10. <question>"
     )
 
     db = get_database()
@@ -401,7 +398,7 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
                     for line in full_content.split("\n")
                     if line.strip() and len(line.strip()) > 10
                 ]
-                questions = [q for q in questions if q][:5]
+                questions = [q for q in questions if q][:10]
                 await db.chat_sessions.update_one(
                     {"user_id": user_id},
                     {"$set": {"db_questions": questions, "updated_at": datetime.utcnow()}},
@@ -419,46 +416,39 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
 @router.post("/db/report")
 async def stream_db_report(current_user: User = Depends(get_current_user)):
     """
-    Stream an AI-generated full management report for the leadership team.
-    Uses real KPI data; content is for top management (Business at a Glance, Performance Pulse, etc.).
+    Stream an AI-generated report for top management.
+    No SQL KPI queries; describes what the organization's data supports at a high level for leadership.
     Saves the full result to the user's chat_session document after streaming.
     """
     user_id = str(current_user._id)
     print(f"[ChatRoute] /db/report called | user={user_id}")
 
     from app.services.langchain_agent import stream_generate_report
-    from app.services.management_kpis import fetch_management_kpis
 
     prompt = (
-        "Using ONLY the business metrics below, generate a full management report for the leadership team. "
-        "Sections: Business at a Glance (revenue, purchases, profit margin, inventory value, active customers/vendors); "
-        "Performance Pulse — Sales (revenue, orders, quantity sold); Purchases (spend, on-time rate if available, open POs if available); "
-        "Inventory (value, items below reorder if available); Profitability (margins); Customers & Vendors (counts, performance). "
-        "Use markdown with ## and ###. Do NOT mention database, tables, or schema. "
-        "Where a metric is missing or unavailable, say 'Not available' and move on. Use only the numbers provided."
+        "Generate a high-level report for the leadership team about what business data the organization has and what it can be used for. "
+        "Sections (in business language): Overview; Sales & revenue data; Purchases & procurement; Inventory; Customers & vendors; "
+        "and a short note on how this data supports decision-making. Use markdown (##, ###). "
+        "Keep the tone suitable for C-level; do not use technical or schema jargon. "
+        "Do NOT mention data gaps, missing data, or that any area has no records — omit any such content entirely."
     )
 
     _report_system = (
-        "You are a report writer for top management. Generate a detailed markdown report from the data context only. "
-        "Do NOT add a document title or top-level heading — start directly with the first section (e.g. ## Business at a Glance). "
-        "Use markdown headers (##, ###), bullet points, and blank lines between sections. Do NOT wrap the output in code fences. "
-        "Do NOT mention database, tables, schema, or technical terms. Audience is C-level and leadership."
+        "You are a report writer for top management. Generate a clear markdown report. "
+        "Do NOT add a document title — start with the first section (e.g. ## Overview). "
+        "Use markdown headers (##, ###), bullet points, and blank lines. Do NOT wrap the output in code fences. "
+        "Audience is C-level and leadership; avoid database or technical terminology. "
+        "Do NOT include any section or sentence about data gaps, missing data, or unavailable areas — omit that entirely."
     )
 
     db = get_database()
-
-    try:
-        kpi_context = await fetch_management_kpis()
-    except Exception as e:
-        print(f"[ChatRoute] fetch_management_kpis failed: {e}")
-        kpi_context = ""
 
     async def event_generator():
         full_content = ""
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context=kpi_context,
+                items_context="",
                 template="technical",
                 custom_system_prompt=_report_system,
             ):

@@ -514,6 +514,8 @@ async def stream_chat_with_database(
                 verbose=True,
                 handle_parsing_errors=True,
                 prefix=db_prefix,
+                max_iterations=30,
+                max_execution_time=240.0,
             )
         except TypeError:
             print("[LangChainAgent] prefix not supported, injecting DB context into question")
@@ -524,6 +526,8 @@ async def stream_chat_with_database(
                 agent_type="openai-tools",
                 verbose=True,
                 handle_parsing_errors=True,
+                max_iterations=30,
+                max_execution_time=240.0,
             )
         print("[LangChainAgent] SQL agent created, invoking...")
 
