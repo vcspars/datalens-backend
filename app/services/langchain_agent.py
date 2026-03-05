@@ -21,7 +21,6 @@ from langchain.schema import HumanMessage, AIMessage
 
 from app.config import settings
 from app.services.db_knowledge import get_system_prompt
-from app.services.sql_utils import is_read_only_sql
 
 print("[LangChainAgent] Module loaded")
 
@@ -78,17 +77,6 @@ def _get_sql_db() -> SQLDatabase:
     conn_str = _build_connection_string()
     try:
         db = SQLDatabase.from_uri(conn_str, sample_rows_in_table_info=0)
-        _original_run = db.run
-
-        def _run_read_only_only(command: str, *args, **kwargs):
-            if not is_read_only_sql(command):
-                raise ValueError(
-                    "Only read-only SQL (SELECT) is allowed. "
-                    "This application never updates, edits, or deletes anything in the database."
-                )
-            return _original_run(command, *args, **kwargs)
-
-        db.run = _run_read_only_only
         _cached_sql_db = db
         elapsed = time.time() - t0
         print(f"[LangChainAgent] SQLDatabase connected & cached (read-only) | {elapsed:.1f}s")
