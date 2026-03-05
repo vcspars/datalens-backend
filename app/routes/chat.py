@@ -65,7 +65,7 @@ async def _get_or_create_session(db, user_id: str) -> str:
 
 
 async def _get_last_n_pairs(db, user_id: str, session_id: str, n: int = 5) -> list[dict]:
-    """Retrieve the last n Q/A pairs for context injection."""
+    """Retrieve the last n Q/A pairs for context injection. Includes sql_query for assistant messages so the resolver and agent have full context."""
     cursor = db.chat_messages.find(
         {"user_id": user_id, "session_id": session_id}
     ).sort("created_at", -1).limit(n * 2)
@@ -74,10 +74,13 @@ async def _get_last_n_pairs(db, user_id: str, session_id: str, n: int = 5) -> li
     messages.reverse()  # oldest first
 
     print(f"[ChatRoute] Loaded {len(messages)} history messages for context")
-    return [
-        {"role": m["role"], "content": m["content"]}
-        for m in messages
-    ]
+    out = []
+    for m in messages:
+        item = {"role": m["role"], "content": m["content"]}
+        if m.get("role") == "assistant" and m.get("sql_query"):
+            item["sql_query"] = m["sql_query"]
+        out.append(item)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -117,16 +120,20 @@ async def chat_stream(
         if settings.USE_VANNA_AI:
             from app.services.vanna_agent import stream_chat_with_database_vanna
             stream_fn = stream_chat_with_database_vanna
+            resolved_question = question
             print("[ChatRoute] Using Vanna AI agent")
         else:
-            from app.services.intent_classifier import classify_intent
+            from app.services.question_resolver import resolve_question
             from app.services.langchain_agent import stream_chat_with_database, stream_simple_chat
             loop = asyncio.get_event_loop()
-            intent = await loop.run_in_executor(
+            resolved = await loop.run_in_executor(
                 None,
-                lambda: classify_intent(question, history),
+                lambda: resolve_question(question, history),
             )
-            print(f"[ChatRoute] Intent classified: {intent!r}")
+            resolved_question = resolved.get("resolved_question", question) or question
+            intent = resolved.get("intent", "sql")
+            is_followup = resolved.get("is_followup", False)
+            print(f"[ChatRoute] Resolved: intent={intent!r} is_followup={is_followup} | original='{question[:60]}' | resolved='{resolved_question[:60]}'")
             if intent == "sql":
                 stream_fn = stream_chat_with_database
                 print("[ChatRoute] Routing to LangChain SQL agent")
@@ -145,7 +152,7 @@ async def chat_stream(
             await db.chat_messages.insert_one(user_msg.to_dict())
             print(f"[ChatRoute] Saved user message to MongoDB")
 
-            async for chunk in stream_fn(question, history):
+            async for chunk in stream_fn(resolved_question, history):
                 yield chunk
 
                 # Parse chunk to track state

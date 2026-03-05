@@ -504,8 +504,8 @@ async def stream_chat_with_database(
             openai_api_key=settings.OPENAI_API_KEY,
         )
 
-        # Build context prefix from history
-        context_prefix = _build_history_prefix(chat_history)
+        # Build context prefix from history (larger assistant context for SQL path)
+        context_prefix = _build_history_prefix(chat_history, max_assistant_chars=1500)
         if context_prefix:
             print(f"[LangChainAgent] Injecting {len(chat_history)} history messages as context")
 
@@ -514,7 +514,8 @@ async def stream_chat_with_database(
         # Create SQL agent with DB knowledge prefix
         db_prefix = (
             get_system_prompt()
-            + "\n\nYou are an expert SQL agent. Use the database schema and views above. Dialect: {dialect}. When returning many rows, limit to at most {top_k} rows. Only execute SELECT."
+            + "\n\nYou are an expert SQL agent. Use the database schema and views above. Dialect: {dialect}. Only execute SELECT."
+            + "\n\nIMPORTANT — Completeness: When the user asks for N items (e.g. \"list all 10 tables\", \"top 5 customers\", \"all table names\"), always return ALL requested items. Never show partial results and then offer to show more. Always fulfill the complete request. If the result set is very large (e.g. over 50 rows), you may limit to 50 but state the total count clearly."
             + "\n\nIMPORTANT — Row counts: When asked for table row counts or how many rows are in a table, always run SELECT COUNT(*) FROM [table_name] for each table. Do NOT infer row count from the number of sample rows in table info (table info may show 0 sample rows; the only way to get the real count is COUNT(*))."
             + "\n\nOUTPUT FORMAT — You MUST present query results as a markdown table, never as bullet lists or prose. Rules:"
             + "\n1. Always use a markdown table: header row, then separator row (e.g. |---|:---|---:|), then one row per result."
@@ -537,19 +538,33 @@ async def stream_chat_with_database(
                 prefix=db_prefix,
                 max_iterations=30,
                 max_execution_time=240.0,
+                top_k=50,
             )
         except TypeError:
-            print("[LangChainAgent] prefix not supported, injecting DB context into question")
-            full_question = db_prefix[:2000] + "\n\n---\n\n" + full_question
-            agent_executor = create_sql_agent(
-                llm=llm,
-                db=sql_db,
-                agent_type="openai-tools",
-                verbose=True,
-                handle_parsing_errors=True,
-                max_iterations=30,
-                max_execution_time=240.0,
-            )
+            # top_k or prefix may not be supported in some versions
+            try:
+                agent_executor = create_sql_agent(
+                    llm=llm,
+                    db=sql_db,
+                    agent_type="openai-tools",
+                    verbose=True,
+                    handle_parsing_errors=True,
+                    prefix=db_prefix,
+                    max_iterations=30,
+                    max_execution_time=240.0,
+                )
+            except TypeError:
+                print("[LangChainAgent] prefix not supported, injecting DB context into question")
+                full_question = db_prefix[:2000] + "\n\n---\n\n" + full_question
+                agent_executor = create_sql_agent(
+                    llm=llm,
+                    db=sql_db,
+                    agent_type="openai-tools",
+                    verbose=True,
+                    handle_parsing_errors=True,
+                    max_iterations=30,
+                    max_execution_time=240.0,
+                )
         print("[LangChainAgent] SQL agent created, invoking...")
 
         # Send a "thinking" keepalive so the frontend knows we're working
@@ -670,8 +685,8 @@ async def stream_chat_with_database(
         yield f"data: {error_event}\n\n"
 
 
-def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 500) -> str:
-    """Build [User]/[Assistant] history prefix for context (shared by SQL and simple chat)."""
+def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 1500) -> str:
+    """Build [User]/[Assistant] history prefix for context (shared by SQL and simple chat). Includes sql_query when present for assistant messages."""
     if not chat_history:
         return ""
     parts = ["Previous conversation (oldest first):"]
@@ -680,6 +695,10 @@ def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 5
         content = msg.get("content") or ""
         if msg.get("role") == "assistant" and len(content) > max_assistant_chars:
             content = content[:max_assistant_chars] + "... [truncated]"
+        if msg.get("role") == "assistant":
+            sql_query = msg.get("sql_query") or ""
+            if sql_query:
+                content = content + "\n(SQL that was run: " + (sql_query[:400] + "..." if len(sql_query) > 400 else sql_query) + ")"
         parts.append(f"--- Pair {i} ---")
         parts.append(f"{role_label}\n{content}")
     parts.append("---")
