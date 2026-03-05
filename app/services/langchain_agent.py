@@ -279,6 +279,19 @@ def _parse_sql_tool_result_to_table(output: str) -> Optional[tuple[list[str], li
     return (columns, data)
 
 
+def _build_markdown_table(columns: list[str], data: list[dict]) -> str:
+    """Build a markdown table string from column names and list of row dicts."""
+    if not columns or not data:
+        return ""
+    header = "| " + " | ".join(str(c) for c in columns) + " |"
+    sep = "|" + "|".join(":---" for _ in columns) + "|"
+    rows = []
+    for row in data:
+        cells = [str(row.get(c, "")).replace("|", "\\|") for c in columns]
+        rows.append("| " + " | ".join(cells) + " |")
+    return "\n".join([header, sep] + rows)
+
+
 class StreamingCallbackHandler(BaseCallbackHandler):
     """Collects streamed tokens into a queue for async consumption; captures SQL from sql_db_query tool."""
 
@@ -417,13 +430,15 @@ class StreamingCallbackHandler(BaseCallbackHandler):
         return None
 
     def on_tool_start(self, serialized, input_str, **kwargs) -> None:
-        name = serialized.get("name") or (serialized.get("id") or [""])[0]
+        name = serialized.get("name") or kwargs.get("name") or ""
         if not name and isinstance(serialized.get("id"), list):
             name = serialized["id"][-1] if serialized["id"] else ""
-        print(f"[LangChainAgent][Callback] Tool start: name={name!r} | serialized_keys={list(serialized.keys())} | kwargs.name={kwargs.get('name')!r} | input: {str(input_str)[:200]}")
+        is_sql = self._is_sql_query_tool(name, serialized, kwargs)
+        input_preview = str(input_str)[:300]
+        print(f"[LangChainAgent][Callback] Tool start: name={name!r} | is_sql_query={is_sql} | input_len={len(str(input_str))} | input: {input_preview}")
         # Keepalive: reset token-consumer timeout while DB queries are running
         self._enqueue("")
-        if self._is_sql_query_tool(name, serialized, kwargs):
+        if is_sql:
             self._last_tool_was_sql_query = True
             query = self._extract_sql_from_input(input_str)
             if isinstance(query, str) and query.strip():
@@ -433,7 +448,11 @@ class StreamingCallbackHandler(BaseCallbackHandler):
             self._last_tool_was_sql_query = False
 
     def on_tool_end(self, output, **kwargs) -> None:
-        print(f"[LangChainAgent][Callback] Tool end: {str(output)[:200]}")
+        out_str = str(output) if output is not None else "<None>"
+        out_len = len(out_str)
+        print(f"[LangChainAgent][Callback] Tool end (len={out_len}): {out_str[:300]}")
+        if out_len == 0 or not out_str.strip():
+            print("[LangChainAgent][Callback] WARNING: Tool returned empty/blank result")
         # Keepalive: reset token-consumer timeout while tools are still running
         self._enqueue("")
         if self._last_tool_was_sql_query and output is not None:
@@ -504,6 +523,8 @@ async def stream_chat_with_database(
             + "\n4. Data representation: right-align numeric and currency columns (use ---: in the separator for those columns). Left-align text columns (use :---). Format numbers with thousands separators (e.g. 1,216,581.73)."
             + "\n5. Do NOT output the raw SQL in your response; only the markdown table and a brief one-line summary if needed."
             + "\n6. Do NOT include your intermediate reasoning, retries, or error-handling steps in the final answer. Only present the final result."
+            + "\n7. If a query returns NO rows (empty result), say so clearly: \"The query returned no results.\" Then explain a possible reason (e.g. filter mismatch). NEVER fabricate or invent data. NEVER say \"the values are illustrative\". If you have no data, do not produce a table."
+            + "\n8. Before presenting the final table, verify that the data in the table matches the actual query result returned by the tool. If the tool returned an empty result, you MUST NOT fill the table with made-up values."
         )
         print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
         try:
@@ -557,6 +578,13 @@ async def stream_chat_with_database(
 
         elapsed = _time.time() - t0
         print(f"[LangChainAgent] Agent invocation complete | output_len={len(agent_output)} | {elapsed:.1f}s")
+        captured_sql = handler._last_sql or ""
+        sql_preview = captured_sql[:200] + ("..." if len(captured_sql) > 200 else "") if captured_sql else "<none>"
+        print(f"[LangChainAgent] Captured SQL: {sql_preview}")
+        qrows = len(handler._query_result_table) if handler._query_result_table else 0
+        print(f"[LangChainAgent] Captured query result: cols={handler._query_result_columns is not None} rows={qrows}")
+        if "illustrative" in agent_output.lower() or "no results" in agent_output.lower():
+            print("[LangChainAgent] WARNING: Agent output may contain fabricated or empty data")
 
         # Clean the final output: strip ```sql...``` blocks and intermediate reasoning
         full_response = re.sub(
@@ -569,6 +597,27 @@ async def stream_chat_with_database(
             full_response = agent_output
 
         print(f"[LangChainAgent] Full response length: {len(full_response)} chars")
+
+        # Post-process: detect fabricated data and replace with real result or honest no-results message
+        hallucination_phrases = [
+            "values are illustrative",
+            "actual query result was not returned",
+            "illustrative as the actual",
+            "data shown is hypothetical",
+        ]
+        if any(phrase in full_response.lower() for phrase in hallucination_phrases):
+            print("[LangChainAgent] WARNING: Detected fabricated data in agent output, cleaning up")
+            qcols = getattr(handler, "_query_result_columns", None)
+            qdata = getattr(handler, "_query_result_table", None)
+            if qcols and qdata and len(qdata) > 0:
+                full_response = _build_markdown_table(qcols, qdata) + "\n\nQuery returned the above results."
+                print(f"[LangChainAgent] Replaced with real captured result: {len(qdata)} rows, {len(qcols)} cols")
+            else:
+                full_response = (
+                    "The query returned no results. This may be due to filter conditions not matching any data "
+                    "in the database. Please try adjusting your query (e.g. check filter values like SalesType or date ranges)."
+                )
+                print("[LangChainAgent] Replaced with honest no-results message")
 
         # Simulate streaming: send the final response in small chunks so the UI feels responsive
         chunk_size = 12
