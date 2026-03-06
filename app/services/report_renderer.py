@@ -6,6 +6,7 @@ both by streaming endpoints (for previews) and by PDF download endpoints.
 
 from __future__ import annotations
 
+import re
 from typing import List, Dict, Any
 
 from markdown import markdown
@@ -54,13 +55,46 @@ BASE_CSS = """
     display: flex;
     flex-direction: column;
     justify-content: center;
-    height: 90vh;
+    min-height: 90vh;
+    position: relative;
   }
+
+  .cover-page::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    background: linear-gradient(90deg, #1d4ed8 0%, #3b82f6 50%, #60a5fa 100%);
+  }
+
+  .cover-visual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 2em;
+  }
+
+  .cover-visual .icon-bar {
+    width: 48px;
+    height: 4px;
+    border-radius: 2px;
+    background: #1d4ed8;
+  }
+
+  .cover-visual .icon-bar:nth-child(1) { width: 32px; opacity: 0.6; }
+  .cover-visual .icon-bar:nth-child(2) { width: 56px; opacity: 0.9; }
+  .cover-visual .icon-bar:nth-child(3) { width: 40px; opacity: 0.7; }
+  .cover-visual .icon-bar:nth-child(4) { width: 64px; }
+  .cover-visual .icon-bar:nth-child(5) { width: 36px; opacity: 0.8; }
 
   .cover-title {
     font-size: 28px;
     font-weight: 700;
     margin-bottom: 0.5em;
+    color: #111827;
   }
 
   .cover-subtitle {
@@ -80,6 +114,58 @@ BASE_CSS = """
     font-size: 13px;
     font-weight: 600;
     color: #1d4ed8;
+  }
+
+  .toc-page {
+    padding: 1em 0;
+  }
+
+  .toc-page h2 {
+    font-size: 22px;
+    margin-bottom: 1em;
+    padding-bottom: 0.5em;
+    border-bottom: 2px solid #1d4ed8;
+    color: #111827;
+  }
+
+  .toc-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .toc-list li {
+    padding: 0.5em 0;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+  }
+
+  .toc-list li:last-child {
+    border-bottom: none;
+  }
+
+  .toc-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #eff6ff;
+    color: #1d4ed8;
+    font-weight: 600;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .toc-dots {
+    flex: 1;
+    border-bottom: 1px dotted #9ca3af;
+    margin: 0 4px;
+    min-width: 20px;
   }
 
   .report-body {
@@ -141,8 +227,6 @@ BASE_CSS = """
   }
 
   .chart-placeholder svg {
-    width: 100%;
-    height: 200px;
     display: block;
   }
 
@@ -150,16 +234,75 @@ BASE_CSS = """
     font-size: 10px;
     fill: #374151;
   }
+
+  .chart-with-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 16px;
+    margin-top: 0.35em;
+  }
+
+  .chart-with-legend .chart-svg-wrap {
+    flex: 1 1 55%;
+    min-width: 280px;
+  }
+
+  .chart-with-legend .chart-legend-wrap {
+    flex: 1 1 35%;
+    min-width: 160px;
+    font-size: 11px;
+    color: #374151;
+  }
+
+  .chart-legend-wrap .legend-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+
+  .chart-legend-wrap .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .chart-legend-wrap .legend-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .chart-legend-wrap .legend-label {
+    flex: 1;
+    word-break: break-word;
+  }
+
+  .chart-legend-wrap .legend-value {
+    flex-shrink: 0;
+    font-weight: 500;
+  }
 """
+
+
+def _escape_html(s: str) -> str:
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
 
 
 def _build_svg_chart(graph_type: str, cfg: Dict[str, Any]) -> str:
   """
-  Build a very simple static SVG chart using the graph_config data.
-
-  This is intentionally minimal but gives a real visual for PDFs without
-  needing a browser rendering engine.
+  Build a static SVG chart with Y-axis numeric scale and a proper legend
+  (right or below) so PDF reports show full labels and values.
   """
+  import math
+
   data = cfg.get("data") or []
   x_key = cfg.get("xKey") or ""
   y_key = cfg.get("yKey") or ""
@@ -167,9 +310,8 @@ def _build_svg_chart(graph_type: str, cfg: Dict[str, Any]) -> str:
   if not isinstance(data, list) or not x_key or not y_key:
     return '<div class="chart-placeholder">No chart data available.</div>'
 
-  # Extract numeric values
   points: list[tuple[str, float]] = []
-  for row in data[:20]:
+  for row in data[:30]:
     try:
       label = str(row.get(x_key, ""))
       raw_val = row.get(y_key, 0)
@@ -181,28 +323,26 @@ def _build_svg_chart(graph_type: str, cfg: Dict[str, Any]) -> str:
   if not points:
     return '<div class="chart-placeholder">No numeric data available for chart.</div>'
 
-  width = 600
-  height = 200
+  colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#6366f1", "#ec4899", "#14b8a6", "#f97316"]
 
-  # Pie chart
+  # Pie chart: pie + legend on the right with label and value/%
   if graph_type == "pie":
     total = sum(v for _, v in points) or 1.0
-    cx = width / 2
+    width = 620
+    height = 260
+    pie_width = 280
+    cx = 140
     cy = height / 2
-    radius = min(width, height) * 0.35
+    radius = min(pie_width, height) * 0.38
     svg_parts: list[str] = []
-    svg_parts.append('<div class="chart-placeholder">')
-    svg_parts.append(f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="Pie chart">')
 
+    legend_rows = []
     start_angle = 0.0
-    colors = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#6366f1", "#ec4899"]
-
     for idx, (label, value) in enumerate(points):
       fraction = value / total
+      pct = 100.0 * fraction
       sweep = fraction * 360.0
       end_angle = start_angle + sweep
-
-      import math
 
       x1 = cx + radius * math.cos(math.radians(start_angle))
       y1 = cy + radius * math.sin(math.radians(start_angle))
@@ -210,66 +350,129 @@ def _build_svg_chart(graph_type: str, cfg: Dict[str, Any]) -> str:
       y2 = cy + radius * math.sin(math.radians(end_angle))
       large_arc = 1 if sweep > 180 else 0
       d = f"M {cx},{cy} L {x1},{y1} A {radius},{radius} 0 {large_arc},1 {x2},{y2} Z"
-
       color = colors[idx % len(colors)]
       svg_parts.append(f'<path d="{d}" fill="{color}" />')
-
-      # label for some slices
-      if idx % max(1, len(points) // 6) == 0:
-        mid_angle = start_angle + sweep / 2
-        lx = cx + (radius + 18) * math.cos(math.radians(mid_angle))
-        ly = cy + (radius + 18) * math.sin(math.radians(mid_angle))
-        svg_parts.append(
-          f'<text x="{lx:.1f}" y="{ly:.1f}" text-anchor="middle">{label[:12]}</text>'
-        )
-
+      legend_rows.append((color, _escape_html(label), value, pct))
       start_angle = end_angle
 
-    svg_parts.append("</svg></div>")
-    return "".join(svg_parts)
+    out = ['<div class="chart-with-legend">']
+    out.append('<div class="chart-svg-wrap">')
+    out.append(f'<svg viewBox="0 0 {pie_width} {height}" style="max-height: 260px;" role="img" aria-label="Pie chart">')
+    out.extend(svg_parts)
+    out.append("</svg>")
+    out.append("</div>")
+    out.append('<div class="chart-legend-wrap">')
+    out.append(f'<div class="legend-title">{_escape_html(x_key)}</div>')
+    for color, lbl, val, pct in legend_rows:
+      out.append(
+        f'<div class="legend-row">'
+        f'<span class="legend-swatch" style="background-color:{color}"></span>'
+        f'<span class="legend-label">{lbl}</span>'
+        f'<span class="legend-value">{val:.2f} ({pct:.1f}%)</span>'
+        f'</div>'
+      )
+    out.append("</div></div>")
+    return "".join(out)
 
-  # Default: simple bar chart
+  # Bar chart: Y-axis with numeric ticks + legend below with full category names
+  width = 640
+  height = 280
+  padding_left = 52
+  padding_bottom = 36
+  padding_top = 16
+  chart_width = width - padding_left - 20
+  chart_height = height - padding_bottom - padding_top
   max_val = max(v for _, v in points) or 1.0
-  padding_left = 40
-  padding_bottom = 24
-  chart_width = width - padding_left - 10
-  chart_height = height - padding_bottom - 10
-  bar_width = chart_width / max(len(points), 1)
+  n_bars = len(points)
+  bar_width = chart_width / max(n_bars, 1)
+  x_axis_y = padding_top + chart_height
+
+  # Y-axis ticks (5 steps: 0 to max)
+  num_ticks = 5
+  tick_labels = []
+  for i in range(num_ticks + 1):
+    v = max_val * (i / num_ticks)
+    if max_val >= 1e6:
+      tick_labels.append(f"{v/1e6:.1f}M")
+    elif max_val >= 1e3:
+      tick_labels.append(f"{v/1e3:.1f}K")
+    else:
+      tick_labels.append(f"{v:.0f}")
 
   svg_parts = []
-  svg_parts.append('<div class="chart-placeholder">')
-  svg_parts.append(f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="Bar chart">')
+  svg_parts.append('<div class="chart-with-legend">')
+  svg_parts.append('<div class="chart-svg-wrap">')
+  svg_parts.append(f'<svg viewBox="0 0 {width} {height}" style="max-height: 280px;" role="img" aria-label="Bar chart">')
 
-  # Axes
-  x_axis_y = 10 + chart_height
+  # Y-axis line
+  svg_parts.append(
+    f'<line x1="{padding_left}" y1="{padding_top}" x2="{padding_left}" y2="{x_axis_y}" '
+    'stroke="#9ca3af" stroke-width="1" />'
+  )
+  # X-axis line
   svg_parts.append(
     f'<line x1="{padding_left}" y1="{x_axis_y}" x2="{padding_left + chart_width}" y2="{x_axis_y}" '
     'stroke="#9ca3af" stroke-width="1" />'
   )
 
+  # Y-axis tick labels (numeric scale)
+  for i in range(num_ticks + 1):
+    y_val = x_axis_y - (i / num_ticks) * chart_height
+    svg_parts.append(
+      f'<text x="{padding_left - 6}" y="{y_val + 4}" text-anchor="end" font-size="10" fill="#374151">{tick_labels[num_ticks - i]}</text>'
+    )
+  # Y-axis title
+  svg_parts.append(f'<text x="8" y="{padding_top + chart_height/2}" text-anchor="middle" font-size="10" fill="#6b7280" transform="rotate(-90, 8, {padding_top + chart_height/2})">{_escape_html(y_key)}</text>')
+
+  # Bars
   for idx, (label, value) in enumerate(points):
     norm = value / max_val if max_val else 0
     bar_h = norm * chart_height
-    x = padding_left + idx * bar_width + bar_width * 0.1
+    x = padding_left + idx * bar_width + bar_width * 0.08
     y = x_axis_y - bar_h
-    w = bar_width * 0.8
-
+    w = bar_width * 0.84
+    color = colors[idx % len(colors)]
     svg_parts.append(
-      f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{bar_h:.1f}" fill="#3b82f6" />'
+      f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{max(bar_h, 0):.1f}" fill="{color}" />'
     )
 
-    # X labels: show up to ~8 labels to avoid overlap
-    step = max(1, len(points) // 8)
-    if idx % step == 0:
-      svg_parts.append(
-        f'<text x="{x + w/2:.1f}" y="{x_axis_y + 12}" text-anchor="middle">{label[:10]}</text>'
-      )
-
-  # Y-axis label
-  svg_parts.append(f'<text x="4" y="20" text-anchor="start">{y_key}</text>')
-
-  svg_parts.append("</svg></div>")
+  svg_parts.append("</svg>")
+  svg_parts.append("</div>")
+  # Legend: full category names and values (below chart in layout terms, but we use right-side legend for consistency)
+  svg_parts.append('<div class="chart-legend-wrap">')
+  svg_parts.append(f'<div class="legend-title">{_escape_html(x_key)}</div>')
+  for idx, (label, value) in enumerate(points):
+    color = colors[idx % len(colors)]
+    val_str = f"{value:,.2f}" if value != int(value) else f"{int(value):,}"
+    svg_parts.append(
+      f'<div class="legend-row">'
+      f'<span class="legend-swatch" style="background-color:{color}"></span>'
+      f'<span class="legend-label">{_escape_html(label)}</span>'
+      f'<span class="legend-value">{val_str}</span>'
+      f'</div>'
+    )
+  svg_parts.append("</div></div>")
   return "".join(svg_parts)
+
+
+# Phrase(s) to remove from generated report text (e.g. LLM closing lines)
+_REPORT_STRIP_PHRASES = [
+    "if you require further detailed analysis or specific data visualizations, please let me know",
+    "if you require further detailed analysis, please let me know",
+    "if you need further analysis or visualizations, please let me know",
+]
+
+
+def _strip_unwanted_report_phrases(text: str) -> str:
+    """Remove known unwanted closing phrases from report markdown."""
+    if not text or not text.strip():
+        return text
+    out = text
+    for phrase in _REPORT_STRIP_PHRASES:
+        pattern = re.compile(re.escape(phrase), re.IGNORECASE)
+        out = pattern.sub("", out)
+    out = re.sub(r"\n\s*\n\s*\n+", "\n\n", out).strip()
+    return out if out else text
 
 
 def render_report_html(
@@ -280,9 +483,10 @@ def render_report_html(
     generated_at: str | None = None,
 ) -> str:
     """Convert markdown + selected items into a single HTML report string."""
+    report_text = _strip_unwanted_report_phrases(full_report_markdown or "")
 
     body_html = markdown(
-        full_report_markdown or "",
+        report_text,
         extensions=["tables", "fenced_code", "toc"],
     )
 
@@ -375,6 +579,9 @@ def render_report_html(
     <div class="report-container">
       <!-- Cover page -->
       <div class="cover-page">
+        <div class="cover-visual">
+          <span class="icon-bar"></span><span class="icon-bar"></span><span class="icon-bar"></span><span class="icon-bar"></span><span class="icon-bar"></span>
+        </div>
         <div class="cover-title">{title_html}</div>
         <div class="cover-subtitle">Detailed data analysis report</div>
         <div class="cover-meta"><strong>Generated by:</strong> {author_html}</div>
@@ -385,14 +592,14 @@ def render_report_html(
       <div class="page-break"></div>
 
       <!-- Table of contents -->
-      <div>
+      <div class="toc-page">
         <h2>Table of Contents</h2>
-        <ol>
-          <li>Selected Items</li>
-          <li>Detailed Analysis</li>
-          <li>Additional Insights</li>
-          <li>Conclusion</li>
-        </ol>
+        <ul class="toc-list">
+          <li><span class="toc-num">1</span> Selected Items<span class="toc-dots"></span></li>
+          <li><span class="toc-num">2</span> Detailed Analysis &amp; Findings<span class="toc-dots"></span></li>
+          <li><span class="toc-num">3</span> Additional Insights<span class="toc-dots"></span></li>
+          <li><span class="toc-num">4</span> Conclusion<span class="toc-dots"></span></li>
+        </ul>
       </div>
 
       <div class="page-break"></div>

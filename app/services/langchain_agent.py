@@ -280,6 +280,28 @@ def _build_markdown_table(columns: list[str], data: list[dict]) -> str:
     return "\n".join([header, sep] + rows)
 
 
+# Phrases that must not appear in user-facing responses (replace with friendly wording)
+_USER_FACING_FORBIDDEN = [
+    (r"the query returned no results?", "no data matches that criteria", re.IGNORECASE),
+    (r"the query returned no results", "no data matches that criteria", re.IGNORECASE),
+    (r"query returned the above results", "here are the results", re.IGNORECASE),
+    (r"query returned no results", "no data matches that criteria", re.IGNORECASE),
+    (r"the sql (?:query )?returned", "the search returned", re.IGNORECASE),
+    (r"sql query", "search", re.IGNORECASE),
+    (r"\bquery\s+returned", "search returned", re.IGNORECASE),
+]
+
+
+def _sanitize_user_response(text: str) -> str:
+    """Replace technical phrases so user never sees 'query', 'sql', 'returned no results' etc."""
+    if not text or not text.strip():
+        return text
+    out = text
+    for pattern, replacement, flags in _USER_FACING_FORBIDDEN:
+        out = re.sub(pattern, replacement, out, flags=flags)
+    return out
+
+
 class StreamingCallbackHandler(BaseCallbackHandler):
     """Collects streamed tokens into a queue for async consumption; captures SQL from sql_db_query tool."""
 
@@ -450,6 +472,11 @@ class StreamingCallbackHandler(BaseCallbackHandler):
                 self._query_result_columns = cols
                 self._query_result_table = data
                 print(f"[LangChainAgent][Callback] Parsed query result: {len(data)} rows, {len(cols)} cols")
+            else:
+                # Tool returned empty or unparseable — record 0 rows so post-process can block fabricated tables
+                self._query_result_table = []
+                self._query_result_columns = []
+                print("[LangChainAgent][Callback] Parsed query result: 0 rows (empty or unparseable)")
         self._last_tool_was_sql_query = False
 
     def on_tool_error(self, error, **kwargs) -> None:
@@ -512,7 +539,7 @@ async def stream_chat_with_database(
             + "\n4. Data representation: right-align numeric and currency columns (use ---: in the separator for those columns). Left-align text columns (use :---). Format numbers with thousands separators (e.g. 1,216,581.73)."
             + "\n5. Do NOT output the raw SQL in your response; only the markdown table and a brief one-line summary if needed."
             + "\n6. Do NOT include your intermediate reasoning, retries, or error-handling steps in the final answer. Only present the final result."
-            + "\n7. If a query returns NO rows (empty result), say so clearly: \"The query returned no results.\" Then explain a possible reason (e.g. filter mismatch). NEVER fabricate or invent data. NEVER say \"the values are illustrative\". If you have no data, do not produce a table."
+            + "\n7. If the database has NO matching rows (empty result), say so in plain language: \"No data matches that criteria\" or \"There are no records for that request.\" Then briefly suggest a reason (e.g. filter or date range). NEVER use words like 'query', 'SQL', or 'returned no results' in your answer. NEVER fabricate data. NEVER say \"the values are illustrative\". If you have no data, do not produce a table."
             + "\n8. Before presenting the final table, verify that the data in the table matches the actual query result returned by the tool. If the tool returned an empty result, you MUST NOT fill the table with made-up values."
         )
         print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
@@ -556,7 +583,7 @@ async def stream_chat_with_database(
         print("[LangChainAgent] SQL agent created, invoking...")
 
         # Send a "thinking" keepalive so the frontend knows we're working
-        yield f"data: {json.dumps({'type': 'status', 'content': 'Querying database...'})}\n\n"
+        yield f"data: {json.dumps({'type': 'status', 'content': 'Searching the database...'})}\n\n"
 
         # Run agent synchronously in a thread — wait for final output (no intermediate streaming)
         t0 = _time.time()
@@ -601,26 +628,42 @@ async def stream_chat_with_database(
 
         print(f"[LangChainAgent] Full response length: {len(full_response)} chars")
 
-        # Post-process: detect fabricated data and replace with real result or honest no-results message
-        hallucination_phrases = [
-            "values are illustrative",
-            "actual query result was not returned",
-            "illustrative as the actual",
-            "data shown is hypothetical",
-        ]
-        if any(phrase in full_response.lower() for phrase in hallucination_phrases):
-            print("[LangChainAgent] WARNING: Detected fabricated data in agent output, cleaning up")
-            qcols = getattr(handler, "_query_result_columns", None)
-            qdata = getattr(handler, "_query_result_table", None)
-            if qcols and qdata and len(qdata) > 0:
-                full_response = _build_markdown_table(qcols, qdata) + "\n\nQuery returned the above results."
-                print(f"[LangChainAgent] Replaced with real captured result: {len(qdata)} rows, {len(qcols)} cols")
-            else:
-                full_response = (
-                    "The query returned no results. This may be due to filter conditions not matching any data "
-                    "in the database. Please try adjusting your query (e.g. check filter values like SalesType or date ranges)."
-                )
-                print("[LangChainAgent] Replaced with honest no-results message")
+        qcols = getattr(handler, "_query_result_columns", None)
+        qdata = getattr(handler, "_query_result_table", None)
+        qrows = len(qdata) if qdata else 0
+        has_captured_sql = bool(getattr(handler, "_last_sql", None) or "").strip()
+
+        # When the DB query returned 0 rows, never show fabricated tables — force no-data message
+        if has_captured_sql and qrows == 0:
+            print("[LangChainAgent] Query ran but returned 0 rows; forcing no-data message (no placeholders)")
+            full_response = (
+                "No data matches that criteria. This may be due to filters (e.g. date range or region) not matching any records. "
+                "Try adjusting your request or filters."
+            )
+        else:
+            # Post-process: detect fabricated data (placeholders or illustrative phrasing) and replace
+            hallucination_phrases = [
+                "values are illustrative",
+                "actual query result was not returned",
+                "illustrative as the actual",
+                "data shown is hypothetical",
+            ]
+            placeholder_pattern = re.compile(r"\[[A-Za-z]+\d+\]")  # e.g. [ProductName1], [WarehouseName2]
+            has_placeholder_cells = bool(placeholder_pattern.search(full_response))
+
+            if has_placeholder_cells or any(phrase in full_response.lower() for phrase in hallucination_phrases):
+                print("[LangChainAgent] WARNING: Detected fabricated data or placeholders in agent output, cleaning up")
+                if qcols and qdata and len(qdata) > 0:
+                    full_response = _build_markdown_table(qcols, qdata) + "\n\nHere are the results."
+                    print(f"[LangChainAgent] Replaced with real captured result: {len(qdata)} rows, {len(qcols)} cols")
+                else:
+                    full_response = (
+                        "No data matches that criteria. This may be due to filters (e.g. date range or region) not matching any records. "
+                        "Try adjusting your request or filters."
+                    )
+                    print("[LangChainAgent] Replaced with honest no-results message")
+
+        full_response = _sanitize_user_response(full_response)
 
         # Simulate streaming: send the final response in small chunks so the UI feels responsive
         chunk_size = 12
@@ -826,7 +869,8 @@ async def stream_generate_report(
                 f"You are a professional data analyst generating a {template} report. "
                 "Use the provided data context and generate a well-structured, detailed markdown report. "
                 "Include sections like Executive Summary, Key Findings, Analysis, and Recommendations. "
-                "Format all content as clean markdown. Do NOT wrap the output in code fences."
+                "Format all content as clean markdown. Do NOT wrap the output in code fences. "
+                "Do NOT end with phrases like 'If you require further detailed analysis or specific data visualizations, please let me know' or similar open-ended offers to the reader."
             )
 
         context_block = f"Data Context:\n{items_context}\n\n" if items_context.strip() else ""

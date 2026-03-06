@@ -15,7 +15,7 @@ try:
     print(f"CORS debug: {response.status_code} - {response.json()}")
 except Exception as e:
     print(f"CORS debug failed: {e}")
- 
+
 # Test signup endpoint
 try:
     test_data = {
