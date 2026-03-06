@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # JWT settings
     SECRET_KEY: str = "your-secret-key-change-this-in-production-use-env-variable"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours (was 30 min)
     
     # CORS settings
     # For development, you can use ["*"] to allow all origins
