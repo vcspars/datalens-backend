@@ -17,7 +17,7 @@ def _get_classifier_llm():
     global _CLASSIFIER_LLM
     if _CLASSIFIER_LLM is None:
         _CLASSIFIER_LLM = ChatOpenAI(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             temperature=0,
             max_tokens=10,
             openai_api_key=settings.OPENAI_API_KEY,

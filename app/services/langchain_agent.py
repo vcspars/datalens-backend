@@ -21,6 +21,7 @@ from langchain.schema import HumanMessage, AIMessage
 
 from app.config import settings
 from app.services.db_knowledge import get_system_prompt
+from app.services.sql_utils import is_read_only_sql
 
 print("[LangChainAgent] Module loaded")
 
@@ -78,9 +79,25 @@ def _get_sql_db() -> SQLDatabase:
     conn_str = _build_connection_string()
     try:
         db = SQLDatabase.from_uri(conn_str, sample_rows_in_table_info=0)
+
+        _original_run = db.run
+
+        def _safe_run(command, *args, **kwargs):
+            sql_str = str(command) if command else ""
+            if not is_read_only_sql(sql_str):
+                blocked_preview = sql_str[:120].replace("\n", " ")
+                print(f"[LangChainAgent] BLOCKED non-read-only SQL: {blocked_preview}")
+                raise ValueError(
+                    "BLOCKED: Only read-only SELECT queries are permitted. "
+                    "This application never modifies the database."
+                )
+            return _original_run(command, *args, **kwargs)
+
+        db.run = _safe_run  # type: ignore[method-assign]
+
         _cached_sql_db = db
         elapsed = time.time() - t0
-        print(f"[LangChainAgent] SQLDatabase connected & cached (read-only) | {elapsed:.1f}s")
+        print(f"[LangChainAgent] SQLDatabase connected & cached (read-only enforced) | {elapsed:.1f}s")
         return db
     except Exception as e:
         msg = str(e)
@@ -755,7 +772,7 @@ async def stream_simple_chat(
     try:
         handler = StreamingCallbackHandler(token_queue)
         llm = ChatOpenAI(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             temperature=0,
             streaming=True,
             openai_api_key=settings.OPENAI_API_KEY,

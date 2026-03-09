@@ -16,6 +16,9 @@ from typing import AsyncGenerator, Optional
 _VANNA_VIEW_NAMES = [
     "VW_SalesByWarehouse",
     "VW_SalesMonthly",
+    "VW_CustomerCreditYearly",
+    "VW_CustomerPayment",
+    "VW_VendorReturnQtyMonthly",
 ]
 
 # Disable Chroma telemetry before any chromadb import
@@ -155,7 +158,7 @@ def _get_vn():
     chroma_path = _vanna_chromadb_path()
     _vn = MyVanna(config={
         "api_key": settings.OPENAI_API_KEY,
-        "model": "gpt-4o-mini",
+        "model": "gpt-4.1-mini",
         "path": chroma_path,
     })
     print(f"[VannaAgent] ChromaDB path: {chroma_path}")
@@ -248,7 +251,7 @@ async def stream_chat_with_database_vanna(
         from langchain_core.messages import HumanMessage, SystemMessage
 
         llm = ChatOpenAI(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             temperature=0,
             streaming=True,
             openai_api_key=settings.OPENAI_API_KEY,

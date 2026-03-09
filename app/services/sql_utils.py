@@ -12,6 +12,8 @@ _FORBIDDEN_KEYWORDS = [
     "CREATE", "ALTER", "DROP", "INSERT", "UPDATE", "DELETE", "TRUNCATE",
     "EXEC", "EXECUTE", "MERGE", "GRANT", "REVOKE", "BACKUP", "RESTORE",
     "BULK", "WRITETEXT", "UPDATETEXT", "READTEXT",
+    "SHUTDOWN", "DBCC", "KILL", "RECONFIGURE", "DENY",
+    "ENABLE", "DISABLE",
 ]
 _FORBIDDEN_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in _FORBIDDEN_KEYWORDS) + r")\b",
