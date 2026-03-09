@@ -255,7 +255,7 @@ async def stream_chat_with_database_vanna(
             temperature=0,
             streaming=True,
             openai_api_key=settings.OPENAI_API_KEY,
-        )
+        ) 
         system = (
             "You are a helpful data analyst. Answer the user's question based on the result data provided. "
             "If there is a markdown table, you may summarize it and/or include it in your response. "

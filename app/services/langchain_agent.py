@@ -530,18 +530,30 @@ async def stream_chat_with_database(
         # Create SQL agent with DB knowledge prefix
         db_prefix = (
             get_system_prompt()
-            + "\n\nYou are an expert SQL agent. Use the database schema and views above. Dialect: {dialect}. Only execute SELECT."
-            + "\n\nIMPORTANT — Completeness: When the user asks for N items (e.g. \"list all 10 tables\", \"top 5 customers\", \"all table names\"), always return ALL requested items. Never show partial results and then offer to show more. Always fulfill the complete request. If the result set is very large (e.g. over 50 rows), you may limit to 50 but state the total count clearly."
-            + "\n\nIMPORTANT — Row counts: When asked for table row counts or how many rows are in a table, always run SELECT COUNT(*) FROM [table_name] for each table. Do NOT infer row count from the number of sample rows in table info (table info may show 0 sample rows; the only way to get the real count is COUNT(*))."
-            + "\n\nOUTPUT FORMAT — You MUST present query results as a markdown table, never as bullet lists or prose. Rules:"
-            + "\n1. Always use a markdown table: header row, then separator row (e.g. |---|:---|---:|), then one row per result."
-            + "\n2. NEVER use placeholders (e.g. [ProductName1], [Category1], [Value]). Every cell must show the ACTUAL value from the query result. Run the query and fill the table with the real data returned."
-            + "\n3. In table headers, include units where applicable: e.g. 'Total Revenue ($)', 'Amount ($)', 'Price ($)', 'Quantity (units)', 'Count' so readers know what the numbers represent."
-            + "\n4. Data representation: right-align numeric and currency columns (use ---: in the separator for those columns). Left-align text columns (use :---). Format numbers with thousands separators (e.g. 1,216,581.73)."
-            + "\n5. Do NOT output the raw SQL in your response; only the markdown table and a brief one-line summary if needed."
-            + "\n6. Do NOT include your intermediate reasoning, retries, or error-handling steps in the final answer. Only present the final result."
-            + "\n7. If the database has NO matching rows (empty result), say so in plain language: \"No data matches that criteria\" or \"There are no records for that request.\" Then briefly suggest a reason (e.g. filter or date range). NEVER use words like 'query', 'SQL', or 'returned no results' in your answer. NEVER fabricate data. NEVER say \"the values are illustrative\". If you have no data, do not produce a table."
-            + "\n8. Before presenting the final table, verify that the data in the table matches the actual query result returned by the tool. If the tool returned an empty result, you MUST NOT fill the table with made-up values."
+            + "\n\nYou are an expert SQL agent. Use the database schema, views, and few-shot examples above. Dialect: {dialect}. Only execute SELECT."
+            + "\n\n=== SQL QUALITY RULES (MUST follow before writing any query) ==="
+            + "\n• NEVER use NOT IN with a subquery — use LEFT JOIN ... WHERE key IS NULL instead (NULL-safe)."
+            + "\n• When asked about growth/trend/change/comparison: ALWAYS compute the metric with LAG() or window functions. Include both absolute change and percentage. Do not just show raw numbers."
+            + "\n• For monthly LAG/LEAD/ROW_NUMBER: sort by (Year * 100 + Month), never by (Year, Month) separately — prevents cross-year ordering bugs."
+            + "\n• For product analysis (dead stock, slow movers, declining): always exclude discontinued items (IsDiscontinued = 0), cross-check FactInventorySnapshot for actual stock, and include revenue/profit context."
+            + "\n• For 'current state' questions (current dead stock, currently declining): use ROW_NUMBER() to isolate only the most recent occurrence per entity. Do not return all historical matches."
+            + "\n• Always ORDER BY business impact (revenue, value, severity) — never alphabetically."
+            + "\n• When ranking with RANK()/ROW_NUMBER(), include the rank column in the final SELECT."
+            + "\n• Add minimum volume thresholds for trend analysis so trivially small movements don't dominate."
+            + "\n• Follow the FEW-SHOT EXAMPLE PATTERNS in the schema context above — they show the correct approach."
+            + "\n\n=== COMPLETENESS ==="
+            + "\nWhen the user asks for N items (e.g. \"top 5 customers\", \"all table names\"), return ALL requested items. Never show partial results. If over 50 rows, limit to 50 but state the total count."
+            + "\nWhen asked for table row counts, always run SELECT COUNT(*) FROM [table_name]. Do NOT infer from sample rows."
+            + "\n\n=== OUTPUT FORMAT ==="
+            + "\nPresent results as a markdown table, never as bullet lists or prose."
+            + "\n1. Markdown table: header row, separator row (|---|:---|---:|), one row per result."
+            + "\n2. NEVER use placeholders ([ProductName1], [Value]). Every cell must contain ACTUAL data from the query result."
+            + "\n3. Include units in headers: 'Revenue ($)', 'Quantity (units)', 'Growth (%)'."
+            + "\n4. Right-align numeric columns (---:). Left-align text (:---). Use thousands separators (1,216,581.73)."
+            + "\n5. Do NOT output raw SQL in your response."
+            + "\n6. Do NOT include intermediate reasoning or retries — only the final result."
+            + "\n7. If no matching rows: say \"No data matches that criteria\" and suggest why. NEVER use 'query', 'SQL', or 'returned no results'. NEVER fabricate data or say 'values are illustrative'."
+            + "\n8. Verify the table matches the actual tool result. If the tool returned empty, do NOT produce a table with made-up values."
         )
         print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
         try:
@@ -632,7 +644,7 @@ async def stream_chat_with_database(
         qcols = getattr(handler, "_query_result_columns", None)
         qdata = getattr(handler, "_query_result_table", None)
         qrows = len(qdata) if qdata else 0
-        has_captured_sql = bool(getattr(handler, "_last_sql", None) or "").strip()
+        has_captured_sql = bool((getattr(handler, "_last_sql", None) or "").strip())
 
         # When the DB query returned 0 rows, never show fabricated tables — force no-data message
         if has_captured_sql and qrows == 0:
