@@ -659,7 +659,7 @@ VW_CustomerCreditYearly  — Yearly credit totals per customer.
 VW_CustomerPayment  — Customer payment summary.
   Columns: CustomerID, PaymentReceived, AppliedAmount, PendingAmount
   Base tables: FactCustomerPayment + DimCustomer (CustomerKey)
-
+ 
 VW_VendorReturnQtyMonthly  — Monthly vendor return quantities.
   Columns: VendorID, Year, MonthName, ReturnQty
   Base tables: FactVendorInvoiceDetail + DimVendors (VendorKey) + DimDate (DateKey)
@@ -698,6 +698,8 @@ For monthly/quarterly/yearly aggregated sales:
 - DimWarehouse: WHERE DW.IsActive = 1 when listing/counting active warehouses.
   For historical sales analysis, include all warehouses.
 - DimProduct: WHERE DP.IsDiscontinued = 0 for product analysis (unless user asks about discontinued).
+  NOTE: DimProduct.Status values in this database are not reliably populated.
+  Do NOT filter on DP.Status = 'Active' — this returns 0 rows. Use IsDiscontinued = 0 only.
 - FactVendorPayments: WHERE FVP.VoidDateKey IS NULL to exclude voided payments.
 - SalesType: Actual values are 'SO0' (Sales Orders) and 'CS0' (Credit/Service).
   Do NOT filter on SalesType by default. Only filter when user explicitly asks to separate types.
@@ -926,7 +928,6 @@ LEFT JOIN RecentSales RS ON FIS.ProductKey = RS.ProductKey
 WHERE RS.ProductKey IS NULL
   AND FIS.QuantityOnHand > 0
   AND DP.IsDiscontinued = 0
-  AND DP.Status = 'Active'
 GROUP BY DP.ItemID, DP.ItemName, DP.Category, DP.Brand
 ORDER BY TotalInventoryValue DESC
 
@@ -948,6 +949,59 @@ JOIN DimDate DD ON FSI.DateKey = DD.DateKey
 WHERE DD.Year BETWEEN YEAR(GETDATE())-3 AND YEAR(GETDATE())
 GROUP BY DD.Year
 ORDER BY DD.Year
+
+--- Example 13: Customer retention by region (correct — two-year cohort comparison) ---
+Question: "Which regions have the highest customer retention over the past 2 years?"
+WITH Year1 AS (
+    SELECT DISTINCT FSI.CustomerKey, DC.Region
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+    WHERE DD.Year = YEAR(GETDATE())-2
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND DC.Region IS NOT NULL
+),
+Year2 AS (
+    SELECT DISTINCT FSI.CustomerKey, DC.Region
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+    WHERE DD.Year = YEAR(GETDATE())-1
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND DC.Region IS NOT NULL
+)
+SELECT
+    Y1.Region,
+    COUNT(DISTINCT Y1.CustomerKey) AS [Year1_Customers],
+    COUNT(DISTINCT Y2.CustomerKey) AS [Year2_Customers],
+    COUNT(DISTINCT CASE WHEN Y2.CustomerKey IS NOT NULL THEN Y1.CustomerKey END) AS [Retained],
+    ROUND(100.0 * COUNT(DISTINCT CASE WHEN Y2.CustomerKey IS NOT NULL
+        THEN Y1.CustomerKey END) / NULLIF(COUNT(DISTINCT Y1.CustomerKey), 0), 2) AS [RetentionRate (%)]
+FROM Year1 Y1
+LEFT JOIN Year2 Y2 ON Y1.CustomerKey = Y2.CustomerKey AND Y1.Region = Y2.Region
+GROUP BY Y1.Region
+ORDER BY [RetentionRate (%)] DESC
+
+--- Example 14: Monthly sales comparison by region ---
+Question: "Compare sales performance between NORTHEAST and WESTERN regions by month over past 2 years"
+SELECT
+    DC.Region,
+    DD.Year,
+    DD.Month,
+    DD.MonthName,
+    SUM(FSI.MerchandiseAmount)        AS [Revenue ($)],
+    COUNT(DISTINCT FSI.SalesInvoiceNo) AS [InvoiceCount],
+    COUNT(DISTINCT FSI.CustomerKey)    AS [ActiveCustomers]
+FROM FactSalesInvoice FSI
+JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+WHERE DD.Year BETWEEN YEAR(GETDATE())-2 AND YEAR(GETDATE())-1
+  AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+  AND DC.Region IS NOT NULL
+GROUP BY DC.Region, DD.Year, DD.Month, DD.MonthName
+ORDER BY DC.Region, DD.Year * 100 + DD.Month
+-- NOTE: If user specifies regions (e.g. NORTHEAST, WESTERN), add:
+-- AND DC.Region IN ('NORTHEAST', 'WESTERN')
 """
 
 
