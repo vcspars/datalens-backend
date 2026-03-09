@@ -16,13 +16,88 @@ from typing import AsyncGenerator, Optional
 from langchain_openai import ChatOpenAI
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import create_sql_agent
-from langchain.callbacks.base import BaseCallbackHandler
-from langchain.schema import HumanMessage, AIMessage
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.messages import HumanMessage, AIMessage
 
 from app.config import settings
 from app.services.db_knowledge import get_system_prompt
 
 print("[LangChainAgent] Module loaded")
+
+
+def _create_chat_llm(*, streaming: bool = False, callbacks: list | None = None):
+    """Create the chat LLM based on USE_GEMINI setting.
+
+    When USE_GEMINI=true and langchain-google-genai is installed → Gemini 2.5 Pro.
+    Otherwise → GPT-4.1 via langchain-openai.
+    Note: langchain-google-genai is not in requirements.txt because it requires langchain-core>=1.2,
+    which conflicts with the SQL agent stack (langchain-core 0.3.x). Set USE_GEMINI=False for a conflict-free install.
+    """
+    if settings.USE_GEMINI and settings.GEMINI_API_KEY:
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            kwargs: dict = dict(
+                model="gemini-2.5-pro",
+                temperature=0,
+                google_api_key=settings.GEMINI_API_KEY,
+            )
+            if streaming and callbacks:
+                kwargs["streaming"] = True
+                kwargs["callbacks"] = callbacks
+            print("[LangChainAgent] Using Gemini 2.5 Pro")
+            return ChatGoogleGenerativeAI(**kwargs)
+        except ImportError as e:
+            print(f"[LangChainAgent] USE_GEMINI=True but langchain_google_genai not available: {e}. Falling back to GPT.")
+        except Exception as e:
+            print(f"[LangChainAgent] Gemini init failed: {e}. Falling back to GPT.")
+
+    kwargs = dict(
+        model="gpt-4.1",
+        temperature=0,
+        openai_api_key=settings.OPENAI_API_KEY,
+    )
+    if streaming and callbacks:
+        kwargs["streaming"] = True
+        kwargs["callbacks"] = callbacks
+    else:
+        kwargs["streaming"] = False
+    print("[LangChainAgent] Using GPT-4.1")
+    return ChatOpenAI(**kwargs)
+
+
+def _create_mini_llm(*, streaming: bool = True, callbacks: list | None = None):
+    """Create a lighter LLM for simple chat / report generation.
+
+    When USE_GEMINI=true and langchain-google-genai is installed → Gemini 2.5 Pro.
+    Otherwise → GPT-4.1-mini.
+    """
+    if settings.USE_GEMINI and settings.GEMINI_API_KEY:
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            kwargs: dict = dict(
+                model="gemini-2.5-pro",
+                temperature=0,
+                google_api_key=settings.GEMINI_API_KEY,
+            )
+            if streaming and callbacks:
+                kwargs["streaming"] = True
+                kwargs["callbacks"] = callbacks
+            return ChatGoogleGenerativeAI(**kwargs)
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+    kwargs = dict(
+        model="gpt-4.1-mini",
+        temperature=0,
+        openai_api_key=settings.OPENAI_API_KEY,
+    )
+    if streaming:
+        kwargs["streaming"] = True
+    if callbacks:
+        kwargs["callbacks"] = callbacks
+    return ChatOpenAI(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -77,7 +152,7 @@ def _get_sql_db() -> SQLDatabase:
     print("[LangChainAgent] Creating SQLDatabase connection (read-only, first time — will be cached)...")
     conn_str = _build_connection_string()
     try:
-        db = SQLDatabase.from_uri(conn_str, sample_rows_in_table_info=0)
+        db = SQLDatabase.from_uri(conn_str, sample_rows_in_table_info=3)
         _cached_sql_db = db
         elapsed = time.time() - t0
         print(f"[LangChainAgent] SQLDatabase connected & cached (read-only) | {elapsed:.1f}s")
@@ -513,12 +588,7 @@ async def stream_chat_with_database(
         token_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
         handler = StreamingCallbackHandler(token_queue)
 
-        llm = ChatOpenAI(
-            model="gpt-4.1-mini",
-            temperature=0,
-            streaming=False,
-            openai_api_key=settings.OPENAI_API_KEY,
-        )
+        llm = _create_chat_llm(streaming=False)
 
         # Build context prefix from history (larger assistant context for SQL path)
         context_prefix = _build_history_prefix(chat_history, max_assistant_chars=1500)
@@ -530,33 +600,26 @@ async def stream_chat_with_database(
         # Create SQL agent with DB knowledge prefix
         db_prefix = (
             get_system_prompt()
-            + "\n\nYou are an expert SQL agent. Use the database schema, views, and few-shot examples above. Dialect: {dialect}. Only execute SELECT."
-            + "\n\n=== SQL QUALITY RULES (MUST follow before writing any query) ==="
-            + "\n• NEVER use NOT IN with a subquery — use LEFT JOIN ... WHERE key IS NULL instead (NULL-safe)."
-            + "\n• When asked about growth/trend/change/comparison: ALWAYS compute the metric with LAG() or window functions. Include both absolute change and percentage. Do not just show raw numbers."
-            + "\n• For monthly LAG/LEAD/ROW_NUMBER: sort by (Year * 100 + Month), never by (Year, Month) separately — prevents cross-year ordering bugs."
-            + "\n• For product analysis (dead stock, slow movers, declining): always exclude discontinued items (IsDiscontinued = 0), cross-check FactInventorySnapshot for actual stock, and include revenue/profit context."
-            + "\n• For 'current state' questions (current dead stock, currently declining): use ROW_NUMBER() to isolate only the most recent occurrence per entity. Do not return all historical matches."
-            + "\n• Always ORDER BY business impact (revenue, value, severity) — never alphabetically."
-            + "\n• When ranking with RANK()/ROW_NUMBER(), include the rank column in the final SELECT."
-            + "\n• Add minimum volume thresholds for trend analysis so trivially small movements don't dominate."
-            + "\n• Follow the FEW-SHOT EXAMPLE PATTERNS in the schema context above — they show the correct approach."
+            + "\n\nYou are an expert SQL agent for the StarScemaSPARS star schema database. "
+            + "Dialect: {dialect}. Only execute SELECT queries — never INSERT, UPDATE, DELETE, DROP, or DDL."
+
             + "\n\n=== COMPLETENESS (CRITICAL — never truncate) ==="
-            + "\nALWAYS present the FULL result the user asked for. NEVER show partial data for one entity and then say 'similar data is available for others' or 'limited here for brevity' or 'would you like to see the rest?'."
-            + "\nFor example If the user asks for 'top 20 customers', you MUST show ALL 20 customers with ALL their data rows — not just 1 or 2 examples."
-            + "\nIf the query returns data, put ALL of it in the markdown table. Do not summarize, abbreviate, or skip rows to save space."
-            + "\nIf the result set is genuinely very large (over 50 rows), show all rows up to 50 and state the total count. Never cut off below that threshold."
-            + "\nWhen asked for table row counts, always run SELECT COUNT(*) FROM [table_name]. Do NOT infer from sample rows."
+            + "\n• ALWAYS present the FULL result. NEVER say 'similar data available for others' or 'limited here for brevity'."
+            + "\n• If user asks for top 20, show ALL 20 rows — never just 1 or 2 examples."
+            + "\n• If result set > 50 rows, show all rows up to 50 and state the total count."
+            + "\n• For table row counts: always run SELECT COUNT(*) FROM [table_name]. Do NOT infer from samples."
+
             + "\n\n=== OUTPUT FORMAT ==="
-            + "\nPresent results as a markdown table, never as bullet lists or prose."
-            + "\n1. Markdown table: header row, separator row (|---|:---|---:|), one row per result."
-            + "\n2. NEVER use placeholders ([ProductName1], [Value]). Every cell must contain ACTUAL data from the query result."
-            + "\n3. Include units in headers: 'Revenue ($)', 'Quantity (units)', 'Growth (%)'."
-            + "\n4. Right-align numeric columns (---:). Left-align text (:---). Use thousands separators (1,216,581.73)."
-            + "\n5. Do NOT output raw SQL in your response."
-            + "\n6. Do NOT include intermediate reasoning or retries — only the final result."
-            + "\n7. If no matching rows: say \"No data matches that criteria\" and suggest why. NEVER use 'query', 'SQL', or 'returned no results'. NEVER fabricate data or say 'values are illustrative'."
-            + "\n8. Verify the table matches the actual tool result. If the tool returned empty, do NOT produce a table with made-up values."
+            + "\n• Present results as a markdown table ONLY — never bullet lists or prose."
+            + "\n• Format: header row → separator row (|:---|---:|) → one data row per result."
+            + "\n• NEVER use placeholders like [ProductName1] or [Value]. Every cell must be ACTUAL data."
+            + "\n• Include units in column headers: 'Revenue ($)', 'Quantity (units)', 'Growth (%)'."
+            + "\n• Right-align numeric columns (---:). Left-align text (:---). Use thousands separators: 1,216,581.73."
+            + "\n• Do NOT output raw SQL anywhere in your response."
+            + "\n• Do NOT show intermediate reasoning, retries, or tool calls — final result only."
+            + "\n• If no matching rows: say exactly 'No data matches that criteria' and briefly suggest why."
+            + "\n• NEVER use the words 'query', 'SQL', or 'returned no results' in your response."
+            + "\n• NEVER fabricate data, use illustrative values, or produce a table when the tool returned empty."
         )
         print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
         try:
@@ -569,7 +632,7 @@ async def stream_chat_with_database(
                 prefix=db_prefix,
                 max_iterations=30,
                 max_execution_time=240.0,
-                top_k=50,
+                top_k=5,
             )
         except TypeError:
             # top_k or prefix may not be supported in some versions
@@ -583,6 +646,7 @@ async def stream_chat_with_database(
                     prefix=db_prefix,
                     max_iterations=30,
                     max_execution_time=240.0,
+                    top_k=5,
                 )
             except TypeError:
                 print("[LangChainAgent] prefix not supported, injecting DB context into question")
@@ -595,6 +659,7 @@ async def stream_chat_with_database(
                     handle_parsing_errors=True,
                     max_iterations=30,
                     max_execution_time=240.0,
+                    top_k=5,
                 )
         print("[LangChainAgent] SQL agent created, invoking...")
 
@@ -653,8 +718,7 @@ async def stream_chat_with_database(
         if has_captured_sql and qrows == 0:
             print("[LangChainAgent] Query ran but returned 0 rows; forcing no-data message (no placeholders)")
             full_response = (
-                "No data matches that criteria. This may be due to filters (e.g. date range or region) not matching any records. "
-                "Try adjusting your request or filters."
+                "No data matches that criteria. Please try again or adjust the query"
             )
         else:
             # Post-process: detect fabricated data (placeholders or illustrative phrasing) and replace
@@ -674,8 +738,7 @@ async def stream_chat_with_database(
                     print(f"[LangChainAgent] Replaced with real captured result: {len(qdata)} rows, {len(qcols)} cols")
                 else:
                     full_response = (
-                        "No data matches that criteria. This may be due to filters (e.g. date range or region) not matching any records. "
-                        "Try adjusting your request or filters."
+                        "No data matches that criteria. Please try again or adjust the query"
                     )
                     print("[LangChainAgent] Replaced with honest no-results message")
 
@@ -769,13 +832,7 @@ async def stream_simple_chat(
 
     try:
         handler = StreamingCallbackHandler(token_queue)
-        llm = ChatOpenAI(
-            model="gpt-4.1-mini",
-            temperature=0,
-            streaming=True,
-            openai_api_key=settings.OPENAI_API_KEY,
-            callbacks=[handler],
-        )
+        llm = _create_mini_llm(streaming=True, callbacks=[handler])
         schema_context = get_system_prompt()
         history_prefix = _build_history_prefix(chat_history)
         full_prompt = (
@@ -871,12 +928,7 @@ async def stream_generate_report(
     print(f"[LangChainAgent] stream_generate_report | template={template} | prompt='{prompt[:100]}'")
 
     try:
-        llm = ChatOpenAI(
-            model="gpt-4.1-mini",
-            temperature=0,
-            streaming=True,
-            openai_api_key=settings.OPENAI_API_KEY,
-        )
+        llm = _create_mini_llm(streaming=True)
 
         if custom_system_prompt:
             system_prompt = custom_system_prompt

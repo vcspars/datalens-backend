@@ -21,6 +21,10 @@ class Settings(BaseSettings):
     # Chat with Database: True = Vanna AI, False = LangChain
     USE_VANNA_AI: bool = False
 
+    # Gemini: True = use Gemini 2.5 Pro for chat SQL agent, False = use GPT
+    USE_GEMINI: bool = False
+    GEMINI_API_KEY: str = ""
+
     # JWT settings
     SECRET_KEY: str = "your-secret-key-change-this-in-production-use-env-variable"
     ALGORITHM: str = "HS256"

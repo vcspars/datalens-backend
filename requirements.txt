@@ -15,10 +15,12 @@ google-auth==2.35.0
 pandas>=2.0.0
 openpyxl>=3.1.0
 
-# LangChain + SQL Server for chat with database
-langchain>=0.3.0
+# LangChain + SQL Server for chat with database (use 0.3.x stack to avoid conflicts)
+# Do NOT add langchain-google-genai here: it requires langchain-core>=1.2, which conflicts with create_sql_agent (requires 0.3.x).
+langchain-core>=0.3.0,<0.4
+langchain>=0.3.0,<0.4
+langchain-community>=0.3.0,<0.4
 langchain-openai>=0.2.0
-langchain-community>=0.3.0
 pyodbc>=5.0.0
 sqlalchemy>=2.0.0
 markdown
