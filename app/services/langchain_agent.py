@@ -53,10 +53,11 @@ def _build_connection_string() -> str:
         "Encrypt=no;"
     )
     conn = f"mssql+pyodbc:///?odbc_connect={quote_plus(odbc_str)}"
+    pwd_len = len(settings.SQL_PASSWORD) if settings.SQL_PASSWORD else 0
     print(
         f"[LangChainAgent] Connection string built | "
         f"server={settings.SQL_SERVER} | db={settings.SQL_DATABASE} | "
-        f"driver={settings.SQL_DRIVER}"
+        f"driver={settings.SQL_DRIVER} | SQL_PASSWORD length={pwd_len}"
     )
     return conn
 
