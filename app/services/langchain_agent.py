@@ -320,7 +320,11 @@ def _parse_sql_tool_result_to_table(output: str) -> Optional[tuple[list[str], li
     if not s.startswith("[") or "(" not in s:
         return None
     # LangChain often returns repr of list of tuples with Decimal(...) — literal_eval can't parse Decimal
+   # LangChain often returns repr of list of tuples with Decimal(...) and datetime objects
+    # — literal_eval can't parse these, so strip them first
     s = re.sub(r"Decimal\s*\(\s*['\"]?([^'\"]+)['\"]?\s*\)", r"\1", s)
+    s = re.sub(r"datetime\.datetime\s*\(([^)]+)\)", r'"\1"', s)
+    s = re.sub(r"datetime\.date\s*\((\d+),\s*(\d+),\s*(\d+)\)", r'"\1-\2-\3"', s)
     try:
         import ast
         rows = ast.literal_eval(s)
