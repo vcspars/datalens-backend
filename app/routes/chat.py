@@ -285,8 +285,10 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
 
     prompt = (
         "Using the Data Context below (table list and row counts), write a one-page summary for top management. "
-        "Describe at a high level what business data the organization has: e.g. customers, products, sales, purchases, "
-        "inventory, vendors — and the scale of that data (use the row counts from the context). "
+        "Describe at a high level what business data the organization has and what it enables the business to do. "
+        "Explicitly explain that the data model is designed to support ALL of the following areas, and mention each one clearly: "
+        "Sales Analysis; Purchase Analysis; Inventory Monitoring; Profitability Reporting; "
+        "Customer & Vendor Analytics; Customer Returns & Payments; Vendor Returns & Payments; Back Order Information. "
         "Use markdown (##, ###). Keep language business-focused for leadership; avoid technical terms like schema or column names. "
         "Use only the numbers from the Data Context; do not invent values. "
         "Do NOT mention data gaps, missing data, or that any area has no records — we do not have that information."
