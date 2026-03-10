@@ -752,6 +752,14 @@ AP8. Table name accuracy: FactVendorPayments (with 's'), FactVendorInvoices (wit
 - Do NOT add redundant WHERE clauses like WHERE DD.FullDate <= GETDATE() — all historical data already qualifies.
 
 --- GENERAL RULES ---
+0. ROW LIMITS — ALWAYS ADD TOP N:
+   - Every SELECT against a fact table MUST include TOP N.
+   - Default: TOP 50 unless user asks for a different number.
+   - User says "top 10" → TOP 10. User says "show all" → TOP 200 maximum.
+   - Aggregation queries (COUNT, SUM, AVG, GROUP BY) do NOT need TOP — they already reduce rows.
+   - NEVER run SELECT * or SELECT [columns] FROM FactSalesDetail without TOP — it has 3.4M rows.
+   - NEVER run SELECT * or SELECT [columns] FROM FactSalesInvoice without TOP — it has 1M+ rows.
+
 1. PREFER VIEWS AND HEADER TABLES FOR SPEED:
    - For monthly/quarterly/yearly sales totals, revenue, invoice counts → use VW_SalesMonthly (pre-aggregated, very fast).
    - For warehouse-level sales → use VW_SalesByWarehouse.

@@ -603,11 +603,17 @@ async def stream_chat_with_database(
             + "\n\nYou are an expert SQL agent for the StarScemaSPARS star schema database. "
             + "Dialect: {dialect}. Only execute SELECT queries — never INSERT, UPDATE, DELETE, DROP, or DDL."
 
+            + "\n\n=== ROW LIMITS (CRITICAL) ==="
+            + "\n• ALWAYS include SELECT TOP N in your query. Default TOP 50 unless user specifies otherwise."
+            + "\n• If user says 'top 10', use TOP 10. If user says 'all', use TOP 200 maximum."
+            + "\n• NEVER run a query without a TOP clause on fact tables — they contain millions of rows."
+            + "\n• Exception: COUNT(*), SUM(), AVG() aggregation queries do not need TOP."
+            + "\n• If user asks for row counts, run SELECT COUNT(*) — do NOT select all rows."
+
             + "\n\n=== COMPLETENESS (CRITICAL — never truncate) ==="
-            + "\n• ALWAYS present the FULL result. NEVER say 'similar data available for others' or 'limited here for brevity'."
-            + "\n• If user asks for top 20, show ALL 20 rows — never just 1 or 2 examples."
-            + "\n• If result set > 50 rows, show all rows up to 50 and state the total count."
-            + "\n• For table row counts: always run SELECT COUNT(*) FROM [table_name]. Do NOT infer from samples."
+            + "\n• Present the FULL result up to the TOP N you queried. NEVER say 'similar data available for others'."
+            + "\n• If result set > 50 rows, show first 50 and state the total count."
+            + "\n• Do NOT infer row counts from samples — always run SELECT COUNT(*)."
 
             + "\n\n=== OUTPUT FORMAT ==="
             + "\n• Present results as a markdown table ONLY — never bullet lists or prose."
@@ -630,9 +636,9 @@ async def stream_chat_with_database(
                 verbose=True,
                 handle_parsing_errors=True,
                 prefix=db_prefix,
-                max_iterations=30,
+                max_iterations=16,
                 max_execution_time=240.0,
-                top_k=5,
+                top_k=30,
             )
         except TypeError:
             # top_k or prefix may not be supported in some versions
@@ -644,9 +650,9 @@ async def stream_chat_with_database(
                     verbose=True,
                     handle_parsing_errors=True,
                     prefix=db_prefix,
-                    max_iterations=30,
+                    max_iterations=16,
                     max_execution_time=240.0,
-                    top_k=5,
+                    top_k=30,
                 )
             except TypeError:
                 print("[LangChainAgent] prefix not supported, injecting DB context into question")
@@ -657,9 +663,9 @@ async def stream_chat_with_database(
                     agent_type="openai-tools",
                     verbose=True,
                     handle_parsing_errors=True,
-                    max_iterations=30,
+                    max_iterations=16,
                     max_execution_time=240.0,
-                    top_k=5,
+                    top_k=30,
                 )
         print("[LangChainAgent] SQL agent created, invoking...")
 
