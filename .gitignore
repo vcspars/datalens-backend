@@ -103,7 +103,7 @@ backend/storage/
 *.xls
 *.pdf
 !*.example.*
-
+*.pyc
 # Temporary files
 *.tmp
 *.temp

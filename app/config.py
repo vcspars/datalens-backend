@@ -37,9 +37,11 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:3000", 
         "http://localhost:8080",
-        "http://localhost:8081"
+        "http://localhost:8081",
+        "http://122.129.80.228:8080",
+        "http://122.129.80.228:4173"
     ]
-    
+     
     class Config:
         env_file = ".env"
         case_sensitive = True

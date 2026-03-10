@@ -155,6 +155,7 @@ def _get_sql_db() -> SQLDatabase:
         db = SQLDatabase.from_uri(conn_str, sample_rows_in_table_info=3)
         _cached_sql_db = db
         elapsed = time.time() - t0
+        # print("=======================openai api key : ", settings.OPENAI_API_KEY)
         print(f"[LangChainAgent] SQLDatabase connected & cached (read-only) | {elapsed:.1f}s")
         return db
     except Exception as e:
