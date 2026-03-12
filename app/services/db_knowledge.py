@@ -297,10 +297,10 @@ FactSalesDetail  — Invoice line-level sales details.
   UnitPrice            (Price charged per unit)
   UnitCost             (Cost per unit at time of sale)
   DiscountAmount       (Discount on this line)
-  SalesAmount          (Net sales amount)
+  SalesAmount          (Gross sales amount)
   TaxAmount            (Tax allocated to this line)
   ShippingCharges      (Shipping fees allocated to this line)
-  ProfitAmount         (Net profit = SalesAmount - (UnitCost * Quantity))
+  ProfitAmount         (Gross profit = SalesAmount - (UnitCost * Quantity))
 
 FactPurchaseOrder  — Purchase order header metrics.
   PurchaseOrderKey     (Surrogate key, PK)
