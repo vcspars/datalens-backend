@@ -139,13 +139,43 @@ def _build_connection_string() -> str:
 
 _cached_sql_db: Optional[SQLDatabase] = None
 
+_STALE_CONNECTION_MARKERS = (
+    "08S01", "10054", "10053", "Communication link failure",
+    "forcibly closed", "connection was lost", "connection is broken",
+    "TCP Provider", "server is not found",
+)
+
+
+def _is_stale_connection_error(exc: Exception) -> bool:
+    """Return True if the exception looks like a stale / dropped TCP connection."""
+    msg = str(exc)
+    return any(marker in msg for marker in _STALE_CONNECTION_MARKERS)
+
+
+def _invalidate_cached_sql_db() -> None:
+    """Clear the cached SQLDatabase so the next call creates a fresh connection."""
+    global _cached_sql_db
+    _cached_sql_db = None
+    print("[LangChainAgent] Cached SQLDatabase invalidated")
+
 
 def _get_sql_db() -> SQLDatabase:
-    """Return a cached LangChain SQLDatabase instance. Reflects tables once; reused thereafter."""
+    """Return a cached LangChain SQLDatabase instance. Validates the cached
+    connection with a lightweight SELECT 1; rebuilds on stale-connection errors."""
     global _cached_sql_db
+
     if _cached_sql_db is not None:
-        print("[LangChainAgent] Reusing cached SQLDatabase connection")
-        return _cached_sql_db
+        try:
+            _cached_sql_db.run("SELECT 1")
+            print("[LangChainAgent] Reusing cached SQLDatabase connection (validated)")
+            return _cached_sql_db
+        except Exception as e:
+            if _is_stale_connection_error(e):
+                print(f"[LangChainAgent] Cached connection stale ({e}), will reconnect")
+                _invalidate_cached_sql_db()
+            else:
+                print(f"[LangChainAgent] Cached connection check failed ({e}), will reconnect")
+                _invalidate_cached_sql_db()
 
     import time
     t0 = time.time()
@@ -155,7 +185,6 @@ def _get_sql_db() -> SQLDatabase:
         db = SQLDatabase.from_uri(conn_str, sample_rows_in_table_info=3)
         _cached_sql_db = db
         elapsed = time.time() - t0
-        # print("=======================openai api key : ", settings.OPENAI_API_KEY)
         print(f"[LangChainAgent] SQLDatabase connected & cached (read-only) | {elapsed:.1f}s")
         return db
     except Exception as e:
@@ -177,13 +206,30 @@ def _get_sql_db() -> SQLDatabase:
         raise
 
 
+def _get_sql_db_with_retry(max_retries: int = 2) -> SQLDatabase:
+    """Call _get_sql_db() with automatic retry on stale-connection errors.
+    Retries up to *max_retries* times (total attempts = max_retries + 1)."""
+    last_exc: Optional[Exception] = None
+    for attempt in range(max_retries + 1):
+        try:
+            return _get_sql_db()
+        except Exception as e:
+            last_exc = e
+            if _is_stale_connection_error(e) and attempt < max_retries:
+                print(f"[LangChainAgent] Stale connection on attempt {attempt + 1}, retrying...")
+                _invalidate_cached_sql_db()
+                continue
+            raise
+    raise last_exc  # type: ignore[misc]
+
+
 def get_table_row_counts() -> str:
     """
     Run read-only SELECT COUNT(*) for each table and return a text block for use as context.
     Used so the summary LLM reports actual row counts instead of guessing (e.g. 3).
     """
     try:
-        db = _get_sql_db()
+        db = _get_sql_db_with_retry(max_retries=2)
         tables = db.get_usable_table_names()
         if not tables:
             return ""
@@ -586,8 +632,15 @@ async def stream_chat_with_database(
     print(f"[LangChainAgent] stream_chat_with_database called | question='{question[:100]}' | history_len={len(chat_history)}")
 
     try:
-        # Build SQL DB connection
-        sql_db = _get_sql_db()
+        # Build SQL DB connection (with retry for stale TCP connections)
+        try:
+            sql_db = _get_sql_db_with_retry(max_retries=2)
+        except Exception as conn_err:
+            if _is_stale_connection_error(conn_err):
+                print(f"[LangChainAgent] All connection retries exhausted: {conn_err}")
+                yield f"data: {json.dumps({'type': 'error', 'content': 'The database connection is temporarily unavailable. Please try again in a moment.'})}\n\n"
+                return
+            raise
 
         # Callback handler — only used for SQL capture & keepalive, NOT for token streaming
         token_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
@@ -802,7 +855,12 @@ async def stream_chat_with_database(
         print(f"[LangChainAgent] EXCEPTION in stream_chat_with_database: {e}")
         import traceback
         traceback.print_exc()
-        error_event = json.dumps({"type": "error", "content": str(e)})
+        if _is_stale_connection_error(e):
+            _invalidate_cached_sql_db()
+            user_msg = "The database connection was interrupted. Please try your question again."
+        else:
+            user_msg = str(e)
+        error_event = json.dumps({"type": "error", "content": user_msg})
         yield f"data: {error_event}\n\n"
 
 
@@ -949,7 +1007,13 @@ async def stream_generate_report(
                 "Use the provided data context and generate a well-structured, detailed markdown report. "
                 "Include sections like Executive Summary, Key Findings, Analysis, and Recommendations. "
                 "Format all content as clean markdown. Do NOT wrap the output in code fences. "
-                "Do NOT end with phrases like 'If you require further detailed analysis or specific data visualizations, please let me know' or similar open-ended offers to the reader."
+                "Do NOT end with phrases like 'If you require further detailed analysis or specific data visualizations, please let me know' or similar open-ended offers to the reader.\n\n"
+                "CRITICAL RULES:\n"
+                "- NEVER use placeholders like [placeholder], [value], [column name], [X], [Y], or ANY bracket-enclosed placeholder text anywhere in the report, including inside tables.\n"
+                "- Every cell in every table MUST contain actual data values from the provided data context. If a specific value is not available, write 'N/A' — never a placeholder.\n"
+                "- If a mathematical calculation is needed (totals, averages, percentages, growth rates, differences, etc.), compute it using the data provided. Never leave a calculated field as a placeholder or say 'to be calculated'.\n"
+                "- All numerical values in tables and text must be real figures derived from the data context.\n"
+                "- Do NOT leave ANY field, bullet point, or table cell with placeholder or template text."
             )
 
         context_block = f"Data Context:\n{items_context}\n\n" if items_context.strip() else ""

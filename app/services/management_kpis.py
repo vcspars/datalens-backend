@@ -140,9 +140,9 @@ def fetch_management_kpis_sync() -> str:
     Run all management KPI queries in parallel and return a single text block for use as items_context.
     Uses the shared LangChain SQLDatabase (read-only). Safe to call from a thread (e.g. run_in_executor).
     """
-    from app.services.langchain_agent import _get_sql_db
+    from app.services.langchain_agent import _get_sql_db_with_retry
 
-    db = _get_sql_db()
+    db = _get_sql_db_with_retry(max_retries=2)
     results: dict[str, str] = {}
     executor = _get_executor()
     future_to_name = {executor.submit(_run_one_kpi, db, name, sql): name for name, sql in KPI_QUERIES}
