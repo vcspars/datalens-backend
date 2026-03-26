@@ -217,6 +217,46 @@ BASE_CSS = """
     font-weight: 600;
   }
 
+  .transposed-band {
+    margin-bottom: 1em;
+  }
+
+  .transposed-band table {
+    border-collapse: collapse;
+    font-size: 11px;
+    width: auto;
+  }
+
+  .transposed-band th,
+  .transposed-band td {
+    border: 1px solid #e5e7eb;
+    padding: 4px 6px;
+    white-space: normal;
+    word-break: break-word;
+    max-width: 140px;
+  }
+
+  .transposed-band th {
+    background-color: #f3f4f6;
+    font-weight: 600;
+    white-space: nowrap;
+    text-align: left;
+    max-width: none;
+  }
+
+  .transposed-band thead th {
+    text-align: center;
+    font-size: 10px;
+    color: #6b7280;
+    background-color: #f9fafb;
+    padding: 2px 6px;
+  }
+
+  .transposed-band thead th:first-child {
+    background-color: transparent;
+    border-color: transparent;
+  }
+
   .chart-placeholder {
     width: 100%;
     border: 1px solid #e5e7eb;
@@ -294,6 +334,80 @@ def _escape_html(s: str) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+
+
+_PAGE_USABLE_WIDTH_PX = 680  # A4 (210mm) minus 15mm margins, at 96 DPI
+_CHAR_WIDTH_PX = 6.5  # average character width at font-size 11px
+_CELL_PADDING_PX = 12  # 6px padding on each side
+
+
+def _estimate_table_width(columns: List[str], rows: List[Dict[str, Any]]) -> float:
+    """Estimate total table width in CSS pixels based on cell content."""
+    total = 0.0
+    sample = rows[:50]
+    for col in columns:
+        max_len = len(str(col))
+        for row in sample:
+            max_len = max(max_len, len(str(row.get(col, ""))))
+        total += max_len * _CHAR_WIDTH_PX + _CELL_PADDING_PX
+    return total
+
+
+def _render_transposed_table(columns: List[str], rows: List[Dict[str, Any]]) -> str:
+    """Render a wide table in transposed banded layout.
+
+    Headers become the left-most column of each band. Original data rows
+    are laid out as columns from left to right. When the page width is
+    reached, a new band starts below with the headers repeated.
+    """
+    if not columns or not rows:
+        return ""
+
+    header_texts = [str(c) for c in columns]
+    header_col_width = (
+        max(len(t) for t in header_texts) * _CHAR_WIDTH_PX + _CELL_PADDING_PX
+    )
+    header_col_width = min(max(header_col_width, 60), 200)
+
+    sample_vals: List[str] = []
+    for row in rows[:30]:
+        for col in columns:
+            sample_vals.append(str(row.get(col, "")))
+    if sample_vals:
+        avg_len = sum(len(v) for v in sample_vals) / len(sample_vals)
+    else:
+        avg_len = 8
+    data_col_width = min(max(avg_len * _CHAR_WIDTH_PX + _CELL_PADDING_PX, 60), 140)
+
+    remaining = _PAGE_USABLE_WIDTH_PX - header_col_width
+    rows_per_band = max(1, int(remaining / data_col_width))
+
+    parts: List[str] = []
+    for band_start in range(0, len(rows), rows_per_band):
+        band_rows = rows[band_start : band_start + rows_per_band]
+        parts.append('<div class="transposed-band">')
+        parts.append("<table>")
+
+        parts.append("<thead><tr>")
+        parts.append("<th></th>")
+        for i in range(len(band_rows)):
+            parts.append(f"<th>{band_start + i + 1}</th>")
+        parts.append("</tr></thead>")
+
+        parts.append("<tbody>")
+        for col in columns:
+            parts.append("<tr>")
+            parts.append(f"<th>{_escape_html(str(col))}</th>")
+            for row in band_rows:
+                val = row.get(col, "")
+                parts.append(f"<td>{_escape_html(str(val))}</td>")
+            parts.append("</tr>")
+        parts.append("</tbody>")
+
+        parts.append("</table>")
+        parts.append("</div>")
+
+    return "".join(parts)
 
 
 def _build_svg_chart(graph_type: str, cfg: Dict[str, Any]) -> str:
@@ -514,24 +628,28 @@ def render_report_html(
             rows = item.get("table_data") or []
 
             if columns:
-                section_parts.append('<div class="table-wrapper">')
-                section_parts.append("<table>")
-                # header
-                section_parts.append("<thead><tr>")
-                for col in columns:
-                    section_parts.append(f"<th>{col}</th>")
-                section_parts.append("</tr></thead>")
-                # body
-                section_parts.append("<tbody>")
-                for row in rows:
-                    section_parts.append("<tr>")
+                est_width = _estimate_table_width(columns, rows)
+                if est_width > _PAGE_USABLE_WIDTH_PX:
+                    section_parts.append(
+                        _render_transposed_table(columns, rows)
+                    )
+                else:
+                    section_parts.append('<div class="table-wrapper">')
+                    section_parts.append("<table>")
+                    section_parts.append("<thead><tr>")
                     for col in columns:
-                        val = row.get(col, "")
-                        section_parts.append(f"<td>{val}</td>")
-                    section_parts.append("</tr>")
-                section_parts.append("</tbody>")
-                section_parts.append("</table>")
-                section_parts.append("</div>")
+                        section_parts.append(f"<th>{_escape_html(str(col))}</th>")
+                    section_parts.append("</tr></thead>")
+                    section_parts.append("<tbody>")
+                    for row in rows:
+                        section_parts.append("<tr>")
+                        for col in columns:
+                            val = row.get(col, "")
+                            section_parts.append(f"<td>{_escape_html(str(val))}</td>")
+                        section_parts.append("</tr>")
+                    section_parts.append("</tbody>")
+                    section_parts.append("</table>")
+                    section_parts.append("</div>")
         elif item_type == "graph":
             graph_type = item.get("graph_type") or ""
             cfg = item.get("graph_config") or {}
