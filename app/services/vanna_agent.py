@@ -30,7 +30,7 @@ from app.services.db_knowledge import get_training_docs, ALL_VIEW_DDLS
 from app.services.sql_utils import is_read_only_sql
 
 # Reuse table parsing from langchain_agent (no circular import: langchain_agent does not import vanna_agent)
-from app.services.langchain_agent import _parse_all_tables_from_markdown
+from app.services.langchain_agent import _parse_all_tables_from_markdown, _fix_response_table_pipes
 
 print("[VannaAgent] Module loaded")
 
@@ -57,14 +57,42 @@ def _build_odbc_conn_str() -> str:
 
 
 def _dataframe_to_markdown(df) -> str:
-    """Convert pandas DataFrame to markdown table."""
+    """Convert pandas DataFrame to markdown table.
+
+    Pipe characters inside cell values are escaped as ``\\|`` so that
+    they are not mistaken for column separators by markdown parsers.
+    """
     if df is None or df.empty:
         return ""
     cols = list(df.columns)
-    lines = ["| " + " | ".join(str(c) for c in cols) + " |", "| " + " | ".join("---" for _ in cols) + " |"]
+    # Escape pipes in column names (rare but safe)
+    safe_cols = [str(c).replace("|", "\\|") for c in cols]
+    lines = [
+        "| " + " | ".join(safe_cols) + " |",
+        "| " + " | ".join("---" for _ in cols) + " |",
+    ]
     for _, row in df.iterrows():
-        lines.append("| " + " | ".join(str(row[c]) if row.get(c) is not None else "" for c in cols) + " |")
+        cells = [
+            str(row[c]).replace("|", "\\|") if row.get(c) is not None else ""
+            for c in cols
+        ]
+        lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines)
+
+
+def _dataframe_to_structured(df) -> tuple[list[str], list[dict]]:
+    """Convert a pandas DataFrame directly into (columns, data) for the UI.
+
+    This avoids the lossy markdown round-trip and is immune to pipe-in-data
+    issues since no pipe-delimited serialisation is involved.
+    """
+    if df is None or df.empty:
+        return [], []
+    cols = [str(c) for c in df.columns]
+    data = []
+    for _, row in df.iterrows():
+        data.append({c: str(row[c]) if row.get(c) is not None else "" for c in df.columns})
+    return cols, data
 
 
 def _looks_like_sql(text: str) -> bool:
@@ -290,15 +318,33 @@ async def stream_chat_with_database_vanna(
         await fut  # re-raise any exception from run_stream
         text_response = "".join(full_parts)
 
-        # Append the actual data table so the UI can parse it
+        # Append the actual data table so the UI can render it in markdown
         if table_md:
             text_response += "\n\n" + table_md
 
-        # Parse tables from full response (for has_table, table_data, table_columns, tables)
-        all_tables = _parse_all_tables_from_markdown(text_response)
-        has_table = len(all_tables) > 0
-        table_data = all_tables[0]["data"] if all_tables else []
-        table_columns = all_tables[0]["columns"] if all_tables else []
+        # Fix pipe-in-data: rebuild any markdown tables the LLM generated
+        # with properly escaped values from the DataFrame.
+        df_cols_fix, df_data_fix = _dataframe_to_structured(df)
+        if df_cols_fix and df_data_fix:
+            text_response = _fix_response_table_pipes(text_response, df_cols_fix, df_data_fix)
+
+        # Build structured table data directly from the DataFrame (immune to
+        # pipe-in-data issues) instead of re-parsing the markdown.
+        df_cols, df_data = _dataframe_to_structured(df)
+        if df_cols and df_data:
+            all_tables = [{"columns": df_cols, "data": df_data}]
+            table_data = df_data
+            table_columns = df_cols
+            has_table = True
+            print(f"[VannaAgent] Structured data from DataFrame (primary): {len(df_data)} rows, {len(df_cols)} cols")
+        else:
+            # Fallback: parse markdown tables from the LLM response
+            all_tables = _parse_all_tables_from_markdown(text_response)
+            has_table = len(all_tables) > 0
+            table_data = all_tables[0]["data"] if all_tables else []
+            table_columns = all_tables[0]["columns"] if all_tables else []
+            if all_tables:
+                print(f"[VannaAgent] Using markdown-parsed tables (fallback): {len(all_tables)} table(s)")
 
         done_event = json.dumps({
             "type": "done",

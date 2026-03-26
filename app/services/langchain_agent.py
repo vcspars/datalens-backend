@@ -266,23 +266,103 @@ def get_table_row_counts() -> str:
         return ""
 
 
+def _split_md_row(line: str) -> list[str]:
+    """Split a markdown table row on *unescaped* pipe characters.
+
+    Escaped pipes (``\\|``) inside cell values are preserved as literal ``|``
+    so that data like ``ERIN GATES | BEIGE`` is treated as a single cell.
+    """
+    # Strip the leading/trailing outer pipes, then split on un-escaped |
+    stripped = line.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|") and not stripped.endswith("\\|"):
+        stripped = stripped[:-1]
+    # Split on | that is NOT preceded by a backslash
+    parts = re.split(r'(?<!\\)\|', stripped)
+    # Un-escape \| → | in each cell value and strip whitespace
+    return [p.replace("\\|", "|").strip() for p in parts]
+
+
+def _fix_response_table_pipes(
+    response: str,
+    captured_cols: list[str],
+    captured_data: list[dict],
+) -> str:
+    """Rebuild markdown-table data rows in *response* so that pipe characters
+    inside cell values are properly escaped (``\\|``).
+
+    *captured_cols* are the dict-keys present in each *captured_data* row
+    (e.g. ``["Column 1", "Column 2", ...]`` from the LangChain handler, or
+    real SQL column names from a DataFrame).
+
+    Only tables whose header column-count matches ``len(captured_cols)`` are
+    rebuilt; others are left untouched.
+    """
+    if not captured_data or not captured_cols:
+        return response
+
+    lines = response.splitlines()
+    result: list[str] = []
+    i = 0
+
+    while i < len(lines):
+        stripped = lines[i].strip()
+        # Detect start of a markdown-table block
+        if stripped.startswith("|") and stripped.endswith("|"):
+            block: list[str] = []
+            while i < len(lines):
+                s = lines[i].strip()
+                if s.startswith("|") and s.endswith("|"):
+                    block.append(lines[i])
+                    i += 1
+                else:
+                    break
+
+            # Parse header — column names from SQL rarely contain |
+            hdr = block[0].strip().strip("|")
+            header_cells = [c.strip() for c in hdr.split("|") if c.strip()]
+
+            if len(header_cells) == len(captured_cols) and len(block) >= 2:
+                # Keep original header + separator, rebuild data rows
+                result.append(block[0])
+                result.append(block[1])
+                for row in captured_data:
+                    cells = [
+                        str(row.get(col, "")).replace("|", "\\|")
+                        for col in captured_cols
+                    ]
+                    result.append("| " + " | ".join(cells) + " |")
+                print(f"[TablePipeFix] Rebuilt markdown table: {len(captured_data)} rows, {len(captured_cols)} cols")
+            else:
+                # Column-count mismatch — leave table as-is
+                result.extend(block)
+        else:
+            result.append(lines[i])
+            i += 1
+
+    return "\n".join(result)
+
+
 def _parse_single_table(table_lines: list[str]) -> Optional[dict]:
     """
     Parse a contiguous block of markdown table lines into {columns, data}.
     Returns None if the block is malformed.
+    Handles escaped pipes (``\\|``) inside cell values so they are not
+    mistaken for column separators.
     """
     if len(table_lines) < 2:
         return None
 
     header_row = table_lines[0]
-    columns = [c.strip() for c in header_row.strip("|").split("|") if c.strip()]
+    columns = [c for c in _split_md_row(header_row) if c]
     if not columns:
         return None
 
     # table_lines[1] is the separator (--- | --- | ...)
     data_rows = []
     for line in table_lines[2:]:
-        cells = [c.strip() for c in line.strip("|").split("|")]
+        cells = _split_md_row(line)
         while len(cells) < len(columns):
             cells.append("")
         cells = cells[: len(columns)]
@@ -808,6 +888,13 @@ async def stream_chat_with_database(
 
         full_response = _sanitize_user_response(full_response)
 
+        # Fix pipe-in-data: rebuild markdown tables with properly escaped
+        # values from the captured SQL result (immune to embedded pipes).
+        _rc = getattr(handler, "_query_result_columns", None)
+        _rd = getattr(handler, "_query_result_table", None)
+        if _rc and _rd and len(_rd) > 0:
+            full_response = _fix_response_table_pipes(full_response, _rc, _rd)
+
         # Simulate streaming: send the final response in small chunks so the UI feels responsive
         chunk_size = 12
         for i in range(0, len(full_response), chunk_size):
@@ -817,22 +904,52 @@ async def stream_chat_with_database(
             if (i // chunk_size) % 5 == 4:
                 await asyncio.sleep(0.01)
 
-        # Parse markdown tables from the response
-        all_tables = _parse_all_tables_from_markdown(full_response)
-        has_table = len(all_tables) > 0
-        table_data = all_tables[0]["data"] if all_tables else []
-        table_columns = all_tables[0]["columns"] if all_tables else []
+        # Build structured table data for the UI (save/export/graph).
+        # Prefer the captured SQL result (parsed from raw tuples, immune to
+        # pipe-in-data issues) over re-parsing the markdown response.
+        qcols = getattr(handler, "_query_result_columns", None)
+        qdata = getattr(handler, "_query_result_table", None)
 
-        # If LLM didn't output a markdown table but we captured query result from sql_db_query tool, use it
-        if not all_tables:
-            qcols = getattr(handler, "_query_result_columns", None)
-            qdata = getattr(handler, "_query_result_table", None)
-            if qcols and qdata:
+        if qcols and qdata and len(qdata) > 0:
+            # The captured data has generic keys ("Column 1", "Column 2", …).
+            # Extract real column names from the markdown table header in
+            # full_response (safe — column names don't contain pipes).
+            real_cols = None
+            for _line in full_response.splitlines():
+                _s = _line.strip()
+                if _s.startswith("|") and _s.endswith("|"):
+                    _hdr = [c.strip() for c in _s.strip("|").split("|") if c.strip()]
+                    if len(_hdr) == len(qcols):
+                        real_cols = _hdr
+                    break  # only check the first table header
+
+            if real_cols:
+                # Remap data dicts: "Column N" → real column name
+                remapped_data = []
+                for row in qdata:
+                    new_row = {}
+                    for j, real_name in enumerate(real_cols):
+                        new_row[real_name] = row.get(qcols[j], "")
+                    remapped_data.append(new_row)
+                all_tables = [{"columns": real_cols, "data": remapped_data}]
+                table_data = remapped_data
+                table_columns = real_cols
+                print(f"[LangChainAgent] Using captured query result with real column names: {len(remapped_data)} rows, {real_cols}")
+            else:
+                # Fallback: use generic column names
                 all_tables = [{"columns": qcols, "data": qdata}]
                 table_data = qdata
                 table_columns = qcols
-                has_table = True
-                print(f"[LangChainAgent] Using captured query result: {len(qdata)} rows, {len(qcols)} cols")
+                print(f"[LangChainAgent] Using captured query result (generic cols): {len(qdata)} rows, {len(qcols)} cols")
+            has_table = True
+        else:
+            # Fallback: parse markdown tables from the LLM response
+            all_tables = _parse_all_tables_from_markdown(full_response)
+            has_table = len(all_tables) > 0
+            table_data = all_tables[0]["data"] if all_tables else []
+            table_columns = all_tables[0]["columns"] if all_tables else []
+            if all_tables:
+                print(f"[LangChainAgent] Using markdown-parsed tables (fallback): {len(all_tables)} table(s)")
 
         sql_query = getattr(handler, "_last_sql", None) or ""
 
