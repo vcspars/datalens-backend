@@ -211,12 +211,13 @@ async def chat_stream(
 
 @router.get("/history", response_model=ChatHistoryResponse)
 async def get_chat_history(
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=1000, ge=1, le=100000),
     current_user: User = Depends(get_current_user),
 ):
     """
     Return chat history for the current user, newest last.
     Used on page load to restore previous conversation.
+    Fetches the *most recent* N messages so new conversations are never lost.
     """
     user_id = str(current_user._id)
     print(f"[ChatRoute] /history called | user={user_id} | limit={limit}")
@@ -224,11 +225,13 @@ async def get_chat_history(
     db = get_database()
     session_id = await _get_or_create_session(db, user_id)
 
+    # Sort descending to grab the LATEST messages, then reverse for display
     cursor = db.chat_messages.find(
         {"user_id": user_id, "session_id": session_id}
-    ).sort("created_at", 1).limit(limit)
+    ).sort("created_at", -1).limit(limit)
 
     messages = await cursor.to_list(length=limit)
+    messages.reverse()  # oldest-first for UI display order
     print(f"[ChatRoute] Returning {len(messages)} history messages")
 
     return ChatHistoryResponse(
