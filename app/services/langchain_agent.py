@@ -905,51 +905,24 @@ async def stream_chat_with_database(
                 await asyncio.sleep(0.01)
 
         # Build structured table data for the UI (save/export/graph).
-        # Prefer the captured SQL result (parsed from raw tuples, immune to
-        # pipe-in-data issues) over re-parsing the markdown response.
-        qcols = getattr(handler, "_query_result_columns", None)
-        qdata = getattr(handler, "_query_result_table", None)
+        # The markdown tables in full_response have already been rebuilt by
+        # _fix_response_table_pipes (escaped pipes, real data from captured
+        # SQL result).  Parse them to get real column names + all tables.
+        all_tables = _parse_all_tables_from_markdown(full_response)
+        has_table = len(all_tables) > 0
+        table_data = all_tables[0]["data"] if all_tables else []
+        table_columns = all_tables[0]["columns"] if all_tables else []
 
-        if qcols and qdata and len(qdata) > 0:
-            # The captured data has generic keys ("Column 1", "Column 2", …).
-            # Extract real column names from the markdown table header in
-            # full_response (safe — column names don't contain pipes).
-            real_cols = None
-            for _line in full_response.splitlines():
-                _s = _line.strip()
-                if _s.startswith("|") and _s.endswith("|"):
-                    _hdr = [c.strip() for c in _s.strip("|").split("|") if c.strip()]
-                    if len(_hdr) == len(qcols):
-                        real_cols = _hdr
-                    break  # only check the first table header
-
-            if real_cols:
-                # Remap data dicts: "Column N" → real column name
-                remapped_data = []
-                for row in qdata:
-                    new_row = {}
-                    for j, real_name in enumerate(real_cols):
-                        new_row[real_name] = row.get(qcols[j], "")
-                    remapped_data.append(new_row)
-                all_tables = [{"columns": real_cols, "data": remapped_data}]
-                table_data = remapped_data
-                table_columns = real_cols
-                print(f"[LangChainAgent] Using captured query result with real column names: {len(remapped_data)} rows, {real_cols}")
-            else:
-                # Fallback: use generic column names
+        # If no markdown tables found, fall back to raw captured SQL result
+        if not all_tables:
+            qcols = getattr(handler, "_query_result_columns", None)
+            qdata = getattr(handler, "_query_result_table", None)
+            if qcols and qdata and len(qdata) > 0:
                 all_tables = [{"columns": qcols, "data": qdata}]
                 table_data = qdata
                 table_columns = qcols
-                print(f"[LangChainAgent] Using captured query result (generic cols): {len(qdata)} rows, {len(qcols)} cols")
-            has_table = True
-        else:
-            # Fallback: parse markdown tables from the LLM response
-            all_tables = _parse_all_tables_from_markdown(full_response)
-            has_table = len(all_tables) > 0
-            table_data = all_tables[0]["data"] if all_tables else []
-            table_columns = all_tables[0]["columns"] if all_tables else []
-            if all_tables:
-                print(f"[LangChainAgent] Using markdown-parsed tables (fallback): {len(all_tables)} table(s)")
+                has_table = True
+                print(f"[LangChainAgent] Using captured query result (fallback): {len(qdata)} rows, {len(qcols)} cols")
 
         sql_query = getattr(handler, "_last_sql", None) or ""
 
