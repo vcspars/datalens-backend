@@ -846,7 +846,7 @@ AP8:
 ================================================================
 0) ROW LIMITS:
   - Every SELECT against fact tables should include TOP N.
-  - Default TOP 50, user "top N" => TOP N, "show all" => TOP 200 max.
+  - Default TOP 20, user "top N" => TOP N, "show all" => TOP 50 max.
   - Aggregations (COUNT/SUM/AVG/GROUP BY) need no TOP.
   - Never query FactSalesDetail or FactSalesInvoice raw without TOP.
 1) Prefer views/header tables for speed:

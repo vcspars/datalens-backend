@@ -837,9 +837,9 @@ AP8:
   GENERAL RULES
 ================================================================
 0) ROW LIMITS:
-  - Every SELECT against fact table should use TOP N (default TOP 50).
+  - Every SELECT against fact table should use TOP N (default TOP 20).
   - "top 10" => TOP 10
-  - "show all" => TOP 200 max
+  - "show all" => TOP 50 max
   - Aggregations do not need TOP.
   - Never query FactSalesDetail or FactSalesInvoice raw without TOP.
 1) Prefer views/header tables for speed:

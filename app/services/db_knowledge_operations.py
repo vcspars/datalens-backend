@@ -814,8 +814,8 @@ AP8: Table name accuracy: FactVendorPayments (with 's'), FactVendorInvoices (wit
 ================================================================
 0. ROW LIMITS — ALWAYS ADD TOP N:
    Every SELECT against a fact table MUST include TOP N.
-   Default: TOP 50 unless user asks for a different number.
-   User says "top 10" → TOP 10.  User says "show all" → TOP 200 maximum.
+   Default: TOP 10 unless user asks for a different number.
+   User says "top 10" → TOP 10.  User says "show all" → TOP 50 maximum.
    Aggregation queries (COUNT, SUM, AVG, GROUP BY) do NOT need TOP.
 
 1. PREFER VIEWS AND HEADER TABLES FOR SPEED:
