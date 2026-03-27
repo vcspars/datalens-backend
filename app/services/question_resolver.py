@@ -27,6 +27,31 @@ def _get_resolver_llm() -> ChatOpenAI:
     return _RESOLVER_LLM
 
 
+# ---------------------------------------------------------------------------
+# Role-based access scope — defines what each role is allowed to ask about
+# ---------------------------------------------------------------------------
+
+_ROLE_SCOPE: dict[str, str] = {
+    "executive": "",  # no restriction
+    "sales": (
+        "This user has the SALES role. They may ask about: sales analysis, "
+        "customer analytics, inventory monitoring, pricing, and backorder information. "
+        "They are NOT allowed to access profitability reporting, margin data, "
+        "profit amounts, unit costs, vendor analytics, vendor payments, vendor returns, "
+        "or any financial/cost data. "
+        "If the question involves restricted topics, set access_denied=true."
+    ),
+    "operations": (
+        "This user has the OPERATIONS role. They may ONLY ask about: "
+        "inventory monitoring (FactInventorySnapshot, DimWarehouse, DimProduct quantities) "
+        "and backorder information (DimSalesOrderDetail_Log). "
+        "They are NOT allowed to access sales data, customer data, revenue, pricing, "
+        "profitability, margins, vendor data, purchase orders, payments, credit memos, "
+        "or any financial metrics. "
+        "If the question involves restricted topics, set access_denied=true."
+    ),
+}
+
 SYSTEM_PROMPT = """You are a question resolver for a chat-with-database app. The database contains business data: sales, customers, products, vendors, purchases, inventory, tables/schema.
 
 Your task:
@@ -38,12 +63,15 @@ Your task:
 5. Classify intent:
    - sql: The (resolved) question requires querying the business database to answer (counts, lists, totals, reports, schema info, "how many tables", "list all X", etc.).
    - simple: Greetings, thanks, goodbyes, "explain that", "what do you mean", questions about the chat itself, or anything that does NOT need fresh data from the database.
+6. If a ROLE RESTRICTION block is provided below, check whether the resolved question falls outside the user's allowed scope. If it does, set "access_denied" to true and provide a short "denial_reason" explaining what they cannot access.
 
 Output ONLY valid JSON with exactly these keys (no markdown, no code fence):
 {
   "resolved_question": "<the self-contained question string>",
   "intent": "sql" or "simple",
-  "is_followup": true or false
+  "is_followup": true or false,
+  "access_denied": true or false,
+  "denial_reason": "<reason string or empty>"
 }"""
 
 
@@ -64,34 +92,42 @@ def _build_context_block(chat_history: list[dict], max_assistant_chars: int = 12
     return "\n".join(parts)
 
 
-def resolve_question(question: str, chat_history: list[dict]) -> dict[str, Any]:
+def resolve_question(question: str, chat_history: list[dict], role: str = "executive") -> dict[str, Any]:
     """
     Resolve the user's question using conversation history and classify intent.
 
     Args:
         question: The current user message.
         chat_history: List of {"role": "user"|"assistant", "content": str, optional "sql_query": str}.
+        role: User role – "executive", "sales", or "operations".
 
     Returns:
         {
             "resolved_question": str,  # self-contained question to send to agent
             "intent": "sql" | "simple",
-            "is_followup": bool
+            "is_followup": bool,
+            "access_denied": bool,
+            "denial_reason": str
         }
     """
-    print(f"[QuestionResolver] resolve_question called | question_len={len(question)} | history_len={len(chat_history)}")
+    print(f"[QuestionResolver] resolve_question called | question_len={len(question)} | history_len={len(chat_history)} | role={role}")
     question_stripped = (question or "").strip()
     if not question_stripped:
         print("[QuestionResolver] Empty question -> simple, resolved as-is")
-        return {"resolved_question": question_stripped, "intent": "simple", "is_followup": False}
+        return {"resolved_question": question_stripped, "intent": "simple", "is_followup": False, "access_denied": False, "denial_reason": ""}
 
     context_block = _build_context_block(chat_history)
+
+    # Build role restriction addendum
+    role_restriction = _ROLE_SCOPE.get(role, "")
+    role_block = f"\n\nROLE RESTRICTION:\n{role_restriction}" if role_restriction else ""
+
     user_prompt = f"""Recent conversation:
 {context_block}
 
-Current user message: {question_stripped}
+Current user message: {question_stripped}{role_block}
 
-Output the JSON object only (resolved_question, intent, is_followup):"""
+Output the JSON object only (resolved_question, intent, is_followup, access_denied, denial_reason):"""
 
     try:
         llm = _get_resolver_llm()
@@ -114,12 +150,14 @@ Output the JSON object only (resolved_question, intent, is_followup):"""
         if intent not in ("sql", "simple"):
             intent = "simple"
         is_followup = bool(data.get("is_followup", False))
+        access_denied = bool(data.get("access_denied", False))
+        denial_reason = (data.get("denial_reason") or "").strip()
 
         if not resolved:
             resolved = question_stripped
 
-        print(f"[QuestionResolver] resolved_question={resolved[:80]!r} | intent={intent!r} | is_followup={is_followup}")
-        return {"resolved_question": resolved, "intent": intent, "is_followup": is_followup}
+        print(f"[QuestionResolver] resolved_question={resolved[:80]!r} | intent={intent!r} | is_followup={is_followup} | access_denied={access_denied}")
+        return {"resolved_question": resolved, "intent": intent, "is_followup": is_followup, "access_denied": access_denied, "denial_reason": denial_reason}
     except json.JSONDecodeError as e:
         print(f"[QuestionResolver] JSON parse error: {e}, defaulting to original question and intent from keywords")
         question_lower = question_stripped.lower()
@@ -129,7 +167,7 @@ Output the JSON object only (resolved_question, intent, is_followup):"""
                 "sales", "customer", "order", "product", "table", "tables", "database"
             )
         ) else "simple"
-        return {"resolved_question": question_stripped, "intent": intent, "is_followup": False}
+        return {"resolved_question": question_stripped, "intent": intent, "is_followup": False, "access_denied": False, "denial_reason": ""}
     except Exception as e:
         print(f"[QuestionResolver] Error: {e}, defaulting to original question, intent=sql")
-        return {"resolved_question": question_stripped, "intent": "sql", "is_followup": False}
+        return {"resolved_question": question_stripped, "intent": "sql", "is_followup": False, "access_denied": False, "denial_reason": ""}

@@ -1,5 +1,6 @@
 """Authentication schemas"""
 from pydantic import BaseModel, EmailStr, Field
+from typing import Literal
 
 
 class SignupRequest(BaseModel):
@@ -8,6 +9,7 @@ class SignupRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=72, description="Password must be between 8 and 72 characters")
     full_name: str = Field(..., min_length=1)
     confirm_password: str = Field(..., min_length=8, max_length=72)
+    role: Literal["executive", "sales", "operations"] = "executive"
 
 
 class LoginRequest(BaseModel):
@@ -27,6 +29,7 @@ class UserResponse(BaseModel):
     id: str
     email: str
     full_name: str
+    role: str = "executive"
     
     class Config:
         from_attributes = True

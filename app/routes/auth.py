@@ -97,26 +97,27 @@ async def signup(signup_data: SignupRequest):
         # Hash password
         password_hash = get_password_hash(signup_data.password)
         
-        # Create user
+        # Create user with role
         user = User(
             email=signup_data.email,
             password_hash=password_hash,
-            full_name=signup_data.full_name
+            full_name=signup_data.full_name,
+            role=signup_data.role,
         )
         
         # Insert user into database
         result = await db.users.insert_one(user.to_dict())
         
-        # Create access token
+        # Create access token (include role)
         access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": str(result.inserted_id), "email": user.email},
+            data={"sub": str(result.inserted_id), "email": user.email, "role": user.role},
             expires_delta=access_token_expires
         )
 
         # Auto-create chat session for new user
         await _ensure_chat_session(db, str(result.inserted_id))
-        print(f"[AuthRoute] Signup complete for {user.email}")
+        print(f"[AuthRoute] Signup complete for {user.email} | role={user.role}")
 
         return TokenResponse(access_token=access_token, token_type="bearer")
     except HTTPException:
@@ -150,17 +151,17 @@ async def login(login_data: LoginRequest):
             detail="Incorrect email or password"
         )
     
-    # Create access token
+    # Create access token (include role)
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": str(user._id), "email": user.email},
+        data={"sub": str(user._id), "email": user.email, "role": user.role},
         expires_delta=access_token_expires
     )
 
     # Ensure chat session exists for this user
     db = get_database()
     await _ensure_chat_session(db, str(user._id))
-    print(f"[AuthRoute] Login complete for {user.email}")
+    print(f"[AuthRoute] Login complete for {user.email} | role={user.role}")
 
     return TokenResponse(access_token=access_token, token_type="bearer")
 
@@ -171,6 +172,6 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return UserResponse(
         id=str(current_user._id),
         email=current_user.email,
-        full_name=current_user.full_name
+        full_name=current_user.full_name,
+        role=current_user.role,
     )
-

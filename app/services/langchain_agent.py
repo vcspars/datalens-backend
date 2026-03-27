@@ -21,6 +21,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from app.config import settings
 from app.services.db_knowledge import get_system_prompt
+from app.services.db_knowledge_router import get_system_prompt_for_role
 
 print("[LangChainAgent] Module loaded")
 
@@ -697,6 +698,7 @@ class StreamingCallbackHandler(BaseCallbackHandler):
 async def stream_chat_with_database(
     question: str,
     chat_history: list[dict],
+    role: str = "executive",
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that streams SSE events for a user question.
@@ -704,6 +706,7 @@ async def stream_chat_with_database(
     Args:
         question: The natural language question from the user.
         chat_history: List of {"role": ..., "content": ...} dicts (last 5 pairs).
+        role: User role for selecting the appropriate DB knowledge prompt.
 
     Yields:
         SSE-formatted strings.
@@ -735,9 +738,9 @@ async def stream_chat_with_database(
 
         full_question = context_prefix + question
 
-        # Create SQL agent with DB knowledge prefix
+        # Create SQL agent with DB knowledge prefix (role-specific)
         db_prefix = (
-            get_system_prompt()
+            get_system_prompt_for_role(role)
             + "\n\nYou are an expert SQL agent for the StarScemaSPARS star schema database. "
             + "Dialect: {dialect}. Only execute SELECT queries — never INSERT, UPDATE, DELETE, DROP, or DDL."
 
@@ -978,6 +981,7 @@ def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 1
 async def stream_simple_chat(
     question: str,
     chat_history: list[dict],
+    role: str = "executive",
 ) -> AsyncGenerator[str, None]:
     """
     Stream a simple LLM response (no SQL agent). Used for greetings, thanks, follow-ups.
@@ -992,7 +996,7 @@ async def stream_simple_chat(
     try:
         handler = StreamingCallbackHandler(token_queue)
         llm = _create_mini_llm(streaming=True, callbacks=[handler])
-        schema_context = get_system_prompt()
+        schema_context = get_system_prompt_for_role(role)
         history_prefix = _build_history_prefix(chat_history)
         full_prompt = (
             f"{schema_context}\n\n"

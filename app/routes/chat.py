@@ -117,10 +117,14 @@ async def chat_stream(
         sql_query = ""
         error_occurred = False
 
+        user_role = getattr(current_user, "role", "executive") or "executive"
+
         if settings.USE_VANNA_AI:
             from app.services.vanna_agent import stream_chat_with_database_vanna
             stream_fn = stream_chat_with_database_vanna
             resolved_question = question
+            access_denied = False
+            denial_reason = ""
             print("[ChatRoute] Using Vanna AI agent")
         else:
             from app.services.question_resolver import resolve_question
@@ -128,13 +132,18 @@ async def chat_stream(
             loop = asyncio.get_event_loop()
             resolved = await loop.run_in_executor(
                 None,
-                lambda: resolve_question(question, history),
+                lambda: resolve_question(question, history, role=user_role),
             )
             resolved_question = resolved.get("resolved_question", question) or question
             intent = resolved.get("intent", "sql")
             is_followup = resolved.get("is_followup", False)
-            print(f"[ChatRoute] Resolved: intent={intent!r} is_followup={is_followup} | original='{question[:60]}' | resolved='{resolved_question[:60]}'")
-            if intent == "sql":
+            access_denied = resolved.get("access_denied", False)
+            denial_reason = resolved.get("denial_reason", "")
+            print(f"[ChatRoute] Resolved: intent={intent!r} is_followup={is_followup} access_denied={access_denied} | original='{question[:60]}' | resolved='{resolved_question[:60]}'")
+
+            if access_denied:
+                print(f"[ChatRoute] Access denied for role={user_role}: {denial_reason}")
+            elif intent == "sql":
                 stream_fn = stream_chat_with_database
                 print("[ChatRoute] Routing to LangChain SQL agent")
             else:
@@ -152,7 +161,30 @@ async def chat_stream(
             await db.chat_messages.insert_one(user_msg.to_dict())
             print(f"[ChatRoute] Saved user message to MongoDB")
 
-            async for chunk in stream_fn(resolved_question, history):
+            # If access is denied for this role, return a polite denial instead of running the agent
+            if access_denied:
+                denial_msg = denial_reason or "Sorry, you don't have permission to access this information with your current role."
+                full_response = denial_msg
+                token_event = json.dumps({"type": "token", "content": denial_msg})
+                yield f"data: {token_event}\n\n"
+                done_event = json.dumps({
+                    "type": "done",
+                    "has_table": False,
+                    "table_data": [],
+                    "table_columns": [],
+                    "tables": [],
+                    "full_response": denial_msg,
+                    "sql_query": "",
+                })
+                yield f"data: {done_event}\n\n"
+                # skip the normal streaming below
+                return
+
+            if settings.USE_VANNA_AI:
+                stream_iter = stream_fn(resolved_question, history)
+            else:
+                stream_iter = stream_fn(resolved_question, history, role=user_role)
+            async for chunk in stream_iter:
                 yield chunk
 
                 # Parse chunk to track state
@@ -668,6 +700,57 @@ async def save_db_graphs(
         upsert=True,
     )
     return {"message": "Graphs saved", "count": len(graphs)}
+
+
+@router.delete("/messages/{message_id}", status_code=204)
+async def delete_message_pair(
+    message_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete an assistant message and its preceding user question."""
+    user_id = str(current_user._id)
+    print(f"[ChatRoute] DELETE /messages/{message_id} | user={user_id}")
+
+    db = get_database()
+
+    # Find the assistant message
+    assistant_msg = await db.chat_messages.find_one(
+        {"_id": ObjectId(message_id), "user_id": user_id}
+    )
+    if not assistant_msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    deleted_ids = [assistant_msg["_id"]]
+
+    # Find the user message immediately before this assistant message
+    if assistant_msg.get("role") == "assistant":
+        user_msg = await db.chat_messages.find_one(
+            {
+                "user_id": user_id,
+                "session_id": assistant_msg["session_id"],
+                "role": "user",
+                "created_at": {"$lte": assistant_msg["created_at"]},
+            },
+            sort=[("created_at", -1)],
+        )
+        if user_msg:
+            deleted_ids.append(user_msg["_id"])
+    elif assistant_msg.get("role") == "user":
+        # If the caller passed the user message id, also find the next assistant msg
+        asst_msg = await db.chat_messages.find_one(
+            {
+                "user_id": user_id,
+                "session_id": assistant_msg["session_id"],
+                "role": "assistant",
+                "created_at": {"$gte": assistant_msg["created_at"]},
+            },
+            sort=[("created_at", 1)],
+        )
+        if asst_msg:
+            deleted_ids.append(asst_msg["_id"])
+
+    result = await db.chat_messages.delete_many({"_id": {"$in": deleted_ids}})
+    print(f"[ChatRoute] Deleted {result.deleted_count} messages (pair)")
 
 
 @router.delete("/history")
