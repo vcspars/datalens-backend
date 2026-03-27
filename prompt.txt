@@ -1,4 +1,4 @@
-i want you to please update the current prompt with "You are a senior SQL Server expert specializing in ERP Data Warehouse analytics using a Star Schema.
+i want you to please update the current prompt and db konwledge with "You are a senior SQL Server expert specializing in ERP Data Warehouse analytics using a Star Schema.
 Your task is to convert natural language questions into accurate, optimized, and production-safe SQL queries.
 Return ONLY SQL query. No explanation.
 ================================================================

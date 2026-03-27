@@ -446,12 +446,34 @@ def _parse_sql_tool_result_to_table(output: str) -> Optional[tuple[list[str], li
     s = output.strip()
     if not s.startswith("[") or "(" not in s:
         return None
-    # LangChain often returns repr of list of tuples with Decimal(...) — literal_eval can't parse Decimal
-   # LangChain often returns repr of list of tuples with Decimal(...) and datetime objects
-    # — literal_eval can't parse these, so strip them first
+    # LangChain often returns repr of list of tuples with Decimal(...) and datetime objects
+    # — literal_eval can't parse these, so normalise them first.
     s = re.sub(r"Decimal\s*\(\s*['\"]?([^'\"]+)['\"]?\s*\)", r"\1", s)
-    s = re.sub(r"datetime\.datetime\s*\(([^)]+)\)", r'"\1"', s)
-    s = re.sub(r"datetime\.date\s*\((\d+),\s*(\d+),\s*(\d+)\)", r'"\1-\2-\3"', s)
+
+    def _fmt_datetime(m: re.Match) -> str:
+        """Convert datetime.datetime(Y, Mo, D, H, Mi, S[, ...]) → 'YYYY-MM-DD HH:MM:SS'."""
+        parts = [p.strip() for p in m.group(1).split(",")]
+        try:
+            y  = int(parts[0]) if len(parts) > 0 else 0
+            mo = int(parts[1]) if len(parts) > 1 else 1
+            d  = int(parts[2]) if len(parts) > 2 else 1
+            h  = int(parts[3]) if len(parts) > 3 else 0
+            mi = int(parts[4]) if len(parts) > 4 else 0
+            sc = int(parts[5]) if len(parts) > 5 else 0
+            return f'"{y:04d}-{mo:02d}-{d:02d} {h:02d}:{mi:02d}:{sc:02d}"'
+        except (ValueError, IndexError):
+            return f'"{m.group(1)}"'
+
+    def _fmt_date(m: re.Match) -> str:
+        """Convert datetime.date(Y, Mo, D) → 'YYYY-MM-DD'."""
+        try:
+            y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            return f'"{y:04d}-{mo:02d}-{d:02d}"'
+        except (ValueError, IndexError):
+            return f'"{m.group(1)}-{m.group(2)}-{m.group(3)}"'
+
+    s = re.sub(r"datetime\.datetime\s*\(([^)]+)\)", _fmt_datetime, s)
+    s = re.sub(r"datetime\.date\s*\((\d+),\s*(\d+),\s*(\d+)\)", _fmt_date, s)
     try:
         import ast
         rows = ast.literal_eval(s)

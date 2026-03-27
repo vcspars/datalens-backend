@@ -750,301 +750,304 @@ CommissionInvoice  — Commission invoice lookup (reference query pattern).
   Use this for sales rep commission invoice lookups.
 
 ================================================================
-                     QUERY GUIDELINES
+          QUERY GUIDELINES  (SALES TEAM ROLE)
 ================================================================
-
-================================================================
-  ROW LIMIT RULE (MANDATORY)
-================================================================
-- Default: TOP 50
-- "top N" → use TOP N
-- "show all" → TOP 200 max
-- Aggregations (COUNT, SUM, AVG, GROUP BY) → no TOP required
-- NEVER run SELECT * or SELECT [columns] FROM FactSalesDetail without TOP — it has 3.4M rows.
-- NEVER run SELECT * or SELECT [columns] FROM FactSalesInvoice without TOP — it has 1M+ rows.
+This user has the SALES TEAM role.
+Allowed scope: sales analysis, customer analytics, inventory monitoring,
+pricing, and back-order information.
+Do NOT generate profitability / margin / cost-only financial analytics.
 
 ================================================================
   METRIC DEFINITIONS (CRITICAL)
 ================================================================
-"Sales" / "Revenue" = FactSalesInvoice.MerchandiseAmount
-  NEVER use TotalAmount unless explicitly requested.
-"Profit" = FactSalesDetail.ProfitAmount
-"Net Quantity Sold" = SUM(FSD.Quantity)
-"Net Line Revenue" = FactSalesDetail.SalesAmount
-"Invoice Count" = COUNT(*) from FactSalesInvoice (exclude void/cancelled)
-Monthly/Quarterly/Yearly:
-  PREFER VW_SalesMonthly.MerchandiseRevenue
+- NEVER use TotalAmount for "sales" or "revenue".
+  TotalAmount = MerchandiseAmount + TaxAmount + ShippingCharges + HandlingCharges + ServiceCharges.
+- Use TotalAmount only when user explicitly asks for "total invoice amount"
+  or "total amount including everything".
+- "Net Quantity Sold" = SUM(FSD.Quantity - ISNULL(FCMD.Quantity, 0))
+  using FactSalesDetail and FactCreditMemoDetail.
+- "Invoice Count" = COUNT(*) from FactSalesInvoice with void/cancelled excluded.
+- "Customer Count" / "Vendor Count" = COUNT with Status filter (see DEFAULT FILTERS).
 
 ================================================================
   DEFAULT FILTERS (MANDATORY)
 ================================================================
 FactSalesInvoice:
-  WHERE Status NOT IN ('Void','Cancelled','Reversed')
-FactPurchaseOrder:
-  WHERE POStatus NOT IN ('Void','Cancel')
+  Exclude void/cancelled/reversed invoices in totals:
+  WHERE FSI.Status NOT IN ('Void','Cancelled','Reversed')
+  Include status values only when user asks for by-status breakdowns.
 DimCustomer:
-  COUNT → Status = 'Active'
-  Revenue → include all
-DimProduct:
-  WHERE IsDiscontinued = 0
-  NOTE: DimProduct.Status values are not reliably populated.
-  Do NOT filter on DP.Status = 'Active' — this returns 0 rows. Use IsDiscontinued = 0 only.
+  For counts: WHERE DC.Status = 'Active'
+  For revenue analysis: include all customers.
 DimWarehouse:
-  WHERE IsActive = 1 (only for listing/counting)
-FactVendorPayments:
-  WHERE VoidDateKey IS NULL
-SalesType: Actual values are 'SO0' (Sales Orders) and 'CS0' (Credit/Service).
-  Do NOT filter on SalesType by default. Only filter when user explicitly asks to separate types.
+  WHERE DW.IsActive = 1 when listing/counting active warehouses.
+  For historical sales analysis, include all warehouses.
+DimProduct:
+  WHERE DP.IsDiscontinued = 0 for product analysis (unless user asks about discontinued).
+  NOTE: DimProduct.Status values are not reliably populated.
+  Do NOT filter on DP.Status = 'Active' — this returns 0 rows.
+SalesType:
+  Actual values are 'SO0' (Sales) and 'CS0' (Sales from Consignment).
+  Do NOT filter on SalesType by default.
 NULL grouping:
-  Add WHERE column IS NOT NULL unless user requests NULLs
+  Add WHERE grouped_column IS NOT NULL unless user requests NULLs.
+Bottom/lower/minimum requests:
+  ensure at least one record OR amount > 0.
 
 ================================================================
   ANTI-PATTERNS (STRICTLY FORBIDDEN)
 ================================================================
-AP1: NEVER join FactSalesInvoice with FactSalesDetail in aggregation
-AP2: NEVER use TotalAmount for revenue
-AP3: ALWAYS net out returns
-AP4: FactInventorySnapshot has NO DateKey
-AP5: NEVER use >= YEAR(GETDATE())-N
-  Use BETWEEN YEAR(GETDATE())-N AND YEAR(GETDATE())
-AP6: Use correct domain tables:
-  Vendor returns → FactVendorReturn
-  Customer returns → FactCustomerReturn
-  Credit memos → FactCreditMemo
-AP7: NEVER omit status filters
-AP8: Table name accuracy: FactVendorPayments (with 's'), FactVendorInvoices (with 's').
+AP1:
+  NEVER JOIN FactSalesInvoice WITH FactSalesDetail in the same aggregation query.
+  Each invoice has multiple detail lines; joining causes fan-out and inflated totals.
+  Use ONE table per query:
+    - FactSalesInvoice for invoice-level metrics (revenue, tax, discount totals, invoice count)
+    - FactSalesDetail for product/line analysis
+  Return a maximum of 40 rows.
+  Round currency/decimal values to 2 decimals.
+AP2:
+  NEVER use TotalAmount for "sales" or "revenue".
+  Use MerchandiseAmount (FactSalesInvoice) or SalesAmount (FactSalesDetail).
+AP3:
+  FactSalesDetail has Quantity and ReturnQuantity; do not rely on ReturnQuantity alone.
+  Net sold quantity = SUM(FSD.Quantity - ISNULL(FCMD.Quantity, 0))
+AP4:
+  NEVER use DateKey on FactInventorySnapshot (column does not exist).
+AP5:
+  NEVER use >= YEAR(GETDATE())-N for "last N years".
+  Use BETWEEN YEAR(GETDATE())-N AND YEAR(GETDATE()).
+AP6:
+  Do not query wrong fact table for a domain.
+  Credit memos -> FactCreditMemo / FactCreditMemoDetail.
+AP7:
+  NEVER omit status filters when computing totals.
+AP8:
+  Table name accuracy: FactVendorPayments (with 's'), FactVendorInvoices (with 's').
 
 ================================================================
   CONSISTENCY RULES
 ================================================================
-- Same question → same query pattern
-  Top customers → FactSalesInvoice
-  Top products → FactSalesDetail
-  Product profit → FactSalesDetail.ProfitAmount
-- Do NOT add filters not requested
+- Same type of question => same table + same metric column.
+- "Total sales by quarter" => VW_SalesMonthly.MerchandiseRevenue
+  or FactSalesInvoice.MerchandiseAmount.
+- "Top customers by revenue" => FactSalesInvoice.MerchandiseAmount.
+- "Top products by sales" => FactSalesDetail.SalesAmount.
 
 ================================================================
-  TIME RULES
+  GENERAL RULES
 ================================================================
-Always JOIN DimDate
-Last N years:
-  WHERE Year BETWEEN YEAR(GETDATE())-N AND YEAR(GETDATE())
-Last N months:
-  FullDate BETWEEN DATEADD(MONTH,-N,GETDATE()) AND GETDATE()
-Window ORDER BY:
-  (Year * 100 + Month)
+0) ROW LIMITS:
+  - Every SELECT against fact table should use TOP N (default TOP 50).
+  - "top 10" => TOP 10
+  - "show all" => TOP 200 max
+  - Aggregations do not need TOP.
+  - Never query FactSalesDetail or FactSalesInvoice raw without TOP.
+1) Prefer views/header tables for speed:
+  - Monthly/quarterly/yearly totals and invoice counts -> VW_SalesMonthly
+  - Warehouse-level sales -> VW_SalesByWarehouse
+  - Customer-level revenue -> FactSalesInvoice + DimCustomer
+  - Use FactSalesDetail only for product-level/line-level detail.
+2) Generate exactly one SELECT (or WITH ... SELECT) per query.
+3) Do not use DECLARE/T-SQL variables.
+4) Avoid schema-qualified names (dbo.) unless required.
 
 ================================================================
-  SQL QUALITY RULES
+  TIME / DATE RULES
 ================================================================
-- Use LEFT JOIN + IS NULL instead of NOT IN (subquery)
-- Use ROW_NUMBER() for ranking
-- Include Rank column for TOP queries
-- Avoid SELECT *
-- Use aliases (FSI, FSD, DC, DP, DD)
-- Order by business metrics
-- Generate only a single SELECT (or WITH ... SELECT) statement per query.
-- Do NOT use DECLARE or T-SQL variables; use inline expressions such as YEAR(GETDATE()), DATEADD(), DATEPART().
-- Never use schema-qualified names like dbo.TableName unless needed.
+- For time filtering, join DimDate on DateKey.
+- Current period: YEAR(GETDATE()), MONTH(GETDATE()), DATEPART(QUARTER, GETDATE()).
+- Last N years: DD.Year BETWEEN YEAR(GETDATE())-N AND YEAR(GETDATE()).
+- Last N months:
+  DD.FullDate >= DATEADD(MONTH, -N, GETDATE()) AND DD.FullDate <= GETDATE().
+- Monthly sort for window functions:
+  ORDER BY (DD.Year * 100 + DD.Month), never (DD.Year, DD.Month) separately.
 
 ================================================================
-  INVENTORY RULES
+  TABLE RELATIONSHIP RULES
 ================================================================
-FactInventorySnapshot has NO DateKey
-AvailableQty =
-  QuantityOnHand - ISNULL(PickingQuantity,0) - ISNULL(SalesOrderQuantity,0)
+- Credit memos:
+  FactCreditMemo (header) + FactCreditMemoDetail (lines) via CreditMemoNo.
+- Customer payment application:
+  FactCustomerApplication + FactCustomerPayment via CashReceiptNo.
+- Back-order history:
+  DimSalesOrderDetail_Log filtered on BackOrder column.
+- Customer debit analysis:
+  FactCustomerDebit + DimCustomer via CustomerKey.
 
 ================================================================
-  TABLE RELATIONSHIPS
+  SQL QUALITY RULES (CRITICAL)
 ================================================================
-Customer returns:
-  FactCustomerReturn + FactCustomerReturnDetail via CustomerReturnNo
-Credit memos:
-  FactCreditMemo + FactCreditMemoDetail via CreditMemoNo
-Vendor invoices:
-  FactVendorInvoices + FactVendorInvoiceDetail via PayableInvoiceNo
-Vendor returns:
-  FactVendorReturn + FactVendorReturnDetail via VendorReturnNo
-Vendor payments:
-  FactVendorPayments (correct table name)
-Customer payment application:
-  FactCustomerApplication + FactCustomerPayment via CashReceiptNo
-Back-order history:
-  DimSalesOrderDetail_Log filtered on BackOrder column
-Customer debit analysis:
-  FactCustomerDebit + DimCustomer via CustomerKey
-Purchase on-time analysis:
-  Join FactPurchaseOrder to DimDate twice (DueDateKey, CompletionDateKey) and compare
-Commission invoices:
-  FactCommissionInvoice + DimSalesRep via SalesRepKey
+- NULL-safe exclusions: use LEFT JOIN ... IS NULL; avoid NOT IN (subquery).
+- For growth/trend/comparison, use LAG/LEAD with absolute and % change.
+- Product analysis: exclude discontinued, cross-check inventory.
+- FactInventorySnapshot has NO DateKey.
+  AvailableQty = QuantityOnHand - ISNULL(PickingQuantity,0) - ISNULL(SalesOrderQuantity,0)
+  Reorder = QuantityOnHand < DimWarehouse.BufferQty
+- For "current" questions, use ROW_NUMBER() to isolate latest per entity.
+- ORDER BY business impact, not alphabetically.
+- Add minimum volume thresholds for trend analysis.
+- Include rank in top-N outputs.
 
 ================================================================
-              FEW-SHOT EXAMPLES (FOLLOW EXACT PATTERN)
+      FEW-SHOT EXAMPLES (FOLLOW EXACT PATTERN)
 ================================================================
 
---- Example 1: Monthly revenue trend ---
-Question: "Show monthly revenue for this year"
+--- Example 1: Quarterly sales (MerchandiseAmount + status filter) ---
+Question: "What is total sales of 2025 by quarter?"
 SELECT
-  DD.Year,
-  DD.Month,
-  DD.MonthName,
-  SUM(FSI.MerchandiseAmount) AS MonthlyRevenue
+  DD.Quarter,
+  SUM(FSI.MerchandiseAmount) AS SalesRevenue,
+  SUM(FSI.TaxAmount) AS TaxCollected,
+  SUM(FSI.DiscountAmount) AS DiscountsGiven,
+  COUNT(DISTINCT FSI.SalesInvoiceNo) AS InvoiceCount
 FROM FactSalesInvoice FSI
 JOIN DimDate DD ON FSI.DateKey = DD.DateKey
-WHERE DD.Year = YEAR(GETDATE())
-  AND FSI.Status NOT IN ('Void','Cancelled','Reversed')
-GROUP BY DD.Year, DD.Month, DD.MonthName
-ORDER BY DD.Year * 100 + DD.Month
+WHERE DD.Year = 2025
+  AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+GROUP BY DD.Quarter
+ORDER BY DD.Quarter
 
---- Example 2: Top 5 customers this year ---
-Question: "Top 5 customers by revenue this year"
-SELECT TOP 5
-  ROW_NUMBER() OVER (ORDER BY SUM(FSI.MerchandiseAmount) DESC) AS Rank,
-  DC.CustomerName,
-  SUM(FSI.MerchandiseAmount) AS Revenue
-FROM FactSalesInvoice FSI
-JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
-JOIN DimDate DD ON FSI.DateKey = DD.DateKey
-WHERE DD.Year = YEAR(GETDATE())
-  AND FSI.Status NOT IN ('Void','Cancelled','Reversed')
-GROUP BY DC.CustomerName
-ORDER BY Revenue DESC
-
---- Example 3: Bottom products by sales ---
-Question: "Lowest 10 products by sales"
+--- Example 2: Top products by quantity (detail table) ---
+Question: "Top 10 products by quantity sold"
 SELECT TOP 10
+  ROW_NUMBER() OVER (ORDER BY SUM(FSD.Quantity - ISNULL(FCMD.Quantity,0)) DESC) AS Rank,
+  DP.ItemID,
   DP.ItemName,
-  SUM(FSD.SalesAmount) AS TotalSales
-FROM FactSalesDetail FSD
-JOIN DimProduct DP ON FSD.ProductKey = DP.ProductKey
-WHERE DP.IsDiscontinued = 0
-GROUP BY DP.ItemName
-ORDER BY TotalSales ASC
-
---- Example 4: Profit by category ---
-Question: "Profit by product category"
-SELECT
   DP.Category,
+  SUM(FSD.Quantity - ISNULL(FCMD.Quantity,0)) AS NetQuantitySold,
+  SUM(FSD.SalesAmount) AS TotalSalesAmount,
   SUM(FSD.ProfitAmount) AS TotalProfit
 FROM FactSalesDetail FSD
 JOIN DimProduct DP ON FSD.ProductKey = DP.ProductKey
+LEFT JOIN FactCreditMemoDetail FCMD ON FSD.ProductKey = FCMD.ProductKey
 WHERE DP.IsDiscontinued = 0
-  AND DP.Category IS NOT NULL
-GROUP BY DP.Category
-ORDER BY TotalProfit DESC
+GROUP BY DP.ItemID, DP.ItemName, DP.Category
+ORDER BY NetQuantitySold DESC
 
---- Example 5: Active customers per city ---
-Question: "Number of customers per city"
-SELECT
-  DC.City,
-  COUNT(*) AS CustomerCount
-FROM DimCustomer DC
-WHERE DC.Status = 'Active'
-  AND DC.City IS NOT NULL
-GROUP BY DC.City
-ORDER BY CustomerCount DESC
-
---- Example 6: Inventory value by warehouse ---
-Question: "Inventory value by warehouse"
-SELECT
-  DW.BranchName AS WarehouseName,
+--- Example 3: Inventory stock on hand (no DateKey in snapshot) ---
+Question: "Which products have the most stock on hand?"
+SELECT TOP 10
+  DP.ItemID, DP.ItemName, DP.Category,
+  SUM(FIS.QuantityOnHand) AS TotalStockOnHand,
   SUM(FIS.InventoryValue) AS TotalInventoryValue
 FROM FactInventorySnapshot FIS
-JOIN DimWarehouse DW ON FIS.BranchKey = DW.BranchKey
-GROUP BY DW.BranchName
-ORDER BY TotalInventoryValue DESC
-
---- Example 7: Products below buffer stock ---
-Question: "Products below buffer stock level"
-SELECT TOP 50
-  DP.ItemName,
-  DW.BranchName AS WarehouseName,
-  FIS.QuantityOnHand,
-  DW.BufferQty
-FROM FactInventorySnapshot FIS
 JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey
-JOIN DimWarehouse DW ON FIS.BranchKey = DW.BranchKey
-WHERE FIS.QuantityOnHand < DW.BufferQty
-  AND DP.IsDiscontinued = 0
-ORDER BY FIS.QuantityOnHand ASC
-
---- Example 8: Purchase orders this year ---
-Question: "Total purchase amount this year"
-SELECT
-  SUM(FPO.TotalAmount) AS TotalPurchase
-FROM FactPurchaseOrder FPO
-JOIN DimDate DD ON FPO.DateKey = DD.DateKey
-WHERE DD.Year = YEAR(GETDATE())
-  AND FPO.POStatus NOT IN ('Void','Cancel')
-
---- Example 9: Vendor payment trend ---
-Question: "Monthly vendor payments this year"
-SELECT
-  DD.Month,
-  DD.MonthName,
-  SUM(FVP.Amount) AS TotalPayments
-FROM FactVendorPayments FVP
-JOIN DimDate DD ON FVP.PaymentDateKey = DD.DateKey
-WHERE DD.Year = YEAR(GETDATE())
-  AND FVP.VoidDateKey IS NULL
-GROUP BY DD.Month, DD.MonthName
-ORDER BY DD.Month
-
---- Example 10: Top products by profit ---
-Question: "Top 10 products by profit"
-SELECT TOP 10
-  ROW_NUMBER() OVER (ORDER BY SUM(FSD.ProfitAmount) DESC) AS Rank,
-  DP.ItemName,
-  SUM(FSD.ProfitAmount) AS Profit
-FROM FactSalesDetail FSD
-JOIN DimProduct DP ON FSD.ProductKey = DP.ProductKey
 WHERE DP.IsDiscontinued = 0
-GROUP BY DP.ItemName
-ORDER BY Profit DESC
+GROUP BY DP.ItemID, DP.ItemName, DP.Category
+ORDER BY TotalStockOnHand DESC
 
---- Example 11: Yearly revenue ---
-Question: "Revenue by year"
+--- Example 4: Active customer count ---
+Question: "How many customers do we have?"
+SELECT COUNT(*) AS ActiveCustomerCount
+FROM DimCustomer DC
+WHERE DC.Status = 'Active'
+
+--- Example 5: Business summary (header table only; no fan-out) ---
+Question: "Summary: total revenue, tax, customer count, invoice count for 2025"
 SELECT
-  DD.Year,
-  SUM(FSI.MerchandiseAmount) AS Revenue
+  SUM(FSI.MerchandiseAmount) AS TotalRevenue,
+  SUM(FSI.TaxAmount) AS TotalTax,
+  SUM(FSI.DiscountAmount) AS TotalDiscount,
+  COUNT(DISTINCT FSI.SalesInvoiceNo) AS InvoiceCount,
+  COUNT(DISTINCT FSI.CustomerKey) AS UniqueCustomers
 FROM FactSalesInvoice FSI
 JOIN DimDate DD ON FSI.DateKey = DD.DateKey
-WHERE FSI.Status NOT IN ('Void','Cancelled','Reversed')
-GROUP BY DD.Year
-ORDER BY DD.Year
+WHERE DD.Year = 2025
+  AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
 
---- Example 12: Customer returns count ---
-Question: "Total customer returns by year"
+--- Example 6: Dead stock (no DateKey in snapshot) ---
+Question: "Products with no sales in 90 days that still have stock"
+WITH RecentSales AS (
+  SELECT DISTINCT FSD.ProductKey
+  FROM FactSalesDetail FSD
+  JOIN DimDate DD ON FSD.DateKey = DD.DateKey
+  WHERE DD.FullDate >= DATEADD(DAY, -90, GETDATE())
+)
+SELECT
+  DP.ItemID,
+  DP.ItemName,
+  DP.Category,
+  DP.Brand,
+  SUM(FIS.QuantityOnHand) AS TotalQtyOnHand,
+  SUM(FIS.InventoryValue) AS TotalInventoryValue,
+  AVG(FIS.AverageCost) AS AvgCost,
+  COUNT(DISTINCT FIS.BranchKey) AS WarehouseCount
+FROM FactInventorySnapshot FIS
+JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey
+LEFT JOIN RecentSales RS ON FIS.ProductKey = RS.ProductKey
+WHERE RS.ProductKey IS NULL
+  AND FIS.QuantityOnHand > 0
+  AND DP.IsDiscontinued = 0
+GROUP BY DP.ItemID, DP.ItemName, DP.Category, DP.Brand
+ORDER BY TotalInventoryValue DESC
+
+--- Example 7: Last 3 years sales (BETWEEN excludes future) ---
+Question: "Total sales by year for last 3 years"
 SELECT
   DD.Year,
-  COUNT(DISTINCT FCR.CustomerReturnNo) AS ReturnCount
-FROM FactCustomerReturn FCR
-JOIN DimDate DD ON FCR.DateReceivedKey = DD.DateKey
+  SUM(FSI.MerchandiseAmount) AS SalesRevenue,
+  COUNT(DISTINCT FSI.SalesInvoiceNo) AS InvoiceCount
+FROM FactSalesInvoice FSI
+JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+WHERE DD.Year BETWEEN YEAR(GETDATE())-3 AND YEAR(GETDATE())
+  AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
 GROUP BY DD.Year
 ORDER BY DD.Year
 
---- Example 13: Credit memo totals ---
-Question: "Total credit memo amount by month"
+--- Example 8: Customer retention by region (two-year cohort) ---
+Question: "Which regions have the highest customer retention over the past 2 years?"
+WITH Year1 AS (
+  SELECT DISTINCT FSI.CustomerKey, DC.Region
+  FROM FactSalesInvoice FSI
+  JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+  JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+  WHERE DD.Year = YEAR(GETDATE())-2
+    AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    AND DC.Region IS NOT NULL
+),
+Year2 AS (
+  SELECT DISTINCT FSI.CustomerKey, DC.Region
+  FROM FactSalesInvoice FSI
+  JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+  JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+  WHERE DD.Year = YEAR(GETDATE())-1
+    AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    AND DC.Region IS NOT NULL
+)
 SELECT
-  DD.Month,
-  DD.MonthName,
-  SUM(FCM.TotalAmount) AS CreditAmount
-FROM FactCreditMemo FCM
-JOIN DimDate DD ON FCM.CreditDateKey = DD.DateKey
-GROUP BY DD.Month, DD.MonthName
-ORDER BY DD.Month
+  Y1.Region,
+  COUNT(DISTINCT Y1.CustomerKey) AS Year1_Customers,
+  COUNT(DISTINCT Y2.CustomerKey) AS Year2_Customers,
+  COUNT(DISTINCT CASE WHEN Y2.CustomerKey IS NOT NULL THEN Y1.CustomerKey END) AS Retained,
+  ROUND(
+    100.0 * COUNT(DISTINCT CASE WHEN Y2.CustomerKey IS NOT NULL THEN Y1.CustomerKey END)
+    / NULLIF(COUNT(DISTINCT Y1.CustomerKey), 0),
+    2
+  ) AS RetentionRatePct
+FROM Year1 Y1
+LEFT JOIN Year2 Y2 ON Y1.CustomerKey = Y2.CustomerKey AND Y1.Region = Y2.Region
+GROUP BY Y1.Region
+ORDER BY RetentionRatePct DESC
 
---- Example 14: Sales by region ---
-Question: "Revenue by region"
+--- Example 9: Monthly sales comparison by region ---
+Question: "Compare sales performance between NORTHEAST and WESTERN regions by month over past 2 years"
 SELECT
   DC.Region,
-  SUM(FSI.MerchandiseAmount) AS Revenue
+  DD.Year,
+  DD.Month,
+  DD.MonthName,
+  SUM(FSI.MerchandiseAmount) AS Revenue,
+  COUNT(DISTINCT FSI.SalesInvoiceNo) AS InvoiceCount,
+  COUNT(DISTINCT FSI.CustomerKey) AS ActiveCustomers
 FROM FactSalesInvoice FSI
+JOIN DimDate DD ON FSI.DateKey = DD.DateKey
 JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
-WHERE FSI.Status NOT IN ('Void','Cancelled','Reversed')
+WHERE DD.Year BETWEEN YEAR(GETDATE())-2 AND YEAR(GETDATE())-1
+  AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
   AND DC.Region IS NOT NULL
-GROUP BY DC.Region
-ORDER BY Revenue DESC
+  AND DC.Region IN ('NORTHEAST', 'WESTERN')
+GROUP BY DC.Region, DD.Year, DD.Month, DD.MonthName
+ORDER BY DC.Region, DD.Year * 100 + DD.Month
 """
 
 

@@ -161,7 +161,7 @@ async def chat_stream(
             await db.chat_messages.insert_one(user_msg.to_dict())
             print(f"[ChatRoute] Saved user message to MongoDB")
 
-            # If access is denied for this role, return a polite denial instead of running the agent
+            # If access is denied for this role, yield a polite denial and stop streaming
             if access_denied:
                 denial_msg = denial_reason or "Sorry, you don't have permission to access this information with your current role."
                 full_response = denial_msg
@@ -177,32 +177,32 @@ async def chat_stream(
                     "sql_query": "",
                 })
                 yield f"data: {done_event}\n\n"
-                # skip the normal streaming below
-                return
+                # fall through — save block below will persist the denial response
 
-            if settings.USE_VANNA_AI:
-                stream_iter = stream_fn(resolved_question, history)
             else:
-                stream_iter = stream_fn(resolved_question, history, role=user_role)
-            async for chunk in stream_iter:
-                yield chunk
+                if settings.USE_VANNA_AI:
+                    stream_iter = stream_fn(resolved_question, history)
+                else:
+                    stream_iter = stream_fn(resolved_question, history, role=user_role)
+                async for chunk in stream_iter:
+                    yield chunk
 
-                # Parse chunk to track state
-                try:
-                    raw = chunk.strip()
-                    if raw.startswith("data: "):
-                        payload = json.loads(raw[6:])
-                        if payload.get("type") == "done":
-                            full_response = payload.get("full_response", "")
-                            has_table = payload.get("has_table", False)
-                            table_data = payload.get("table_data", [])
-                            table_columns = payload.get("table_columns", [])
-                            all_tables = payload.get("tables", [])
-                            sql_query = payload.get("sql_query", "") or ""
-                        elif payload.get("type") == "error":
-                            error_occurred = True
-                except Exception:
-                    pass
+                    # Parse chunk to track state
+                    try:
+                        raw = chunk.strip()
+                        if raw.startswith("data: "):
+                            payload = json.loads(raw[6:])
+                            if payload.get("type") == "done":
+                                full_response = payload.get("full_response", "")
+                                has_table = payload.get("has_table", False)
+                                table_data = payload.get("table_data", [])
+                                table_columns = payload.get("table_columns", [])
+                                all_tables = payload.get("tables", [])
+                                sql_query = payload.get("sql_query", "") or ""
+                            elif payload.get("type") == "error":
+                                error_occurred = True
+                    except Exception:
+                        pass
 
         except Exception as e:
             print(f"[ChatRoute] event_generator error: {e}")
@@ -211,9 +211,12 @@ async def chat_stream(
             error_event = json.dumps({"type": "error", "content": str(e)})
             yield f"data: {error_event}\n\n"
             error_occurred = True
-        finally:
-            # Save assistant response to MongoDB
-            if full_response and not error_occurred:
+
+        # Save assistant response to MongoDB.
+        # This runs outside finally so we can yield the 'saved' event containing
+        # the real MongoDB _id — the frontend uses it for message deletion.
+        if full_response and not error_occurred:
+            try:
                 assistant_msg = ChatMessage(
                     session_id=session_id,
                     user_id=user_id,
@@ -225,10 +228,15 @@ async def chat_stream(
                     tables=all_tables,
                     sql_query=sql_query or "",
                 )
-                await db.chat_messages.insert_one(assistant_msg.to_dict())
-                print(f"[ChatRoute] Saved assistant message to MongoDB | has_table={has_table} | tables={len(all_tables)} | sql_query={bool(sql_query)}")
-            else:
-                print(f"[ChatRoute] Skipping assistant message save | full_response empty={not full_response} | error={error_occurred}")
+                result = await db.chat_messages.insert_one(assistant_msg.to_dict())
+                saved_id = str(result.inserted_id)
+                print(f"[ChatRoute] Saved assistant message | id={saved_id} | has_table={has_table} | tables={len(all_tables)}")
+                # Notify the frontend of the real DB id so delete works immediately
+                yield f"data: {json.dumps({'type': 'saved', 'assistant_db_id': saved_id})}\n\n"
+            except Exception as save_err:
+                print(f"[ChatRoute] Failed to save assistant message: {save_err}")
+        else:
+            print(f"[ChatRoute] Skipping assistant message save | full_response empty={not full_response} | error={error_occurred}")
 
     return StreamingResponse(
         event_generator(),
@@ -278,7 +286,7 @@ async def get_chat_history(
                 table_columns=m.get("table_columns", []),
                 tables=m.get("tables", []),
                 sql_query=m.get("sql_query", "") or "",
-                created_at=m["created_at"].isoformat() if isinstance(m["created_at"], datetime) else str(m["created_at"]),
+                created_at=m["created_at"].isoformat() + "Z" if isinstance(m["created_at"], datetime) else str(m["created_at"]),
             )
             for m in messages
         ],
@@ -584,7 +592,7 @@ async def get_bookmarks(current_user: User = Depends(get_current_user)):
     # Serialise datetime to ISO string for JSON
     for b in bookmarks:
         if isinstance(b.get("created_at"), datetime):
-            b["created_at"] = b["created_at"].isoformat()
+            b["created_at"] = b["created_at"].isoformat() + "Z"
     print(f"[ChatRoute] Returning {len(bookmarks)} bookmarks")
     return {"bookmarks": bookmarks}
 
@@ -618,7 +626,7 @@ async def add_bookmark(
     new_bookmark = {
         "id": str(uuid.uuid4()),
         "question": question,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": datetime.utcnow().isoformat() + "Z",
     }
 
     await db.chat_sessions.update_one(
@@ -713,9 +721,15 @@ async def delete_message_pair(
 
     db = get_database()
 
+    # Validate ObjectId before querying — surface a clear 400 instead of a 500
+    try:
+        oid = ObjectId(message_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid message id")
+
     # Find the assistant message
     assistant_msg = await db.chat_messages.find_one(
-        {"_id": ObjectId(message_id), "user_id": user_id}
+        {"_id": oid, "user_id": user_id}
     )
     if not assistant_msg:
         raise HTTPException(status_code=404, detail="Message not found")

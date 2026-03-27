@@ -87,7 +87,7 @@ def _serialize_item(doc: dict) -> DashboardItemOut:
         source_question=doc.get("source_question"),
         source_prompt=doc.get("source_prompt"),
         source_response=doc.get("source_response"),
-        created_at=created.isoformat() if isinstance(created, datetime) else str(created),
+        created_at=created.isoformat() + "Z" if isinstance(created, datetime) else str(created),
         metadata=doc.get("metadata"),
     )
 
@@ -114,7 +114,7 @@ async def _collect_report_items_and_context(
             item_type = doc.get("item_type", "")
             name = doc.get("name", "")
             created = doc.get("created_at", datetime.utcnow())
-            created_str = created.isoformat() if isinstance(created, datetime) else str(created)
+            created_str = created.isoformat() + "Z" if isinstance(created, datetime) else str(created)
 
             base_item: dict = {
                 "id": str(doc.get("_id")),
@@ -465,7 +465,7 @@ async def download_saved_report_pdf(
         )
 
     created = doc.get("created_at", datetime.utcnow())
-    created_str = created.isoformat() if isinstance(created, datetime) else str(created)
+    created_str = created.isoformat() + "Z" if isinstance(created, datetime) else str(created)
 
     html = render_report_html(
         full_report_markdown=full_report,

@@ -34,21 +34,18 @@ def _get_resolver_llm() -> ChatOpenAI:
 _ROLE_SCOPE: dict[str, str] = {
     "executive": "",  # no restriction
     "sales": (
-        "This user has the SALES role. They may ask about: sales analysis, "
-        "customer analytics, inventory monitoring, pricing, and backorder information. "
-        "They are NOT allowed to access profitability reporting, margin data, "
-        "profit amounts, unit costs, vendor analytics, vendor payments, vendor returns, "
-        "or any financial/cost data. "
-        "If the question involves restricted topics, set access_denied=true."
+        "ALLOWED topics for this user: sales figures, customer analytics, inventory levels, pricing, and backorder status. "
+        "RESTRICTED topics: profitability, profit margins, unit costs, vendor analytics, vendor payments, vendor returns, and any cost/financial data. "
+        "If the resolved question touches a restricted topic, set access_denied=true and write denial_reason as a short, "
+        "natural, first-person assistant message. Do NOT mention 'role', 'not allowed', or any table names. "
+        "Example tone: 'I can help with sales, customers, inventory and pricing — I'm not set up to look up profitability or margin data, though.'"
     ),
     "operations": (
-        "This user has the OPERATIONS role. They may ONLY ask about: "
-        "inventory monitoring (FactInventorySnapshot, DimWarehouse, DimProduct quantities) "
-        "and backorder information (DimSalesOrderDetail_Log). "
-        "They are NOT allowed to access sales data, customer data, revenue, pricing, "
-        "profitability, margins, vendor data, purchase orders, payments, credit memos, "
-        "or any financial metrics. "
-        "If the question involves restricted topics, set access_denied=true."
+        "ALLOWED topics for this user: inventory monitoring (stock levels, warehouse quantities) and backorder information. "
+        "RESTRICTED topics: sales data, customer data, revenue, pricing, profitability, margins, vendor data, purchase orders, payments, and credit memos. "
+        "If the resolved question touches a restricted topic, set access_denied=true and write denial_reason as a short, "
+        "natural, first-person assistant message. Do NOT mention 'role', 'not allowed', or any table names. "
+        "Example tone: 'I can only help with inventory and backorder questions — I'm not able to pull up sales or financial data from here.'"
     ),
 }
 
@@ -63,7 +60,7 @@ Your task:
 5. Classify intent:
    - sql: The (resolved) question requires querying the business database to answer (counts, lists, totals, reports, schema info, "how many tables", "list all X", etc.).
    - simple: Greetings, thanks, goodbyes, "explain that", "what do you mean", questions about the chat itself, or anything that does NOT need fresh data from the database.
-6. If a ROLE RESTRICTION block is provided below, check whether the resolved question falls outside the user's allowed scope. If it does, set "access_denied" to true and provide a short "denial_reason" explaining what they cannot access.
+6. If a ROLE RESTRICTION block is provided below, check whether the resolved question falls outside the user's allowed scope. If it does, set "access_denied" to true and write "denial_reason" as a short, warm, first-person assistant message. Never mention the word "role", never say "not allowed", and never reference internal table names. Write it as if naturally explaining what you can help with instead.
 
 Output ONLY valid JSON with exactly these keys (no markdown, no code fence):
 {
