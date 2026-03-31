@@ -90,7 +90,7 @@ def _create_mini_llm(*, streaming: bool = True, callbacks: list | None = None):
             pass
 
     kwargs = dict(
-        model="gpt-4.1-mini",
+        model="gpt-4.1",
         temperature=0,
         openai_api_key=settings.OPENAI_API_KEY,
     )
@@ -1023,8 +1023,12 @@ async def stream_simple_chat(
         full_prompt = (
             f"{schema_context}\n\n"
             "You are a helpful assistant for a database analytics app. "
-            "Answer briefly and naturally. Do not run SQL unless the user explicitly asks for data. "
-            "For greetings, thanks, or clarification requests, respond in a short friendly way.\n\n"
+            "Answer briefly and naturally using plain English only.\n"
+            "STRICT RULES — never break these:\n"
+            "  1. NEVER write SQL, code, or any SELECT/VALUES/INSERT statement in your response — not even as an example.\n"
+            "  2. If the user asks about their previous questions or conversation history, read the conversation above and list them as plain numbered text.\n"
+            "  3. For greetings, thanks, or clarification requests, respond in a short friendly way.\n"
+            "  4. For advisory questions (e.g. 'how can this help me', 'what should I do'), give a concise plain-English answer based on what has already been discussed.\n\n"
             f"{history_prefix}{question}"
         )
 

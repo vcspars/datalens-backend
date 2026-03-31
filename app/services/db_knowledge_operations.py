@@ -119,7 +119,7 @@ NEVER generate CREATE, ALTER, DROP, INSERT, UPDATE, DELETE, TRUNCATE, EXEC, EXEC
 Execute ONLY SELECT (or WITH ... SELECT) queries. Any non-SELECT query will be rejected.
 
 ================================================================
-                    DIMENSION TABLES (10)
+                    DIMENSION TABLES (9)
 ================================================================
 
 DimCustomer  — Customer master data for sales and receivable analytics.
@@ -155,7 +155,6 @@ DimDate  — Time dimension supporting all fact tables.
   Quarter              (Quarter number)
   Month                (Month number)
   MonthName            (Month name)
-  NOTE: Join fact tables to DimDate using DateKey. Use Year, Month, Quarter, MonthName for filtering.
 
 DimProduct  — Product master data for inventory and sales analysis.
   ProductKey           (Surrogate product key, PK)
@@ -180,7 +179,7 @@ DimProduct  — Product master data for inventory and sales analysis.
   CreatedDate          (Creation timestamp)
   ModifiedDate         (Last update timestamp)
 
-DimVendors  — Vendor/supplier master data for procurement analytics.
+DimVendors  — Vendor master data for procurement analytics.
   VendorKey            (Surrogate vendor key, PK)
   VendorID             (Business vendor identifier)
   VendorName           (Full company name of the supplier)
@@ -223,7 +222,7 @@ DimWarehouse  — Warehouse and branch locations.
   CreatedDate          (Creation timestamp)
   ModifiedDate         (Last update timestamp)
 
-DimInvoiceAddresses  — Shipping destination reference per invoice.
+DimInvoiceAddresses  — Shipping destination reference.
   AddressesKey         (Surrogate key, PK)
   State                (Destination state)
   City                 (Destination city)
@@ -252,79 +251,36 @@ DimSalesOrderDetail_Log  — Sales order detail log for back-order tracking.
   LogReason            (Log reason)
   BackOrder            (Flag Yes/No — whether item is on back order)
   LogDate              (Back order created date or released date)
-  NOTE: Use this table for back-order history and analysis. Filter on BackOrder = 'Yes' for active back orders.
 
-DimSalesRep  — Sales Rep master data for commission analytics.
-  SalesRepKey          (Surrogate key, PK)
-  SalesRepID           (Business identifier)
-  SalesRepName         (Full name of the sales rep)
-  VendorType           (Sales Rep, Internal Sales Rep, Marketing Company)
-  Category             (Business category)
-  Class                (Priority or quality class)
-  Region               (Geographic region)
-  Status               (Current relationship status — Active, Hold, etc.)
-  City                 (Sales rep city)
-  State                (Sales rep state)
-  Country              (Sales rep country)
-  PaymentTerm          (Payment terms)
-  PaymentPriority      (Settlement priority)
-  TaxRate              (Tax percentage applied to sales rep invoices)
-  CreditLimit          (Sales rep credit limit)
-  DesignerRate         (Special percentage rate for designers)
 
 ================================================================
-                      FACT TABLES (20)
+                      FACT TABLES (21)
 ================================================================
 
-FactSalesInvoice  — Invoice-header level metrics.
-  SalesInvoiceKey      (Surrogate key, PK)
-  SalesInvoiceNo       (Sales invoice number)
-  DateKey              (FK → DimDate — invoice date)
-  OrderDateKey         (FK → DimDate — order date)
-  CustomerKey          (FK → DimCustomer)
-  AddressesKey         (FK → DimInvoiceAddresses — shipping destination)
-  BranchKey            (FK → DimWarehouse — fulfillment branch)
-  PaymentTermKey       (FK → DimPaymentTerms)
-  SalesType            (Sales classification: 'SO0' = Sales Orders, 'CS0' = Credit/Service. Do NOT filter unless user asks.)
-  InvoiceType          (Document type)
-  Status               (Invoice status)
-  TotalQuantity        (Total quantity)
-  TotalAmount          (Total amount)
-  TaxAmount            (Tax total)
-  ShippingCharges      (Shipping fees)
-  HandlingCharges      (Handling fees)
-  ServiceCharges       (Service fees)
-  MerchandiseAmount    (Merchandise value)
-  ServicesAmount       (Service revenue)
-  AppliedAmount        (Applied payments)
-  AdjustmentAmount     (Adjustments)
-  DiscountAmount       (Discounts)
-  TotalWeight          (Total shipment weight)
+FactSalesInvoice  — Invoice header metrics.
+  (No column list defined in schema.md — purpose: invoice header level metrics)
 
 FactSalesDetail  — Invoice line-level sales details.
-  SalesKey             (Surrogate key, PK)
+  SalesKey             (Surrogate key)
   SalesInvoiceNo       (Sales invoice number)
-  InvoiceLineNumber    (Line number within invoice)
+  InvoiceLineNumber    (Sale item line number)
   DateKey              (FK → DimDate — invoice date)
   OrderDateKey         (FK → DimDate — order date)
   ProductKey           (FK → DimProduct)
   CustomerKey          (FK → DimCustomer)
   BranchKey            (FK → DimWarehouse)
-  SalesType            (Sale item classification: 'SO0' = Sales Orders, 'CS0' = Credit/Service. Do NOT filter unless user asks.)
-  ItemType             (Sale item category)
-  Quantity             (Quantity sold)
-  ShippedQuantity      (Quantity physically sent to customer)
-  ReturnQuantity       (Quantity returned after sale)
-  UnitPrice            (Price charged per unit)
-  UnitCost             (Cost per unit at time of sale)
-  DiscountAmount       (Discount on this line)
-  SalesAmount          (Gross sales amount)
+  ItemType             (Item type — e.g. Prog, OAK)
+  Quantity             (Sale item quantity sold)
+  UnitPrice            (Sale item unit price — price charged per unit)
+  UnitCost             (Sale item cost per unit at time of sale)
+  DiscountAmount       (Sale item discount subtracted from specific line)
+  SalesAmount          (Sale item net sales amount)
   TaxAmount            (Tax allocated to this line)
-  ShippingCharges      (Shipping fees allocated to this line)
-  ProfitAmount         (Gross profit = SalesAmount - (UnitCost * Quantity))
+  ShippingCharges      (Sale item shipping fees allocated to this line)
+  ProfitAmount         (Sale item net profit amount)
 
 FactConsignments  — Consignment header metrics.
-  ConsignmentKey       (Surrogate key, PK)
+  ConsignmentKey       (Surrogate key)
   ConsignmentNo        (Consignment number)
   DateKey              (FK → DimDate — consignment date)
   OrderDateKey         (FK → DimDate — order date)
@@ -348,7 +304,7 @@ FactConsignments  — Consignment header metrics.
   TotalWeight          (Total shipment weight)
 
 FactConsignmentDetail  — Consignment line-level sales details.
-  SalesKey             (Surrogate key, PK)
+  SalesKey             (Surrogate key)
   ConsignmentNo        (Consignment number)
   LineNumber           (Item line number)
   DateKey              (FK → DimDate — consignment date reference)
@@ -356,7 +312,7 @@ FactConsignmentDetail  — Consignment line-level sales details.
   ProductKey           (FK → DimProduct)
   CustomerKey          (FK → DimCustomer)
   BranchKey            (FK → DimWarehouse)
-  ItemType             (Item Type — Prog, OAK)
+  ItemType             (Item type — e.g. Prog, OAK)
   Quantity             (Quantity sold)
   UnitPrice            (Price charged per unit)
   UnitCost             (Cost per unit at time of sale)
@@ -367,66 +323,57 @@ FactConsignmentDetail  — Consignment line-level sales details.
   ProfitAmount         (Net profit amount)
 
 FactPurchaseOrder  — Purchase order header metrics.
-  PurchaseOrderKey     (Surrogate key, PK)
+  PurchaseOrderKey     (Surrogate key)
   PurchaseOrderNo      (Purchase order number)
   VendorKey            (FK → DimVendors)
   DateKey              (FK → DimDate — issue date)
   DueDateKey           (FK → DimDate — expected receipt date)
   CancelDateKey        (FK → DimDate — cancellation date)
-  CompletionDateKey    (FK → DimDate — actual completion date)
+  CompletionDateKey    (FK → DimDate — completion date)
   WarehouseKey         (FK → DimWarehouse — receiving warehouse)
   CustomerKey          (FK → DimCustomer — special order for this customer)
-  TotalQty             (Total items quantity)
-  TotalAmount          (Grand total amount)
-  TotalTax             (Total tax)
+  TotalQty             (Purchase order total items quantity)
+  TotalAmount          (Purchase order grand total amount)
+  TotalTax             (Purchase order total tax)
   InTransitQty         (Quantity currently shipping from vendor)
   ReceivedQty          (Received quantity)
-  PaymentDiscount      (Discount for early payment terms)
-  SalesDiscount        (Trade discount provided by vendor)
-  FreightTerm          (Freight terms)
-  POStatus             (Status: Open, Closed, Partially Shipped, Void, New, Cancel)
   DropShipment         (Flag for direct-to-customer shipments: 1=Yes, 0=No)
-  NOTE: On-time = CompletionDateKey <= DueDateKey. Delayed = CompletionDateKey > DueDateKey.
-        Join DueDateKey and CompletionDateKey to DimDate for date comparisons.
+
 
 FactPurchaseDetail  — Purchase order line-level details.
-  PurchaseLineKey      (Surrogate key, PK)
+  PurchaseLineKey      (Surrogate key)
   PurchaseOrderNo      (Purchase order number)
-  Line_No              (Line number)
+  Line_No              (Purchase item line number)
   VendorKey            (FK → DimVendors)
   ProductKey           (FK → DimProduct)
   DateKey              (FK → DimDate — issue date)
   DueDateKey           (FK → DimDate — expected receipt date)
   WarehouseKey         (FK → DimWarehouse — destination warehouse)
   CustomerKey          (FK → DimCustomer — special order for this customer)
-  OrderQty             (Quantity requested from vendor)
-  UnitCost             (Cost per unit)
-  LineAmount           (Total line cost amount)
-  TaxAmount            (Line tax amount)
-  DiscountPercent      (Discount percent for this line item)
-  InTransitQty         (Quantity currently mid-shipment)
-  ReceivedQty          (Received quantity)
-  SQFTCost             (Cost per square foot)
+  OrderQty             (Purchase item quantity requested from vendor)
+  UnitCost             (Purchase item cost per unit)
+  LineAmount           (Purchase item total line cost amount)
+  TaxAmount            (Purchase item line tax amount)
+  DiscountPercent      (Purchase item discount percent for specific line item)
+  InTransitQty         (Purchase item quantity currently mid-shipment)
+  ReceivedQty          (Purchase item received quantity)
+  SQFTCost             (Purchase item cost per square foot)
 
-FactInventorySnapshot  — Current inventory position per product per warehouse.
-  InventorySnapshotKey (Surrogate key, PK)
+FactInventorySnapshot  — Inventory position snapshots.
+  InventorySnapshotKey (Surrogate key)
   ProductKey           (FK → DimProduct)
   BranchKey            (FK → DimWarehouse)
-  QuantityOnHand       (Available quantity)
+  QuantityOnHand       (Inventory available quantity)
   InventoryValue       (Inventory value)
-  PickingQuantity      (Allocated for picking)
-  SalesOrderQuantity   (Reserved for sales orders)
-  DamagedQuantity      (Damaged stock)
-  ShowRoomQuantity     (Display stock)
-  MissingBinQuantity   (Missing stock)
-  AverageCost          (Average cost)
-  OriginalCost         (Original cost)
-  *** WARNING: This table has NO DateKey column. Do NOT use DateKey or MAX(DateKey) filters. ***
-  Query it directly — it represents current inventory state.
-  AvailableQty = QuantityOnHand - ISNULL(PickingQuantity,0) - ISNULL(SalesOrderQuantity,0).
-  Reorder needed when QuantityOnHand < DimWarehouse.BufferQty.
+  PickingQuantity      (Inventory allocated for picking)
+  SalesOrderQuantity   (Inventory reserved for sales orders)
+  DamagedQuantity      (Inventory damaged stock)
+  ShowRoomQuantity     (Inventory display stock)
+  MissingBinQuantity   (Inventory missing stock)
+  AverageCost          (Inventory average cost)
 
-FactVendorInvoices  — Vendor invoices (accounts payable).
+
+FactVendorInvoices  — Vendor position invoices.
   PayableInvoiceNo     (Primary key — payable invoice number)
   VendorKey            (FK → DimVendors)
   InvoiceType          (Code classifying the invoice type)
@@ -435,22 +382,12 @@ FactVendorInvoices  — Vendor invoices (accounts payable).
   VendorInvoiceRef     (Vendor's reference/invoice number)
   VendorInvoiceDateKey (FK → DimDate)
   DueDateKey           (FK → DimDate)
-  DiscountDateKey      (FK → DimDate)
-  CutOffDateKey        (FK → DimDate)
-  TotalAmount          (Total invoice amount before payments/adjustments)
+  TotalAmount          (Total invoice amount)
   PaidAmount           (Amount already paid to the vendor)
-  DiscountAmount       (Early payment discount offered by vendor)
-  DiscountAvailed      (Discount actually taken/applied)
-  AdjustmentAmount     (Manual adjustments — returns, quality issues, etc.)
-  ApprovedAmount       (Amount approved for payment by management)
-  ApprovedDiscount     (Discount amount approved)
-  ApprovedAdjustment   (Adjustment amount approved)
-  PaymentAccount       (Account code where payment is recorded)
-  OtherChargesAccount  (Account for freight, handling, or other charges)
   WarehouseKey         (FK → DimWarehouse)
-  PeriodID             (Accounting period identifier)
+  PeriodID             (Period identifier)
 
-FactVendorPayments  — Vendor payments (outgoing payments to vendors).
+FactVendorPayment  — Vendor position payments.
   PaymentNo            (Primary key — payment number)
   VendorKey            (FK → DimVendors)
   DocDateKey           (FK → DimDate — document date)
@@ -466,47 +403,43 @@ FactVendorPayments  — Vendor payments (outgoing payments to vendors).
   PeriodID             (Accounting period identifier)
   VoidDateKey          (FK → DimDate — void date if payment was voided)
 
-FactCustomerReturn  — Customer return headers.
-  ReturnHeaderKey      (Surrogate key, PK)
+FactCustomerReturn  — Customer position returns.
+  ReturnHeaderKey      (Surrogate key)
   CustomerReturnNo     (Unique business identifier for the return)
-  SalesInvoiceNo       (Original sales invoice number)
+  SalesInvoiceNo       (Sales invoice number for which this credit is issued)
   CreditMemoNo         (Credit memo issued for this return)
   CustomerKey          (FK → DimCustomer)
   DateReceivedKey      (FK → DimDate — date return was received)
   CreditDateKey        (FK → DimDate — date credit was issued)
   InvoiceDateKey       (FK → DimDate — date of the original sales invoice)
-  ReceiptType          (Type of receipt)
   Status               (Return status)
   ReceivingBin         (Warehouse bin where returned items are stored)
   TotalQty             (Total quantity of items returned)
   TotalAmount          (Total value/credit amount for the return)
   ShippingHandlingAmount  (Return shipping and handling charges)
-  QtyToWarehouse       (Quantity accepted and sent to warehouse)
-  TotalBales           (For rugs/large items: number of bales/packages)
+  TotalBales           (For rugs/large items: number of bales/packages in return)
 
-FactCustomerReturnDetail  — Customer return line-level details.
-  ReturnKey            (Surrogate key, PK)
-  CustomerReturnNo     (Business identifier for the return)
-  SalesInvoiceNo       (Original sales invoice number)
+FactCustomerReturnDetail  — Customer position returns detail.
+  ReturnKey            (Surrogate key)
+  CustomerReturnNo     (Unique business identifier for the return)
+  SalesInvoiceNo       (Reference sales invoice number of the return)
   CustomerKey          (FK → DimCustomer)
   DateReceivedKey      (FK → DimDate)
   ProductKey           (FK → DimProduct)
   ReturnReason         (Reason for return)
   ReturnQty            (Quantity returned)
-  CreditQty            (Quantity credited)
   Cost                 (Product cost)
   Price                (Selling price)
   Discount             (Discount that was applied)
   ExtPrice             (Extended price — credit amount for this line)
   TaxAmount            (Tax on the credit)
   SQFTPrice            (Cost/price per square foot — for rugs)
-  OrgCost              (Original cost per unit)
 
-FactCreditMemo  — Credit memo headers (credits issued to customers).
-  CreditMemoKey        (Surrogate key, PK)
+FactCreditMemo  — Credit memo headers.
+  CreditMemoKey        (Surrogate key)
   CreditMemoNo         (Business identifier for the credit memo)
   CustomerKey          (FK → DimCustomer)
-  SalesInvoiceNo       (Original sales invoice number)
+  SalesInvoiceNo       (Sales invoice number)
   CustomerReturnNo     (Related customer return number)
   BranchKey            (FK → DimWarehouse)
   CreditDateKey        (FK → DimDate — date credit was issued)
@@ -514,29 +447,25 @@ FactCreditMemo  — Credit memo headers (credits issued to customers).
   OrderDateKey         (FK → DimDate — original order date)
   ShippedDateKey       (FK → DimDate — shipped date)
   TotalQty             (Total quantity of items on the credit memo)
-  TotalQtyInvoiced     (Total quantity originally invoiced)
-  TotalMerchandise     (Value of merchandise only, excluding services)
-  TotalServices        (Value of services, if any)
+  TotalQtyInvoiced     (Total quantity that was originally invoiced)
+  TotalMerchandise     (Value of merchandise only — excluding services)
+  TotalServices        (Value of services — if any)
   TotalAmount          (Total credit memo amount before adjustments)
   TaxAmount            (Tax amount on the credit)
   ShippingCharges      (Return shipping charges)
   HandlingCharges      (Handling charges)
-  ServiceCharges       (Service charges, if applicable)
+  ServiceCharges       (Service charges — if applicable)
   DiscountAmount       (Discount applied to the credit)
-  OpenCredit           (Remaining unapplied credit amount)
   AppliedAmount        (Amount of credit already applied to invoices)
-  CreditApplied        (Flag indicating if credit has been applied)
   Status               (Credit status)
-  InvoiceType          (Type of document)
-  SalesType            (Sales type code)
   PriceCategoryKey     (FK → DimPriceCategory — pricing tier applied)
   PaymentTermKey       (FK → DimPaymentTerms)
 
 FactCreditMemoDetail  — Credit memo line-level details.
-  SalesKey             (Credit detail key, PK)
+  SalesKey             (Credit detail key)
   CreditMemoNo         (Business identifier for the credit memo)
   InvoiceLineNumber    (Line number)
-  SalesInvoiceNo       (Original sales invoice number)
+  SalesInvoiceNo       (Sales invoice number)
   BranchKey            (FK → DimWarehouse)
   InvoiceDateKey       (FK → DimDate)
   OrderDateKey         (FK → DimDate)
@@ -545,8 +474,6 @@ FactCreditMemoDetail  — Credit memo line-level details.
   SalesType            (Type of sales)
   ItemType             (Item category)
   Quantity             (Quantity credited)
-  ShippedQuantity      (Quantity originally shipped)
-  ReturnQuantity       (Quantity returned, if credit is for a return)
   UnitPrice            (Original unit price)
   UnitCost             (Original unit cost)
   DiscountAmount       (Discount applied on this line)
@@ -555,7 +482,7 @@ FactCreditMemoDetail  — Credit memo line-level details.
   ShippingCharges      (Shipping charges allocated to this line)
 
 FactCustomerPayment  — Customer payments (incoming cash receipts).
-  CashReceiptNo        (Unique identifier for the cash receipt, PK)
+  CashReceiptNo        (Unique identifier for the cash receipt)
   CustomerKey          (FK → DimCustomer — customer making the payment)
   SalesInvoice         (Sales invoice number)
   DocDateKey           (FK → DimDate — document date)
@@ -570,11 +497,10 @@ FactCustomerPayment  — Customer payments (incoming cash receipts).
   AppliedAmount        (Amount applied to outstanding invoices)
   AppliedDiscount      (Discount given for early payment)
   Status               (Payment status)
-  Approved             (Flag: approved)
   PeriodID             (Accounting period identifier)
 
-FactCustomerApplication  — Payment-to-invoice application (a single customer payment often applies to multiple invoices).
-  CRBatchApplicationNo (Batch application number, PK)
+FactCustomerApplication  — A single customer payment often applies to multiple invoices.
+  CRBatchApplicationNo (Batch application number)
   LineNo               (Line sequence within the batch)
   CustomerKey          (FK → DimCustomer)
   SalesInvoiceNo       (Sales invoice number)
@@ -588,12 +514,12 @@ FactCustomerApplication  — Payment-to-invoice application (a single customer p
   AppliedAmount        (Amount of payment/credit applied to the invoice)
   DiscountAmount       (Discount taken on this application)
   DocType              (Document type)
-  WriteOff             (Flag indicating if any amount was written off)
+  Write Off            (Flag indicating if any amount was written off)
   PeriodID             (Accounting period identifier)
 
-FactVendorInvoiceDetail  — Vendor invoice line-level details (products received per vendor invoice).
-  VendorInvoiceDetailKey  (Surrogate key, PK)
-  PayableInvoiceNo     (Payable invoice number — FK → FactVendorInvoices)
+FactVendorInvoiceDetail  — Each vendor invoice header contains multiple line items (products received). FactVendorInvoiceDetail captures every invoice line: which product, quantity received
+  VendorInvoiceDetailKey  (Surrogate key)
+  PayableInvoiceNo     (FK → FactVendorInvoices)
   Line_No              (Line sequence number within the invoice)
   VendorKey            (FK → DimVendors)
   ProductKey           (FK → DimProduct)
@@ -605,7 +531,6 @@ FactVendorInvoiceDetail  — Vendor invoice line-level details (products receive
   VendorStyle          (Vendor's style code for the item)
   OrderQty             (Quantity ordered from vendor)
   ReceivedQty          (Quantity actually received)
-  ReturnQty            (Quantity returned to vendor)
   Cost                 (Unit cost from vendor)
   ExtCost              (Extended cost = Cost × ReceivedQty)
   TaxRate              (Tax rate applied to this line)
@@ -618,36 +543,33 @@ FactVendorInvoiceDetail  — Vendor invoice line-level details (products receive
   ReceiveBin           (Warehouse bin where item is stored)
   LotNo                (Lot number for batch tracking)
 
-FactCustomerDebit  — Customer debit adjustments (summary-level).
-  CreditMemoKey        (Surrogate key, PK — IDENTITY)
-  CustomerDebitNo      (Business key — the actual debit number from the ERP)
+FactCustomerDebit  — Summary level data for customer credit memos and debit adjustments.
+  CreditMemoKey        (Surrogate key — IDENTITY)
+  CustomerDebitNo      (Business key — actual credit memo number from ERP)
   CustomerKey          (FK → DimCustomer)
   InvoiceNo            (Reference to the original sales invoice, if applicable)
-  BranchKey            (FK → DimWarehouse — which location issued the debit)
-  CreditDateKey        (FK → DimDate — date the debit was issued)
+  BranchKey            (FK → DimWarehouse — which location issued the credit)
+  CreditDateKey        (FK → DimDate — date the credit was issued)
   InvoiceDateKey       (FK → DimDate — date of the original invoice)
   OrderDateKey         (FK → DimDate — original order date)
   ADDDateKey           (FK → DimDate — system entry date)
-  TotalQty             (Total quantity of items being debited)
-  TotalQtyInvoiced     (Total quantity originally invoiced)
-  TotalMerchandise     (Value of physical goods being debited)
-  TotalServices        (Value of services being debited)
-  TotalAmount          (Final total amount of the debit)
-  TaxAmount            (Tax amount being reversed or adjusted)
-  ShippingCharges      (Shipping costs in the debit)
-  HandlingCharges      (Handling fees in the debit)
+  TotalServices        (Value of services being credited)
+  TotalAmount          (Final total amount of the debit/credit)
+  TaxAmount            (Amount of tax being reversed or adjusted)
+  ShippingCharges      (Shipping costs included in the credit)
+  HandlingCharges      (Handling fees included in the credit)
   ServiceCharges       (Fees for services associated with this debit)
-  SalesDiscount        (Additional sales discounts applied)
+  SalesDiscount        (Any additional sales discounts applied)
   PaymentDiscountAmount  (Cash/payment discounts reversed or applied)
   OpenCredit           (Remaining balance of the credit yet to be used)
   AppliedAmount        (Portion of the credit already applied to other invoices)
   CreditApplied        (Flag 0/1 indicating if credit is fully applied)
   Status               (Current state: Open, Applied, Void, Pending)
   InvoiceType          (Internal code for the document type)
-  SalesType            (Classification: 'RET' = Retail, 'WHL' = Wholesale, etc.)
+  SalesType            (Classification of the sale: 'RET' = Retail, 'WHL' = Wholesale)
 
-FactVendorReturn  — Vendor return headers (goods returned to vendors).
-  VendorReturnKey      (Surrogate key, PK)
+FactVendorReturn  — Summary level data for customer credit memos and debit adjustments.
+  VendorReturnKey      (Surrogate key)
   VendorReturnNo       (Unique vendor return number)
   VendorKey            (FK → DimVendors)
   PaymentTermKey       (FK → DimPaymentTerms)
@@ -656,24 +578,14 @@ FactVendorReturn  — Vendor return headers (goods returned to vendors).
   VendorInvoiceRef     (Vendor's invoice or reference number)
   PurchaseReceiptNo    (Associated purchase receipt number)
   VendorReturnDateKey  (FK → DimDate — return date)
-  EntryDateKey         (FK → DimDate — entry date)
-  DueDateKey           (FK → DimDate)
-  DiscountDateKey      (FK → DimDate)
-  CutOffDateKey        (FK → DimDate)
   WarehouseKey         (FK → DimWarehouse)
   TotalAmount          (Total value of goods being returned)
   PaidAmount           (Amount already paid or credited by the vendor)
   DiscountAvailed      (Discount amount actually taken/applied)
-  AdjustmentAmount     (Manual adjustments made to the return amount)
-  ApprovedAmount       (Final amount approved for credit by vendor)
-  ApprovedDiscount     (Discount amount approved by vendor)
-  ApprovedAdjustment   (Adjustment amount approved by vendor)
-  PaymentAccount       (Account code where return is recorded)
-  OtherChargesAccount  (Account code for freight, handling, restocking, or other charges)
   PeriodID             (Accounting period identifier)
 
 FactVendorReturnDetail  — Vendor return line-level details.
-  VendorReturnDetailKey  (Surrogate key, PK)
+  VendorReturnDetailKey  (Surrogate key)
   VendorReturnNo       (Return number)
   Line_No              (Line sequence number)
   VendorKey            (FK → DimVendors)
@@ -683,17 +595,34 @@ FactVendorReturnDetail  — Vendor return line-level details.
   Description          (Item description)
   ItemType             (Item classification)
   VendorStyle          (Vendor's style code for the item)
-  OrderQty             (Quantity ordered from vendor)
-  ReceivedQty          (Quantity actually received)
   ReturnQty            (Quantity returned to vendor)
   Cost                 (Unit cost from vendor)
-  ExtCost              (Extended cost = Cost × ReceivedQty)
+  ExtCost              (Extended cost = Cost × ReturnQty)
   TaxRate              (Tax rate applied to this line)
   ExtTax               (Extended tax amount)
-  SKU                  (Stock keeping unit ID)
+  SKU                  (Stock ID)
   PONo                 (Purchase order number)
   ReceiveBin           (Receive bin)
   LotNo                (Lot number)
+
+DimSalesRep  — Sales Rep master data for procurement analytics. (Summary level data for Sales Rep Commissions)
+  SalesRepKey        (Surrogate key)
+  SalesRepID         (Business vendor identifier)
+  SalesRepName       (Full company name of the supplier)
+  VendorType         (Sales Rep type: Sales Rep, Internal Sales Rep, Marketing Company)
+  Category           (Business category)
+  Class              (Priority or quality class)
+  Region             (Geographic region)
+  Status             (Current relationship status: Active, Hold, etc.)
+  City               (Sales Rep city)
+  State              (Sales Rep state)
+  Country            (Sales Rep country)
+  PaymentTerm        (Payment terms)
+  PaymentPriority    (Settlement priority)
+  TaxRate            (Tax percentage applied to Sales Rep invoices)
+  CreditLimit        (Sales Rep credit limit)
+  DesignerRate       (Special percentage rate for designers)
+
 
 FactCommissionInvoice  — Sales Rep commission invoices.
   CommissionInvoiceNo  (Primary key — commission invoice number)
@@ -749,6 +678,7 @@ CommissionInvoice  — Commission invoice lookup (reference query pattern).
   Usage: SELECT * FROM FactCommissionInvoice WHERE CommissionInvoiceNo = <invoice_no>
   Use this for sales rep commission invoice lookups.
 
+
 ================================================================
           QUERY GUIDELINES  (OPERATIONS ROLE)
 ================================================================
@@ -766,10 +696,12 @@ financial metrics.
 ================================================================
   ROW LIMIT RULE (MANDATORY)
 ================================================================
-- Default: TOP 50
-- "top N" → use TOP N
-- "show all" → TOP 200 max
-- Aggregations (COUNT, SUM, AVG, GROUP BY) → no TOP required
+- Every SELECT against a fact table MUST include TOP 40. No exceptions.
+- Default: TOP 40. This is also the MAXIMUM — never exceed TOP 40 regardless of what the user asks.
+- "top N" → use TOP N (capped at 40). "show all" → TOP 40.
+- If user requests more than 40 rows, cap it at TOP 40 silently.
+- GROUP BY queries (per-product, per-warehouse breakdowns, etc.) MUST use TOP 40 — they can return thousands of rows.
+- ONLY exception: a query that returns exactly ONE row (e.g. SELECT SUM(...) with no GROUP BY, SELECT COUNT(*) with no GROUP BY) does not need TOP.
 
 ================================================================
   DEFAULT FILTERS (MANDATORY)
@@ -793,7 +725,7 @@ when the user requests 'bottom', 'lower', or 'minimum'.
 ================================================================
 AP1: NEVER JOIN FactSalesInvoice WITH FactSalesDetail in the same aggregation query.
      Use ONE table per query — mixing them produces wildly inflated numbers.
-AP2: Return a maximum of 40 rows.
+AP2: ALWAYS use TOP 40 maximum — including GROUP BY queries. Only skip TOP for single-row aggregations (no GROUP BY).
 AP3: Round all currency and decimal numeric values to 2 decimal places,
      and use commas as thousands separators.
 AP4: NEVER use DateKey on FactInventorySnapshot — that column does NOT exist.
@@ -813,10 +745,11 @@ AP8: Table name accuracy: FactVendorPayments (with 's'), FactVendorInvoices (wit
   GENERAL RULES
 ================================================================
 0. ROW LIMITS — ALWAYS ADD TOP N:
-   Every SELECT against a fact table MUST include TOP N.
-   Default: TOP 10 unless user asks for a different number.
-   User says "top 10" → TOP 10.  User says "show all" → TOP 50 maximum.
-   Aggregation queries (COUNT, SUM, AVG, GROUP BY) do NOT need TOP.
+   Every SELECT against a fact table MUST include TOP 40. No exceptions.
+   Default: TOP 40. This is also the MAXIMUM — never exceed TOP 40 regardless of what the user asks.
+   User says "top 10" → TOP 10. User says "show all" → TOP 40. Any request over 40 → cap at TOP 40.
+   GROUP BY queries MUST use TOP 40 — they can return thousands of rows.
+   ONLY exception: single-row queries (SELECT SUM/COUNT with no GROUP BY) do not need TOP.
 
 1. PREFER VIEWS AND HEADER TABLES FOR SPEED:
    For warehouse-level data → use VW_SalesByWarehouse (if relevant to inventory scope).
@@ -859,7 +792,24 @@ Reorder = QuantityOnHand < DimWarehouse.BufferQty
 - PRODUCT ANALYSIS: Exclude discontinued (IsDiscontinued=0), cross-check inventory.
 - INVENTORY: FactInventorySnapshot has NO DateKey. Query directly.
 - CURRENT STATE VS HISTORY: For "current" questions, use ROW_NUMBER() to isolate most recent per entity.
-- ORDER BY business impact (quantity, value), never alphabetically.
+- ORDER BY the metric the user is specifically asking about, not by an unrelated metric.
+  Example: user asks "products with most backorders" → ORDER BY SUM(BackorderQty) DESC.
+  Example: user asks "warehouses by stock level" → ORDER BY SUM(QuantityOnHand) DESC.
+  NEVER default to ordering by an unrelated metric.
+- ZERO-VALUE FILTERING: When the user asks for a breakdown of a specific metric (backorders, stock shortfall, etc.),
+  ALWAYS add HAVING SUM(metric) > 0 to exclude records where that metric is zero.
+- CASE-BASED GROUPING (CRITICAL): When the user asks to "group logically" or "categorize", use a TWO-STEP CTE:
+    WITH UniqueValues AS (
+        SELECT col, SUM(metric) AS TotalMetric FROM Table WHERE col IS NOT NULL GROUP BY col
+    )
+    SELECT TOP N
+        CASE WHEN col LIKE '%X%' THEN 'Group A' ELSE 'Other' END AS LogicalGroup,
+        SUM(TotalMetric) AS Total
+    FROM UniqueValues
+    GROUP BY CASE WHEN col LIKE '%X%' THEN 'Group A' ELSE 'Other' END
+    HAVING SUM(TotalMetric) > 0
+    ORDER BY Total DESC
+  NEVER include the raw source column in the outer GROUP BY or SELECT — that produces one row per raw value.
 - THRESHOLDS: Add minimum volume threshold for trend analysis.
 - RANKING: Include rank column in final SELECT for top-N queries.
 - Use aliases (FIS, DP, DW, DD).
