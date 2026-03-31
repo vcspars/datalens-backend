@@ -317,53 +317,98 @@ async def get_db_overview(current_user: User = Depends(get_current_user)):
 @router.post("/db/summary")
 async def stream_db_summary(current_user: User = Depends(get_current_user)):
     """
-    Stream an AI-generated summary for top management.
-    Uses table row counts as context (no KPI SQL). Presents what data exists in business terms.
+    Stream a role-aware, data-driven AI summary for management/leadership.
+
+    Context used (merged):
+      1. Pre-fetched business KPI snapshot from MongoDB (real numbers per role)
+      2. Table row counts from SQL Server (existing approach, kept for breadth)
+
     Saves the full result to the user's chat_session document after streaming.
     """
     user_id = str(current_user._id)
-    print(f"[ChatRoute] /db/summary called | user={user_id}")
+    user_role = getattr(current_user, "role", "executive") or "executive"
+    print(f"[ChatRoute] /db/summary called | user={user_id} | role={user_role}")
 
     from app.services.langchain_agent import stream_generate_report, get_table_row_counts
+    from app.services.db_snapshot import get_snapshot_context
 
-    prompt = (
-        "Using the Data Context below (table list and row counts), write a one-page summary for top management. "
-        "Describe at a high level what business data the organization has and what it enables the business to do. "
-        "Explicitly explain that the data model is designed to support ALL of the following areas, and mention each one clearly: "
-        "Sales Analysis; Purchase Analysis; Inventory Monitoring; Profitability Reporting; "
-        "Customer & Vendor Analytics; Customer Returns & Payments; Vendor Returns & Payments; Back Order Information. "
-        "Use markdown (##, ###). Keep language business-focused for leadership; avoid technical terms like schema or column names. "
-        "Use only the numbers from the Data Context; do not invent values. "
-        "Do NOT mention data gaps, missing data, or that any area has no records — we do not have that information."
-    )
-
-    _summary_system = (
-        "You are an executive report writer for C-level readers. Answer ONLY what is asked. "
-        "Do NOT prepend a document title or 'Executive Summary'. Start with the first section header (e.g. ## Overview of Business Data). "
-        "Format as clean markdown. Do NOT wrap output in code fences. "
-        "Keep the tone suitable for leadership; use the row counts from the Data Context where relevant. "
-        "Do NOT include any section or sentence about data gaps, missing data, or unavailable areas — omit that entirely."
-    )
-
-    db = get_database()
+    # --- Build context: snapshot KPIs (role-specific, real numbers) + row counts ---
+    print(f"[ChatRoute] Loading snapshot context for role={user_role}...")
+    snapshot_context = await get_snapshot_context(user_role)
+    print(f"[ChatRoute] Snapshot context loaded | chars={len(snapshot_context)}")
 
     try:
         row_counts_context = get_table_row_counts()
+        print(f"[ChatRoute] Row counts loaded | chars={len(row_counts_context)}")
     except Exception as e:
         print(f"[ChatRoute] get_table_row_counts failed: {e}")
         row_counts_context = ""
+
+    # Merge both context sources
+    combined_context_parts = []
+    if snapshot_context:
+        combined_context_parts.append(snapshot_context)
+    if row_counts_context:
+        combined_context_parts.append(row_counts_context)
+    combined_context = "\n\n".join(combined_context_parts)
+
+    # Role-specific scope note for the prompt
+    _role_scope = {
+        "executive": (
+            "You are writing for the executive leadership team. Cover ALL business areas: "
+            "sales performance, profitability, procurement, inventory, customer and vendor relationships, "
+            "returns, payments, and backorders."
+        ),
+        "sales": (
+            "You are writing for the sales team. Focus on: sales revenue, customer activity, "
+            "inventory availability for sales, discounts, customer returns, and payment status. "
+            "Do not include vendor analytics, cost data, or profitability margins."
+        ),
+        "operations": (
+            "You are writing for the operations team. Focus on: inventory levels, stock availability, "
+            "reorder alerts, warehouse activity, backorders, and picking/reservation status. "
+            "Do not include sales revenue, customer details, or vendor financials."
+        ),
+    }
+    role_instruction = _role_scope.get(user_role, _role_scope["executive"])
+
+    prompt = (
+        f"{role_instruction} "
+        "Using the real business figures in the Data Context, write a clear one-page summary. "
+        "Whenever you reference a figure, explicitly state the year it belongs to "
+        "(e.g. 'In 2025, total revenue was...' or 'As of 2025, inventory value stands at...'). "
+        "Highlight the most important numbers — revenue, volumes, inventory health, outstanding items — "
+        "and explain what they mean for the business in plain language. "
+        "Use markdown (##, ###). Do not use technical terms, table names, or column names. "
+        "Use only the figures from the Data Context; never invent numbers. "
+        "Do not mention data gaps, missing records, or unavailable areas."
+    )
+
+    _summary_system = (
+        "You are a business analyst writing a data summary for leadership. "
+        "Start directly with the first section header (e.g. ## Business Performance Overview). "
+        "Do NOT add a document title. Format as clean markdown with headers and bullet points. "
+        "Do NOT wrap output in code fences. "
+        "Tone: clear, confident, business-focused. "
+        "Always include the specific year when citing any figure (e.g. 'In 2025...' or 'Year 2025:'). "
+        "Always reference actual numbers from the Data Context to support your statements. "
+        "Never mention data gaps, missing data, or technical terms. "
+        "NEVER add footnote markers, reference numbers, or citations like (1), (2), [1], [2] anywhere in the output."
+    )
+
+    print(f"[ChatRoute] Starting summary stream | role={user_role} | context_chars={len(combined_context)}")
+    db = get_database()
 
     async def event_generator():
         full_content = ""
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context=row_counts_context,
+                items_context=combined_context,
                 template="summary",
                 custom_system_prompt=_summary_system,
             ):
                 yield chunk
-                # Track the full_report from the done event
                 try:
                     raw = chunk.strip()
                     if raw.startswith("data: "):
@@ -381,7 +426,7 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
                     {"$set": {"db_summary": full_content, "updated_at": datetime.utcnow()}},
                     upsert=True,
                 )
-                print(f"[ChatRoute] Saved db_summary to session | user={user_id} | len={len(full_content)}")
+                print(f"[ChatRoute] Saved db_summary | user={user_id} | role={user_role} | len={len(full_content)}")
 
     return StreamingResponse(
         event_generator(),
@@ -393,33 +438,63 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
 @router.post("/db/questions")
 async def stream_db_questions(current_user: User = Depends(get_current_user)):
     """
-    Stream AI-generated suggested questions for top management (revenue, profit, growth, etc.).
-    Questions are answerable with business data; no technical or schema questions.
-    Parses the numbered list and saves it to the user's chat_session document.
+    Stream role-specific AI-generated suggested questions.
+
+    Uses the pre-fetched KPI snapshot (real figures) + a plain-English schema
+    summary for the user's role so the LLM generates questions that are:
+      - Answerable from data the role actually has access to
+      - Written in natural business language (no SQL/technical terms)
+      - Grounded in real current numbers (not generic)
+
+    Parses the numbered list and saves to the user's chat_session document.
     """
     user_id = str(current_user._id)
-    print(f"[ChatRoute] /db/questions called | user={user_id}")
+    user_role = getattr(current_user, "role", "executive") or "executive"
+    print(f"[ChatRoute] /db/questions called | user={user_id} | role={user_role}")
 
     from app.services.langchain_agent import stream_generate_report
+    from app.services.db_snapshot import get_snapshot_context, get_schema_summary_for_role
 
-    _questions_context = (
-        "Available data: Total Revenue, Total Purchases, Total Profit, Net Profit Margin, "
-        "Inventory Value, Active Customers, Active Vendors, "
-        "Total Invoices, Total Quantity Sold, Items Below Reorder Level, Purchase Orders On-Time Rate (all global/all-time metrics)."
+    print(f"[ChatRoute] Loading snapshot + schema for questions | role={user_role}...")
+    snapshot_context = await get_snapshot_context(user_role)
+    schema_summary = get_schema_summary_for_role(user_role)
+    print(f"[ChatRoute] Questions context ready | snapshot_chars={len(snapshot_context)} | schema_chars={len(schema_summary)}")
+
+    # Role-specific persona for the question generator
+    _role_persona = {
+        "executive": "a CEO or executive leadership team member",
+        "sales": "a sales manager or sales team leader",
+        "operations": "an operations manager or warehouse team leader",
+    }
+    persona = _role_persona.get(user_role, "a business manager")
+
+    questions_context = (
+        f"Data Scope (what information is available to analyze):\n{schema_summary}"
+        + (f"\n\n{snapshot_context}" if snapshot_context else "")
     )
 
     prompt = (
-        "Generate exactly 10 questions that a CEO or top management would ask about business performance. "
-        "Base them on the following available metrics only. Questions must be answerable with our business data. "
-        "Do NOT suggest technical or database-structure questions. Return only a numbered list: 1. ... 2. ... 10. ..."
+        f"Generate exactly 10 questions that {persona} would naturally ask about business performance. "
+        "Base the questions ONLY on the topics covered by the available data described in the Data Context. "
+        "Every question must be directly answerable from the available data. "
+        "Write questions in plain, everyday business language — no technical terms, no database jargon, "
+        "no column names, no table names. "
+        "IMPORTANT: Do NOT embed any numbers, amounts, percentages, or figures inside the questions. "
+        "Questions must be open-ended and exploratory — they should ask 'how', 'what', 'which', or 'why', "
+        "not reference specific values. "
+        "Return ONLY a numbered list: 1. ... 2. ... 10. ..."
     )
 
     _questions_system = (
-        "You are an analyst helping leadership. Return ONLY a numbered list of 10 questions, "
-        "nothing else — no title, no preamble, no explanation, no closing remarks. "
-        "Format exactly as:\n1. <question>\n2. <question>\n...\n10. <question>"
+        "You are a business analyst helping leadership discover useful questions about their data. "
+        "Return ONLY a plain numbered list of exactly 10 questions — nothing else. "
+        "No title, no preamble, no explanation, no closing remarks. "
+        "Format:\n1. <question>\n2. <question>\n...\n10. <question>\n"
+        "Questions must be in natural business language. No SQL, no table names, no technical terms. "
+        "Never include specific numbers, dollar amounts, percentages, or figures inside the question text."
     )
 
+    print(f"[ChatRoute] Starting questions stream | role={user_role} | context_chars={len(questions_context)}")
     db = get_database()
 
     async def event_generator():
@@ -427,7 +502,7 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context=_questions_context,
+                items_context=questions_context,
                 template="summary",
                 custom_system_prompt=_questions_system,
             ):
@@ -444,7 +519,6 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
                     pass
         finally:
             if full_content:
-                # Parse numbered list into a clean list of strings
                 questions = [
                     line.strip().lstrip("0123456789.)- ").strip()
                     for line in full_content.split("\n")
@@ -456,7 +530,7 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
                     {"$set": {"db_questions": questions, "updated_at": datetime.utcnow()}},
                     upsert=True,
                 )
-                print(f"[ChatRoute] Saved {len(questions)} db_questions to session | user={user_id}")
+                print(f"[ChatRoute] Saved {len(questions)} db_questions | user={user_id} | role={user_role}")
 
     return StreamingResponse(
         event_generator(),
@@ -468,31 +542,66 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
 @router.post("/db/report")
 async def stream_db_report(current_user: User = Depends(get_current_user)):
     """
-    Stream an AI-generated report for top management.
-    No SQL KPI queries; describes what the organization's data supports at a high level for leadership.
+    Stream a role-aware, data-driven leadership report.
+
+    Uses the pre-fetched KPI snapshot from MongoDB as real-number context
+    so the report contains actual business figures, not generic descriptions.
     Saves the full result to the user's chat_session document after streaming.
     """
     user_id = str(current_user._id)
-    print(f"[ChatRoute] /db/report called | user={user_id}")
+    user_role = getattr(current_user, "role", "executive") or "executive"
+    print(f"[ChatRoute] /db/report called | user={user_id} | role={user_role}")
 
     from app.services.langchain_agent import stream_generate_report
+    from app.services.db_snapshot import get_snapshot_context
+
+    print(f"[ChatRoute] Loading snapshot context for report | role={user_role}...")
+    snapshot_context = await get_snapshot_context(user_role)
+    print(f"[ChatRoute] Snapshot context loaded | chars={len(snapshot_context)}")
+
+    # Role-specific section guidance
+    _role_sections = {
+        "executive": (
+            "Include these sections: Business Overview; Sales & Revenue Performance; "
+            "Profitability & Margins; Procurement & Vendor Activity; Inventory Health; "
+            "Customer & Vendor Relationships; Returns & Payments; Decision Support Highlights."
+        ),
+        "sales": (
+            "Include these sections: Sales Performance Overview; Customer Activity; "
+            "Discount & Pricing Overview; Inventory Availability for Sales; "
+            "Customer Returns Summary; Payment Status; Key Opportunities."
+        ),
+        "operations": (
+            "Include these sections: Inventory Health Overview; Stock Availability; "
+            "Reorder & Low-Stock Alerts; Warehouse Activity; Backorder Status; "
+            "Operational Action Points."
+        ),
+    }
+    section_guide = _role_sections.get(user_role, _role_sections["executive"])
 
     prompt = (
-        "Generate a high-level report for the leadership team about what business data the organization has and what it can be used for. "
-        "Sections (in business language): Overview; Sales & revenue data; Purchases & procurement; Inventory; Customers & vendors; "
-        "and a short note on how this data supports decision-making. Use markdown (##, ###). "
-        "Keep the tone suitable for C-level; do not use technical or schema jargon. "
-        "Do NOT mention data gaps, missing data, or that any area has no records — omit any such content entirely."
+        f"Write a detailed business report for {user_role}-level readers using the real figures in the Data Context. "
+        f"{section_guide} "
+        "For each section, reference the actual numbers from the Data Context and explain what they mean. "
+        "Use markdown (##, ###) with bullet points. "
+        "Write in clear business language — no technical terms, table names, or column names. "
+        "Never invent numbers. Do not mention data gaps or missing records."
     )
 
     _report_system = (
-        "You are a report writer for top management. Generate a clear markdown report. "
-        "Do NOT add a document title — start with the first section (e.g. ## Overview). "
-        "Use markdown headers (##, ###), bullet points, and blank lines. Do NOT wrap the output in code fences. "
-        "Audience is C-level and leadership; avoid database or technical terminology. "
-        "Do NOT include any section or sentence about data gaps, missing data, or unavailable areas — omit that entirely."
+        "You are a business analyst writing a structured report for leadership. "
+        "Start directly with the first section header — do NOT add a document title. "
+        "Use markdown headers (##, ###), bullet points, and spacing between sections. "
+        "Do NOT wrap the output in code fences. "
+        "Anchor every claim to a number from the Data Context. "
+        "Always include the specific year when citing any figure (e.g. 'In 2025...' or 'Year 2025:'). "
+        "Keep the tone professional and business-focused. "
+        "Never mention missing data, data gaps, or technical/database terminology. "
+        "NEVER add footnote markers, reference numbers, superscripts, or inline citations like "
+        "(1), (2), (1, 2), [1], [2], ^1, ^2, or any similar numbering — they must not appear anywhere in the output."
     )
 
+    print(f"[ChatRoute] Starting report stream | role={user_role} | context_chars={len(snapshot_context)}")
     db = get_database()
 
     async def event_generator():
@@ -500,7 +609,7 @@ async def stream_db_report(current_user: User = Depends(get_current_user)):
         try:
             async for chunk in stream_generate_report(
                 prompt=prompt,
-                items_context="",
+                items_context=snapshot_context,
                 template="technical",
                 custom_system_prompt=_report_system,
             ):
@@ -522,7 +631,7 @@ async def stream_db_report(current_user: User = Depends(get_current_user)):
                     {"$set": {"db_report": full_content, "updated_at": datetime.utcnow()}},
                     upsert=True,
                 )
-                print(f"[ChatRoute] Saved db_report to session | user={user_id} | len={len(full_content)}")
+                print(f"[ChatRoute] Saved db_report | user={user_id} | role={user_role} | len={len(full_content)}")
 
     return StreamingResponse(
         event_generator(),

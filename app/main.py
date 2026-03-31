@@ -18,14 +18,31 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events"""
     # Startup
     await connect_to_mongo()
+
     # Warm up LangChain SQLDatabase cache (read-only) so first query is fast
+    sql_db_ready = False
     try:
         print("[Main] Warming up SQLDatabase cache (read-only)...")
         await asyncio.to_thread(_get_sql_db)
         print("[Main] SQLDatabase cache ready")
+        sql_db_ready = True
     except Exception as e:
         # Do not block app startup if SQL Server is temporarily unavailable
         print(f"[Main] SQLDatabase warm-up failed: {e}")
+
+    # Launch background DB snapshot pre-fetch for all roles (executive, sales, operations).
+    # Runs after the SQL DB cache is ready so queries reuse the warm connection.
+    # Non-blocking — server is fully ready before snapshots complete.
+    if sql_db_ready:
+        try:
+            from app.services.db_snapshot import run_all_snapshots
+            asyncio.create_task(run_all_snapshots())
+            print("[Main] DB snapshot pre-fetch task launched in background")
+        except Exception as e:
+            print(f"[Main] DB snapshot task launch failed: {e}")
+    else:
+        print("[Main] DB snapshot pre-fetch skipped (SQL DB not available)")
+
     yield
     # Shutdown
     await close_mongo_connection()
