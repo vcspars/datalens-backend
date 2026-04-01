@@ -37,16 +37,20 @@ _ROLE_SCOPE: dict[str, str] = {
     "sales": (
         "ALLOWED topics for this user: sales figures, customer analytics, inventory levels, pricing, and backorder status. "
         "RESTRICTED topics: profitability, profit margins, unit costs, vendor analytics, vendor payments, vendor returns, and any cost/financial data. "
-        "If the resolved question touches a restricted topic, set access_denied=true and write denial_reason as a short, "
-        "natural, first-person assistant message. Do NOT mention 'role', 'not allowed', or any table names. "
-        "Example tone: 'I can help with sales, customers, inventory and pricing — I'm not set up to look up profitability or margin data, though.'"
+        "If the resolved question touches a restricted topic, set access_denied=true and write denial_reason using this exact format: "
+        "'You don't have rights to access [describe the restricted topic briefly] information. As per your current role, you are assigned access to: "
+        "sales figures, customer analytics, inventory levels, pricing, and backorder status only.' "
+        "Replace [describe the restricted topic briefly] with a plain description of what the user asked (e.g. 'profitability', 'vendor payment', 'margin'). "
+        "Do NOT mention table names or the word 'role'."
     ),
     "operations": (
         "ALLOWED topics for this user: inventory monitoring (stock levels, warehouse quantities) and backorder information. "
         "RESTRICTED topics: sales data, customer data, revenue, pricing, profitability, margins, vendor data, purchase orders, payments, and credit memos. "
-        "If the resolved question touches a restricted topic, set access_denied=true and write denial_reason as a short, "
-        "natural, first-person assistant message. Do NOT mention 'role', 'not allowed', or any table names. "
-        "Example tone: 'I can only help with inventory and backorder questions — I'm not able to pull up sales or financial data from here.'"
+        "If the resolved question touches a restricted topic, set access_denied=true and write denial_reason using this exact format: "
+        "'You don't have rights to access [describe the restricted topic briefly] information. As per your current role, you are assigned access to: "
+        "inventory monitoring and backorder information only.' "
+        "Replace [describe the restricted topic briefly] with a plain description of what the user asked (e.g. 'sales', 'customer', 'pricing'). "
+        "Do NOT mention table names or the word 'role'."
     ),
 }
 
@@ -99,7 +103,7 @@ Your task:
 
    DECISION RULE: If the question is asking the assistant to THINK, ADVISE, or RE-ANALYZE data already shown (not fetch new data), it is "simple". If it is asking the assistant to FETCH or COUNT or LIST fresh data from the database, it is "sql".
 
-6. If a ROLE RESTRICTION block is provided below, check whether the resolved question falls outside the user's allowed scope. If it does, set "access_denied" to true and write "denial_reason" as a short, warm, first-person assistant message. Never mention the word "role", never say "not allowed", and never reference internal table names. Write it as if naturally explaining what you can help with instead.
+6. If a ROLE RESTRICTION block is provided below, check whether the resolved question falls outside the user's allowed scope. If it does, set "access_denied" to true and write "denial_reason" following the exact format specified in the ROLE RESTRICTION block. Never reference internal table names.
 
 Output ONLY valid JSON with exactly these keys (no markdown, no code fence):
 {

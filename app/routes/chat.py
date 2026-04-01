@@ -163,7 +163,7 @@ async def chat_stream(
 
             # If access is denied for this role, yield a polite denial and stop streaming
             if access_denied:
-                denial_msg = denial_reason or "Sorry, you don't have permission to access this information with your current role."
+                denial_msg = denial_reason or "You don't have rights to access this information. As per your current role, you are only assigned access to topics relevant to your team."
                 full_response = denial_msg
                 token_event = json.dumps({"type": "token", "content": denial_msg})
                 yield f"data: {token_event}\n\n"

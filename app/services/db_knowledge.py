@@ -424,7 +424,6 @@ FactInventorySnapshot  — Current inventory position per product per warehouse.
   *** WARNING: This table has NO DateKey column. Do NOT use DateKey or MAX(DateKey) filters. ***
   Query it directly — it represents current inventory state.
   AvailableQty = QuantityOnHand - ISNULL(PickingQuantity,0) - ISNULL(SalesOrderQuantity,0).
-  Reorder needed when QuantityOnHand < DimWarehouse.BufferQty.
 
 FactVendorInvoices  — Vendor invoices (accounts payable).
   PayableInvoiceNo     (Primary key — payable invoice number)
@@ -954,19 +953,7 @@ JOIN DimWarehouse DW ON FIS.BranchKey = DW.BranchKey
 GROUP BY DW.BranchName
 ORDER BY TotalInventoryValue DESC
 
---- Example 7: Products below buffer stock ---
-Question: "Products below buffer stock level"
-SELECT TOP 50
-  DP.ItemName,
-  DW.BranchName AS WarehouseName,
-  FIS.QuantityOnHand,
-  DW.BufferQty
-FROM FactInventorySnapshot FIS
-JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey
-JOIN DimWarehouse DW ON FIS.BranchKey = DW.BranchKey
-WHERE FIS.QuantityOnHand < DW.BufferQty
-  AND DP.IsDiscontinued = 0
-ORDER BY FIS.QuantityOnHand ASC
+
 
 --- Example 8: Purchase orders this year ---
 Question: "Total purchase amount this year"

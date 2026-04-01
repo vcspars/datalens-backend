@@ -787,7 +787,7 @@ async def stream_chat_with_database(
             + "\n• Right-align numeric columns (---:). Left-align text (:---). Use thousands separators: 1,216,581.73."
             + "\n• Do NOT output raw SQL anywhere in your response."
             + "\n• Do NOT show intermediate reasoning, retries, or tool calls — final result only."
-            + "\n• If no matching rows: say exactly 'No data matches that criteria' and briefly suggest why."
+            + "\n• If no matching rows: say exactly \"I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query.\" and briefly suggest why."
             + "\n• NEVER use the words 'query', 'SQL', or 'returned no results' in your response."
             + "\n• NEVER fabricate data, use illustrative values, or produce a table when the tool returned empty."
         )
@@ -888,7 +888,7 @@ async def stream_chat_with_database(
         if has_captured_sql and qrows == 0:
             print("[LangChainAgent] Query ran but returned 0 rows; forcing no-data message (no placeholders)")
             full_response = (
-                "No data matches that criteria. Please try again or adjust the query"
+                "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
             )
         else:
             # Post-process: detect fabricated data (placeholders or illustrative phrasing) and replace
@@ -908,7 +908,7 @@ async def stream_chat_with_database(
                     print(f"[LangChainAgent] Replaced with real captured result: {len(qdata)} rows, {len(qcols)} cols")
                 else:
                     full_response = (
-                        "No data matches that criteria. Please try again or adjust the query"
+                        "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
                     )
                     print("[LangChainAgent] Replaced with honest no-results message")
 

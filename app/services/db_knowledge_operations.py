@@ -782,7 +782,6 @@ Back-order history:
 FactInventorySnapshot has NO DateKey — query directly without date filters.
 AvailableQty =
   QuantityOnHand - ISNULL(PickingQuantity,0) - ISNULL(SalesOrderQuantity,0)
-Reorder = QuantityOnHand < DimWarehouse.BufferQty
 
 ================================================================
   SQL QUALITY RULES (CRITICAL)
@@ -872,23 +871,9 @@ WHERE DW.IsActive = 1
 GROUP BY DW.BranchName
 ORDER BY TotalInventoryValue DESC
 
---- Example 4: Products below buffer stock ---
-Question: "Products below buffer stock level"
-SELECT TOP 50
-  DP.ItemName,
-  DW.BranchName AS WarehouseName,
-  FIS.QuantityOnHand,
-  DW.BufferQty,
-  (DW.BufferQty - FIS.QuantityOnHand) AS ShortfallQty
-FROM FactInventorySnapshot FIS
-JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey
-JOIN DimWarehouse DW ON FIS.BranchKey = DW.BranchKey
-WHERE FIS.QuantityOnHand < DW.BufferQty
-  AND DP.IsDiscontinued = 0
-  AND DW.IsActive = 1
-ORDER BY ShortfallQty DESC
 
---- Example 5: Back-order history ---
+
+--- Example 4: Back-order history ---
 Question: "Show current back-orders"
 SELECT TOP 50
   DSOD.SalesOrderNo,

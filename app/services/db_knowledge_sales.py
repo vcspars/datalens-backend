@@ -813,7 +813,6 @@ AP8:
 - Product analysis: exclude discontinued, cross-check inventory.
 - FactInventorySnapshot has NO DateKey.
   AvailableQty = QuantityOnHand - ISNULL(PickingQuantity,0) - ISNULL(SalesOrderQuantity,0)
-  Reorder = QuantityOnHand < DimWarehouse.BufferQty
 - For "current" questions, use ROW_NUMBER() to isolate latest per entity.
 - ORDER BY the metric the user is specifically asking about, not by an unrelated metric.
   Example: user asks "breakup of discount by customer" → ORDER BY SUM(DiscountAmount) DESC, NOT by SalesAmount.

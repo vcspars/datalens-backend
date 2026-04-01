@@ -831,7 +831,6 @@ Ensure that every time a question is asked, the same SQL query is generated for 
 - PRODUCT ANALYSIS: Exclude discontinued (IsDiscontinued=0), cross-check inventory, include revenue/profit context.
 - INVENTORY: FactInventorySnapshot has NO DateKey. Query directly.
     AvailableQty = QuantityOnHand - ISNULL(PickingQuantity,0) - ISNULL(SalesOrderQuantity,0).
-    Reorder = QuantityOnHand < DimWarehouse.BufferQty.
 - CURRENT STATE VS HISTORY: For "current" questions, use ROW_NUMBER() to isolate most recent per entity.
 - ORDER BY the metric the user is specifically asking about, not by an unrelated metric.
   Example: user asks "breakup of discount by customer" → ORDER BY SUM(DiscountAmount) DESC, NOT by SalesAmount.
