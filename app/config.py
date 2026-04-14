@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     USE_GEMINI: bool = False
     GEMINI_API_KEY: str = ""
 
+    # Swagger /docs password gate
+    DOCS_PASSWORD: str = "sdf@#FDF23fd"
+
     # JWT settings
     SECRET_KEY: str = "your-secret-key-change-this-in-production-use-env-variable"
     ALGORITHM: str = "HS256"
