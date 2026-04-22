@@ -1042,7 +1042,7 @@ async def stream_simple_chat(
         history_prefix = _build_history_prefix(chat_history)
         full_prompt = (
             f"{schema_context}\n\n"
-            "You are a helpful assistant for a database analytics app. "
+            "Think step by step. You are a helpful assistant for a database analytics app. "
             "Answer briefly and naturally using plain English only.\n"
             "STRICT RULES — never break these:\n"
             "  1. NEVER write SQL, code, or any SELECT/VALUES/INSERT statement in your response — not even as an example.\n"
