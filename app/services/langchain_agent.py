@@ -790,6 +790,25 @@ async def stream_chat_with_database(
             + "\n• If no matching rows: say exactly \"I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query.\" and briefly suggest why."
             + "\n• NEVER use the words 'query', 'SQL', or 'returned no results' in your response."
             + "\n• NEVER fabricate data, use illustrative values, or produce a table when the tool returned empty."
+
+            + "\n\n=== MATHEMATICAL / BDMAS RULES (CRITICAL) ==="
+            + "\n• Always follow BDMAS order of operations: Brackets → Division → Multiplication → Addition → Subtraction."
+            + "\n• ALWAYS wrap compound arithmetic expressions in parentheses to make precedence explicit."
+            + "  WRONG:  a + b * c        RIGHT:  a + (b * c)"
+            + "  WRONG:  a - b / c        RIGHT:  a - (b / c)"
+            + "\n• Division — ALWAYS use NULLIF to prevent divide-by-zero errors:"
+            + "  WRONG:  numerator / denominator"
+            + "  RIGHT:  numerator / NULLIF(denominator, 0)"
+            + "\n• Percentage calculations — cast to decimal FIRST, then divide, then multiply:"
+            + "  RIGHT:  ROUND(100.0 * numerator / NULLIF(denominator, 0), 2)"
+            + "\n• Growth rate / change % — always use ABS on denominator to handle negative base values:"
+            + "  RIGHT:  ROUND(100.0 * (current_val - prior_val) / NULLIF(ABS(prior_val), 0), 2)"
+            + "\n• Averages — use NULLIF on COUNT to avoid divide-by-zero:"
+            + "  RIGHT:  SUM(col) / NULLIF(COUNT(*), 0)"
+            + "\n• Never rely on implicit integer division — always multiply by 1.0 or use 100.0 when a decimal result is needed."
+            + "\n• Subtraction for net amounts: always parenthesise: (SalesAmount - CostAmount) AS ProfitAmount"
+            + "\n• When combining SUM and arithmetic, apply SUM before dividing:"
+            + "  RIGHT:  SUM(col1) / NULLIF(SUM(col2), 0)    WRONG:  SUM(col1 / col2)"
         )
         print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
         try:
@@ -1029,7 +1048,15 @@ async def stream_simple_chat(
             "  1. NEVER write SQL, code, or any SELECT/VALUES/INSERT statement in your response — not even as an example.\n"
             "  2. If the user asks about their previous questions or conversation history, read the conversation above and list them as plain numbered text.\n"
             "  3. For greetings, thanks, or clarification requests, respond in a short friendly way.\n"
-            "  4. For advisory questions (e.g. 'how can this help me', 'what should I do'), give a concise plain-English answer based on what has already been discussed.\n\n"
+            "  4. For advisory questions (e.g. 'how can this help me', 'what should I do'), give a concise plain-English answer based on what has already been discussed.\n"
+            "  5. MATHEMATICAL / BDMAS RULES — when explaining or computing any numbers:\n"
+            "     • Follow BDMAS order: Brackets → Division → Multiplication → Addition → Subtraction.\n"
+            "     • Always resolve brackets/parentheses first before any other operation.\n"
+            "     • Multiplication and Division are evaluated before Addition and Subtraction.\n"
+            "     • Percentage: divide first, then multiply by 100.  e.g. (part / total) × 100.\n"
+            "     • Growth rate: (current − previous) / |previous| × 100.\n"
+            "     • Never divide by zero — if denominator is zero, state 'N/A' or 'undefined'.\n"
+            "     • Show intermediate steps when explaining a calculation so the user can verify.\n\n"
             f"{history_prefix}{question}"
         )
 
