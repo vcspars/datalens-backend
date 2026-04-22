@@ -1166,7 +1166,7 @@ Financial statement rules
 
 BALANCE SHEET:
 - Use the ClosingBalance column from FactAccountMonthlySummary.
-- If the AccountID (Main account) is >= 2000, multiply ClosingBalance by -1.
+- If the (Main Column in the database) is >= 2000, multiply ClosingBalance by -1.
   Example: CASE WHEN AccountID >= 2000 THEN ClosingBalance * -1 ELSE ClosingBalance END
 
 P&L STATEMENT:
