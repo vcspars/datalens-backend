@@ -1161,18 +1161,18 @@ Ensure that every time a question is asked, the same SQL query is generated for 
 
 
 ================================================================
-Financial statement rules
+Financial statement rules (Critical)
 ================================================================
 
 BALANCE SHEET:
 - Use the ClosingBalance column from FactAccountMonthlySummary.
-- If the (Main Column in the database) is >= 2000, multiply ClosingBalance by -1.
-  Example: CASE WHEN AccountID >= 2000 THEN ClosingBalance * -1 ELSE ClosingBalance END
+- If the (Main Column) is >= 2000, multiply ClosingBalance by -1.
+  Example: CASE WHEN Main >= 2000 THEN ClosingBalance * -1 ELSE ClosingBalance END
 
 P&L STATEMENT:
-- Use the YTD_Net column from FactAccountMonthlySummary.
-- Always multiply YTD_Net by -1.
-  Example: YTD_Net * -1
+- Use the PTD_Net column from FactAccountMonthlySummary.
+- Always multiply PTD_Net by -1.
+  Example: PTD_Net * -1
 
 
 ================================================================
