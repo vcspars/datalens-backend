@@ -1164,15 +1164,73 @@ Ensure that every time a question is asked, the same SQL query is generated for 
 Financial statement rules (Critical)
 ================================================================
 
-BALANCE SHEET:
-- Use the ClosingBalance column from FactAccountMonthlySummary.
-- If the (Main Column) is >= 2000, multiply ClosingBalance by -1.
-  Example: CASE WHEN Main >= 2000 THEN ClosingBalance * -1 ELSE ClosingBalance END
+SOURCE TABLES FOR FINANCIAL STATEMENTS:
+- FactAccountMonthlySummary  — stores monthly GL account balances. Join on AccountID to COAMaping.
+- COAMaping                  — Chart of Account mapping. Provides grouping columns for reporting.
+- DimDate                    — Join FactAccountMonthlySummary.DateKey to DimDate.DateKey for period filtering.
 
-P&L STATEMENT:
-- Use the PTD_Net column from FactAccountMonthlySummary.
-- Always multiply PTD_Net by -1.
-  Example: PTD_Net * -1
+JOIN PATTERN (always use this):
+  FROM FactAccountMonthlySummary FAM
+  JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+  JOIN DimDate DD ON FAM.DateKey = DD.DateKey
+
+BALANCE SHEET — VERIFIED column mapping (confirmed by live DB test):
+- Amount column  : ClosingBalance from FactAccountMonthlySummary.
+- Sign rule      : CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+  (Main >= 2000 = Liabilities & Equity accounts — flip sign for correct BS presentation)
+
+CRITICAL — column-to-template level mapping (verified against live data):
+  BalanceSheet_MainGroups  → line items inside "Main Grouped" template (CURRENT ASSETS, EQUITY, etc.)
+  BalanceSheet_SubGroups   → line items inside "Sub Grouped" template (Accounts Receivable, Capital, etc.)
+  BalanceSheet_Details     → line items inside "Detailed" template (Checking Account, individual accounts)
+
+- Main Grouped   : Derived group (Assets/L&E) as section header + BalanceSheet_MainGroups as line items within each section.
+    SELECT derived_main_group AS [Section], CM.BalanceSheet_MainGroups AS [Line Item], SUM(amount)
+    GROUP BY derived_main_group, CM.BalanceSheet_MainGroups
+    Filter: AND CM.BalanceSheet_MainGroups IS NOT NULL AND LEN(CM.BalanceSheet_MainGroups) > 0
+    → Returns rows like: Assets | CURRENT ASSETS | 15,523,012.25
+
+- Sub Grouped    : Derived group + BalanceSheet_MainGroups (section header) + BalanceSheet_SubGroups (line items):
+    SELECT derived_main_group AS [Section], CM.BalanceSheet_MainGroups AS [Sub Group], CM.BalanceSheet_SubGroups AS [Line Item], SUM(amount)
+    GROUP BY derived_main_group, CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+    Filter: AND CM.BalanceSheet_SubGroups IS NOT NULL AND LEN(CM.BalanceSheet_SubGroups) > 0
+    → Returns rows like: Assets | CURRENT ASSETS | Accounts Receivable | 3,774,607.91
+
+- Detailed       : Derived group + BalanceSheet_MainGroups + BalanceSheet_SubGroups + BalanceSheet_Details (individual accounts):
+    SELECT derived_main_group AS [Section], CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details, SUM(amount)
+    GROUP BY derived_main_group, CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+    Filter: AND CM.BalanceSheet_Details IS NOT NULL AND LEN(CM.BalanceSheet_Details) > 0
+
+P&L STATEMENT — VERIFIED column mapping (confirmed by live DB test):
+- Amount column  : YTD_Net from FactAccountMonthlySummary, multiplied by -1.
+- Expression     : SUM(FAM.YTD_Net * -1) AS [Amount]
+  NEVER use PTD_Net for P&L — always use YTD_Net.
+
+- Main Grouped   : GROUP BY CM.PLStatementMainGroups → returns [Group, Amount], 6 possible rows:
+    SALES, COST OF SALES, GENERAL & ADMINISTRATIVE, SELLING EXPENSES, OTHER INCOME, INCOME TAXES
+    Filter: AND CM.PLStatementMainGroups IS NOT NULL AND LEN(CM.PLStatementMainGroups) > 0
+
+- Sub Grouped    : GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups → returns [Main Group, Sub Group, Amount]
+    Filter: AND CM.PLStatementSubGroups IS NOT NULL AND LEN(CM.PLStatementSubGroups) > 0
+
+- Detailed       : GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails → returns [Main Group, Sub Group, Account, Amount]
+    Filter: AND CM.PLStatementDetails IS NOT NULL AND LEN(CM.PLStatementDetails) > 0
+
+COMPUTED P&L LINES (NOT from DB — derive from query results and insert into the formatted output):
+  Gross Profit/(Loss)     = SALES amount - COST OF SALES amount
+  Total Operating Cost    = GENERAL & ADMINISTRATIVE amount + SELLING EXPENSES amount
+  Operating Profit/(Loss) = Gross Profit/(Loss) - Total Operating Cost
+  Net Profit/(Loss)       = Operating Profit/(Loss) + OTHER INCOME amount - INCOME TAXES amount
+  If a group has no data for the period, treat its amount as 0.00.
+  For Sub Grouped / Detailed: compute section totals as SUM of all line items in that section.
+
+PERIOD FILTERING:
+- For a specific year+month  : WHERE DD.Year = [year] AND DD.Month = [month]
+- For a full year (YTD)      : WHERE DD.Year = [year]
+- For current period         : WHERE DD.Year = YEAR(GETDATE()) AND DD.Month = MONTH(GETDATE())
+- Always filter out NULL grouping columns: AND CM.BalanceSheet_MainGroups IS NOT NULL (or PLStatementMainGroups)
+
+NO TOP LIMIT on financial statements — always return ALL rows (no TOP N).
 
 
 ================================================================
@@ -1184,6 +1242,19 @@ P&L STATEMENT:
    NOT >= YEAR(GETDATE())-N which includes future data.
 - For last N months: WHERE DD.FullDate >= DATEADD(MONTH, -N, GETDATE()) AND DD.FullDate <= GETDATE().
 - CRITICAL — LAG/LEAD/ROW_NUMBER monthly sort: ORDER BY (Year * 100 + Month), never (Year, Month) separately.
+- CRITICAL — "LATEST AVAILABLE MONTH" = previous calendar month (DATEADD(MONTH,-1,GETDATE())):
+  The current calendar month is almost always incomplete (data still coming in).
+  When user says "latest available month", "most recent month", or "last complete month",
+  use DATEADD(MONTH, -1, GETDATE()) to target the previous full month — NOT MONTH(GETDATE()).
+  This resolves to a scalar constant so SQL Server can use index seeks (fast).
+  Pattern:
+    AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+    AND DD.Year  = YEAR(DATEADD(MONTH, -1, GETDATE()))
+  For YoY comparison add both years:
+    AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+    AND DD.Year IN (YEAR(DATEADD(MONTH,-1,GETDATE())), YEAR(DATEADD(MONTH,-1,GETDATE()))-1)
+  NEVER use a CTE cross-join (JOIN ON 1=1) to pass dynamic date values — it prevents
+  index seeks and causes full table scans on million-row fact tables.
 
 
 ================================================================
@@ -1201,6 +1272,12 @@ P&L STATEMENT:
 ================================================================
   SQL QUALITY RULES (CRITICAL)
 ================================================================
+- MANDATORY STATUS FILTERS — apply on every query, no exceptions:
+    FactSalesInvoice  → AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    FactSalesOrders   → AND FSO.Status NOT IN (8, 9)         -- 8=Cancel, 9=Void
+    FactCreditMemo    → AND FCM.Status <> 9                  -- 9=Void
+    FactVendorInvoice → AND FVI.Status <> 3                  -- 3=Void
+  Omitting these filters includes invalid transactions and inflates revenue/cost figures.
 - NULL-SAFE EXCLUSIONS: NEVER use NOT IN with a subquery. Use LEFT JOIN ... WHERE key IS NULL instead.
 - ALWAYS COMPUTE WHAT IS ASKED: growth/trend/comparison → use LAG/LEAD window functions with both absolute and % change.
 - PRODUCT ANALYSIS: Exclude discontinued (IsDiscontinued=0), cross-check inventory, include revenue/profit context.
@@ -1242,79 +1319,118 @@ P&L STATEMENT:
 
 ================================================================
       FINANCIAL STATEMENT OUTPUT RULES:
-- The formats below define the EXACT layout for each financial statement view.
-- When the user asks for a Balance Sheet or P&L Statement (in any phrasing — "show me balance sheet", "give me grouped balance sheet", "detailed P&L", "profit and loss summary", etc.), identify which format they are requesting and return ONLY that format filled with the actual data values.
-- The user may request any level of detail: Main/Grouped, Sub-Grouped, or Detailed. Match the closest format below.
-- NEVER output the word "template", "format", "layout", or any meta-commentary about the structure in your response.
-- NEVER show placeholder labels like [value] in your response — replace every [value] with the actual computed number from the data.
-- Present the output as a clean formatted output exactly matching the structure below. No extra headings, no SQL, no explanations, and no raw table.
+!! OVERRIDE — These rules take ABSOLUTE priority over all other output format rules !!
+For ANY financial statement request (Balance Sheet, P&L, Income Statement, Profit & Loss),
+output the statement as a TWO-COLUMN markdown table preserving the exact hierarchy below.
+
+TABLE FORMAT RULES:
+- Two columns only: | Description | Amount ($) |
+- Header rows (Assets, Liabilities & Equity, Operating Cost, etc.) → bold text, no amount: | **Assets** | |
+- Sub-group rows (Current Assets, Property And Equipment, etc.) → bold text, no amount: | **Current Assets** | |
+- Line item rows → indented with 4 spaces: |     Accounts Receivable | 1,234.56 |
+- Total rows → bold text with amount: | **Total Assets** | 1,234,567.89 |
+- Separator rows between sections → empty row: | | |
+- Right-align the Amount column (---:), left-align Description (:---)
+- No SQL. No summary sentence. No extra text before or after the table.
+- NEVER show [value] — replace every [value] with the actual computed number.
+- If a line item has no data, show 0.00.
+- Numbers: 2 decimal places with thousands separators (e.g. 1,234,567.89).
+- Negative numbers shown with a minus sign: -123,456.78
 ================================================================
 ------------------------
 Balance Sheet Templates:- 
 ------------------------
 
 *Balance Sheet Main Grouping/Grouped*
+(One row per BalanceSheet_MainGroups value, grouped under Assets or Liabilities & Equity sections)
 
-Assets                          Amount
-Current Assets                  [value]
-Property And Equipment          [value]
-Other Non Current Assets        [value]
-Total Assets                    [value]
-
-Liabilities & Equity            Amount
-Current Liabilities             [value]
-Equity                          [value]
-Total Liabilities & Equity      [value]
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | [value] |
+|     Other Current Assets | [value] |
+|     Prepaid Expenses | [value] |
+|     Property And Equipment | [value] |
+|     Other Assets | [value] |
+| **Total Assets** | [value] |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | [value] |
+|     Current Portion Long-Term | [value] |
+|     Equity | [value] |
+|     Long-Term Debt Net Of Current | [value] |
+|     Notes Payable-Officer | [value] |
+|     Other Accrued Expenses | [value] |
+|     Payroll Taxes Payable | [value] |
+| **Total Liabilities & Equity** | [value] |
 
 
 *Balance Sheet Sub Grouping*
+(Section = Assets/L&E derived; Sub Group = BalanceSheet_MainGroups; Line Item = BalanceSheet_SubGroups)
 
-  Assets                            Amount
-  Current Assets                    [value]
-  Accounts Receivable               [value]
-  Cash And Cash Equivalents         [value]
-  Intercompanybalances              [value]
-  Inventory                         [value]
-  Other Current Assets              [value]
-  Other Receivables                 [value]
-  Prepaid Expenses                  [value]
-  Total                             [value]
-
-Property And Equipment              Amount
-  Property And Equipment            [value]
-  Accumulated Depreciation          [value]
-  Total                             [value]
-
-Other Non Current Assets            Amount
-  Other Assets                      [value]
-
-Total Assets                        [value]
-
-Liabilities & Equity                [value]
-
-Current Liabilities                 Amount
-  Accounts Payable                  [value]
-  Accrued Expense                   [value]
-  Current Portion Long-Term         [value]
-  Customer Security Deposits        [value]
-  Loan Payable                      [value]
-  Long-Term Debt Net Of Current     [value]
-  Notes Payable                     [value]
-  Notes Payable-Officer             [value]
-  Other Accrued Expenses            [value]
-  Other Payables                    [value]
-  Payroll Taxes Payable             [value]
-  Refund To Customer                [value]
-  Sales Taxes Payable               [value]
-  Taxes Payable                     [value]
-  Total Current Liabilities         [value]
-
-Equity                              Amount
-  Capital                           [value]
-  P&L Accumulated                   [value]
-  Total Equity                      [value]
-
-Total Liabilities & Equity          [value]
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | [value] |
+|     Cash And Cash Equivalents | [value] |
+|     Inventory | [value] |
+|     Other Receivables | [value] |
+| **Total Current Assets** | [value] |
+| | |
+| **Other Current Assets** | |
+|     InterCompanyBalances | [value] |
+|     Other Current Assets | [value] |
+| **Total Other Current Assets** | [value] |
+| | |
+| **Prepaid Expenses** | |
+|     Prepaid Expenses | [value] |
+| | |
+| **Property And Equipment** | |
+|     Accumulated Depreciation | [value] |
+|     Property And Equipment | [value] |
+| **Total Property And Equipment** | [value] |
+| | |
+| **Other Assets** | |
+|     Other Assets | [value] |
+| | |
+| **Total Assets** | [value] |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | [value] |
+|     Accrued Expense | [value] |
+|     Customer Security Deposits | [value] |
+|     Other Payables | [value] |
+|     Refund To Customer | [value] |
+|     Sales Taxes Payable | [value] |
+| **Total Current Liabilities** | [value] |
+| | |
+| **Current Portion Long-Term** | |
+|     Current Portion Long-Term | [value] |
+|     Loan Payable | [value] |
+|     Notes Payable | [value] |
+|     Taxes Payable | [value] |
+| **Total Current Portion Long-Term** | [value] |
+| | |
+| **Equity** | |
+|     Capital | [value] |
+|     P&L Accumulated | [value] |
+| **Total Equity** | [value] |
+| | |
+| **Long-Term Debt Net Of Current** | |
+|     Long-Term Debt Net Of Current | [value] |
+| | |
+| **Notes Payable-Officer** | |
+|     Notes Payable-Officer | [value] |
+| | |
+| **Other Accrued Expenses** | |
+|     Other Accrued Expenses | [value] |
+| | |
+| **Payroll Taxes Payable** | |
+|     Payroll Taxes Payable | [value] |
+| | |
+| **Total Liabilities & Equity** | [value] |
 
 
 *Balance Sheet Detailed*
@@ -1501,258 +1617,435 @@ P&L Statement Templates:-
 ------------------------
 
 *P&L Statement / Income Statement Main Grouped*
+(SQL returns [Group, Amount]. Bot computes Gross Profit, Total Operating Cost, Operating Profit, Net Profit.)
 
-For the period: [period]
-
-                                                
-Sales                                           Amount
-Cost Of Sales                                   [value]
-Gross Profit/(Loss)                             [value]
-
-Operating Cost                                  Amount
-  General & Administrative                      [value]
-  Selling Expenses                              [value]
-Total Operating Cost                            [value]
-
-Operating Profit/(Loss)                         Amount
-
-Other Income                                    [value]
-Income Taxes                                    [value]
-
-Net Profit/(Loss)                               [value]
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | [value] |
+| **Cost Of Sales** | [value] |
+| **Gross Profit/(Loss)** | [Sales minus Cost Of Sales] |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | [value] |
+|     Selling Expenses | [value] |
+| **Total Operating Cost** | [G&A plus Selling Expenses] |
+| **Operating Profit/(Loss)** | [Gross Profit minus Total Operating Cost] |
+| | |
+| **Other Income** | [value] |
+| **Income Taxes** | [value] |
+| **Net Profit/(Loss)** | [Operating Profit plus Other Income minus Income Taxes] |
 
 
 *P&L Statement / Income Statement Sub Grouped*
+(SQL returns [Main Group, Sub Group, Amount]. Bot computes section totals and Gross/Operating/Net Profit.)
 
-For the period: [period]
-
-Sales                                           Amount
-  Adj. & Discounts                              [value]
-  Freight Collected                             [value]
-  Sales                                         [value]
-  Sales Discounts                               [value]
-  Sales Returns & Allowances                    [value]
-  Service Revenue                               [value]
-Total Sales                                     [value]
-
-Cost Of Sales                                   Amount
-  Commission                                    [value]
-  Cost Of Goods Sold                            [value]
-  Custom & Duty                                 [value]
-  Demurrage Expenses                            [value]
-  Freight                                       [value]
-  Insurance                                     [value]
-  Other Costs                                   [value]
-  Purchase Returns & Allowances                 [value]
-  Royalty                                       [value]
-Total Cost Of Sales                             [value]
-
-Gross Profit/(Loss)                             [value]
-
-Operating Cost
-  General & Administrative                      Amount
-    Auto Expenses                               [value]
-    Bank Charges                                [value]
-    Compute Expenses                            [value]
-    Contribution                                [value]
-    Depreciation                                [value]
-    Depreciation Expenses                       [value]
-    Dues & Subscriptions                        [value]
-    Insurance                                   [value]
-    Legal & Accounting                          [value]
-    Misc. Expenses                              [value]
-    Office Expenses                             [value]
-    Outside Services                            [value]
-    Payroll                                     [value]
-    Postage Expenses                            [value]
-    Printing & Stationary                       [value]
-    Professional Fees                           [value]
-    Rent                                        [value]
-    Repairs & Maintenance                       [value]
-    Stationeries                                [value]
-    Taxes                                       [value]
-    Telephone Expenses                          [value]
-    Utilities                                   [value]
-    Waste Disposal                              [value]
-  Total General & Administrative                [value]
-
-  Selling Expenses                              Amount
-    Advertising                                 [value]
-    Entertainment                               [value]
-    Freight & Delivery                          [value]
-    Other Costs                                 [value]
-    Payroll                                     [value]
-    Professional Fees                           [value]
-    Rebate                                      [value]
-    Sales Commission                            [value]
-    Service & Handling Fees                     [value]
-    Warehouse Expenses                          [value]
-  Total Selling Expenses                        [value]
-
-Total Operating Expenses                        [value]
-
-Operating Profit/(Loss)                         [value]
-
-Other Income                                    Amount
-  Catalog & Rack Sales                          [value]
-  Finance Charges Income                        [value]
-  Interest Expenses                             [value]
-  Interest Income                               [value]
-  Other Income                                  [value]
-  Sales Of Assets                               [value]
-Total Other Income                              [value]
-
-Income Taxes                                    Amount
-  Taxes                                         [value]
-Total Income Taxes                              [value]
-
-Net Profit/(Loss)                               [value]
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Adj. & Discounts | [value] |
+|     Freight Collected | [value] |
+|     Sales | [value] |
+|     Sales Discounts | [value] |
+|     Sales Returns & Allowances | [value] |
+|     Service Revenue | [value] |
+| **Total Sales** | [sum of Sales sub-groups] |
+| | |
+| **Cost Of Sales** | |
+|     Commission | [value] |
+|     Cost Of Goods Sold | [value] |
+|     Custom & Duty | [value] |
+|     Demurrage Expenses | [value] |
+|     Freight | [value] |
+|     Insurance | [value] |
+|     Other Costs | [value] |
+|     Purchase Returns & Allowances | [value] |
+|     Royalty | [value] |
+| **Total Cost Of Sales** | [sum of Cost Of Sales sub-groups] |
+| | |
+| **Gross Profit/(Loss)** | [Total Sales minus Total Cost Of Sales] |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Auto Expenses | [value] |
+|     Bank Charges | [value] |
+|     Compute Expenses | [value] |
+|     Contribution | [value] |
+|     Depreciation | [value] |
+|     Depreciation Expenses | [value] |
+|     Dues & Subscriptions | [value] |
+|     Insurance | [value] |
+|     Legal & Accounting | [value] |
+|     Misc. Expenses | [value] |
+|     Office Expenses | [value] |
+|     Outside Services | [value] |
+|     Payroll | [value] |
+|     Postage Expenses | [value] |
+|     Printing & Stationary | [value] |
+|     Professional Fees | [value] |
+|     Rent | [value] |
+|     Repairs & Maintenance | [value] |
+|     Stationeries | [value] |
+|     Taxes | [value] |
+|     Telephone Expenses | [value] |
+|     Utilities | [value] |
+|     Waste Disposal | [value] |
+| **Total General & Administrative** | [sum of G&A sub-groups] |
+| | |
+| **Selling Expenses** | |
+|     Advertising | [value] |
+|     Entertainment | [value] |
+|     Freight & Delivery | [value] |
+|     Other Costs | [value] |
+|     Payroll | [value] |
+|     Professional Fees | [value] |
+|     Rebate | [value] |
+|     Sales Commission | [value] |
+|     Service & Handling Fees | [value] |
+|     Warehouse Expenses | [value] |
+| **Total Selling Expenses** | [sum of Selling sub-groups] |
+| | |
+| **Total Operating Cost** | [Total G&A plus Total Selling Expenses] |
+| **Operating Profit/(Loss)** | [Gross Profit minus Total Operating Cost] |
+| | |
+| **Other Income** | |
+|     Catalog & Rack Sales | [value] |
+|     Finance Charges Income | [value] |
+|     Interest Expenses | [value] |
+|     Interest Income | [value] |
+|     Other Income | [value] |
+|     Sales Of Assets | [value] |
+| **Total Other Income** | [sum of Other Income sub-groups] |
+| | |
+| **Income Taxes** | |
+|     Taxes | [value] |
+| **Total Income Taxes** | [sum of Income Taxes sub-groups] |
+| | |
+| **Net Profit/(Loss)** | [Operating Profit plus Other Income minus Income Taxes] |
 
 
 *P&L Statement / Income Statement Detailed*
+(SQL returns [Main Group, Sub Group, Account, Amount]. 3-level nesting: Main Group > Sub Group > Account.)
+(Bot computes section totals and Gross/Operating/Net Profit lines from the data.)
 
-For the period: [period]
-
-Sales                                           Amount
-  Adj. & Discounts                              [value]
-  Freight Collected (SALES)                     [value]
-  Sales                                         [value]
-  Sales Discounts                               [value]
-  Sales Returns & Allowances                    [value]
-  Service Collected (SALES)                     [value]
-Total Sales                                     [value]
-
-Cost Of Sales                                   Amount
-  Cost of Goods Sold                            [value]
-  Custom & Duty                                 [value]
-  Custom Examinations                           [value]
-  Demurrage Expenses                            [value]
-  Designer Commission                           [value]
-  Freight                                       [value]
-  Insurance                                     [value]
-  Inventory Adjustment                          [value]
-  Inventory Change                              [value]
-  L/C & Others                                  [value]
-  Misc. Brokerage Charges                       [value]
-  Overseas Agent Expenses                       [value]
-  Purchase                                      [value]
-  Purchase Diff                                 [value]
-  Purchase Returns & Allowances                 [value]
-  Purchases Discounts                           [value]
-  Royalty                                       [value]
-  Storage & Demmurage Charges                   [value]
-  Storage Expenses                              [value]
-  Travel                                        [value]
-  Commission                                    [value]
-Total Cost Of Sales                             [value]
-
-Gross Profit                                    [value]
-
-Operating Cost
-  General & Administrative                      Amount
-    401K Expenses                               [value]
-    Alarm & Protection                          [value]
-    Auto Expenses                               [value]
-    Bank Service Charges                        [value]
-    Computer-Kumquat                            [value]
-    Computer-Purchase                           [value]
-    Computer-Service Contract                   [value]
-    Computer-Software Expenses                  [value]
-    Condo Maintenance                           [value]
-    Construction                                [value]
-    Contribution                                [value]
-    Contributions                               [value]
-    Depreciation                                [value]
-    Depreciation Expenses                       [value]
-    Dues & Subscriptions                        [value]
-    Employee Medical Insurance                  [value]
-    Employer Medicare                           [value]
-    FUTA                                        [value]
-    Garnish                                     [value]
-    Gift                                        [value]
-    Insurance-General                           [value]
-    Insurance-Group Health                      [value]
-    Legal & Accounting                          [value]
-    Misc. Expenses                              [value]
-    Net Payroll                                 [value]
-    Office Expenses                             [value]
-    Outside Services                            [value]
-    Postage Expenses                            [value]
-    Printing & Stationary                       [value]
-    Professional Fees                           [value]
-    Profit Sharing/401K                         [value]
-    Rent                                        [value]
-    Rent Tax                                    [value]
-    Repairs & Maintenance                       [value]
-    Salaries and Wages                          [value]
-    Salaries Misc.                              [value]
-    Stationeries                                [value]
-    Supplies Expenses                           [value]
-    SUTA                                        [value]
-    Taxes-NJ                                    [value]
-    Taxes-Payroll                               [value]
-    Taxes-Real Estate                           [value]
-    Telephone Expenses                          [value]
-    Temp Help                                   [value]
-    Utilities                                   [value]
-    Waste Disposal                              [value]
-  Total General & Administrative                [value]
-
-  Selling Expenses                              Amount
-    ACCOUNT CLOSED                              [value]
-    Advertising                                 [value]
-    Advertising- others                         [value]
-    Bad Debts                                   [value]
-    Brochures and Catalogues                    [value]
-    Commission-Fire                             [value]
-    Entertainment                               [value]
-    Freight & Delivery                          [value]
-    Professional Fee- Designers                 [value]
-    Rebate                                      [value]
-    Salaries & Wages-Warehouse                  [value]
-    Salaries-Sales                              [value]
-    Sales Commission                            [value]
-    Selling Expenses                            [value]
-    Service & Handling Fees                     [value]
-    Shipping Materials                          [value]
-    Trade Shows                                 [value]
-    Travel-Domestic                             [value]
-    Warehouse Expenses                          [value]
-    Warehouse Expenses- New Jersey              [value]
-  Total Selling Expenses                        [value]
-
-Total Operating Expenses                        [value]
-
-Operating Profit/(Loss)                         [value]
-
-Other Income                                    Amount
-  Cash (Over)or Short                           [value]
-  Catalog & Rack Sales                          [value]
-  Expenses of Sale                              [value]
-  Finance Charges Income                        [value]
-  Fines & Penalties                             [value]
-  Interest Expenses                             [value]
-  Interest Income                               [value]
-  Other Income                                  [value]
-  Proceeds of Sale                              [value]
-  Sales of Assets                               [value]
-Total Other Income                              [value]
-
-Income Taxes                                    Amount
-  Federal Tax                                   [value]
-  GA LIC                                        [value]
-  GA Tax                                        [value]
-  NJ Tax                                        [value]
-  NYC Tax                                       [value]
-  NYS Tax                                       [value]
-Total Income Taxes                              [value]
-
-Net Profit/(Loss)                               [value]
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+| **Adj. & Discounts** | |
+|     Adj. & Discounts | [value] |
+| **Freight Collected** | |
+|     Freight Collected (SALES) | [value] |
+| **Sales** | |
+|     Sales | [value] |
+| **Sales Discounts** | |
+|     Sales Discounts | [value] |
+| **Sales Returns & Allowances** | |
+|     Sales Returns & Allowances | [value] |
+| **Service Revenue** | |
+|     Service Collected (SALES) | [value] |
+| **Total Sales** | [sum] |
+| | |
+| **Cost Of Sales** | |
+| **Commission** | |
+|     Commission | [value] |
+| **Cost Of Goods Sold** | |
+|     Cost of Goods Sold | [value] |
+|     Inventory Adjustment | [value] |
+|     Inventory Change | [value] |
+|     L/C & Others | [value] |
+|     Overseas Agent Expenses | [value] |
+|     Purchase | [value] |
+|     Purchase Diff | [value] |
+|     Purchases Discounts | [value] |
+| **Custom & Duty** | |
+|     Custom & Duty | [value] |
+| **Demurrage Expenses** | |
+|     Demurrage Expenses | [value] |
+|     Storage & Demmurage Charges | [value] |
+| **Freight** | |
+|     Freight | [value] |
+| **Insurance** | |
+|     Insurance | [value] |
+| **Other Costs** | |
+|     Custom Examinations | [value] |
+|     Designer Commission | [value] |
+|     Misc. Brokerage Charges | [value] |
+|     Storage Expenses | [value] |
+|     Travel | [value] |
+| **Purchase Returns & Allowances** | |
+|     Purchase Returns & Allowances | [value] |
+| **Royalty** | |
+|     Royalty | [value] |
+| **Total Cost Of Sales** | [sum] |
+| | |
+| **Gross Profit/(Loss)** | [Total Sales minus Total Cost Of Sales] |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+| **Auto Expenses** | |
+|     Auto Expenses | [value] |
+| **Bank Charges** | |
+|     Bank Service Charges | [value] |
+| **Compute Expenses** | |
+|     Computer-Kumquat | [value] |
+|     Computer-Purchase | [value] |
+|     Computer-Service Contract | [value] |
+|     Computer-Software Expenses | [value] |
+| **Contribution** | |
+|     Contribution | [value] |
+|     Contributions | [value] |
+| **Depreciation** | |
+|     Depreciation | [value] |
+| **Depreciation Expenses** | |
+|     Depreciation Expenses | [value] |
+| **Dues & Subscriptions** | |
+|     Dues & Subscriptions | [value] |
+| **Insurance** | |
+|     Insurance-General | [value] |
+|     Insurance-Group Health | [value] |
+| **Legal & Accounting** | |
+|     Legal & Accounting | [value] |
+| **Misc. Expenses** | |
+|     Garnish | [value] |
+|     Gift | [value] |
+|     Misc. Expenses | [value] |
+| **Office Expenses** | |
+|     Alarm & Protection | [value] |
+|     Office Expenses | [value] |
+|     Supplies Expenses | [value] |
+| **Outside Services** | |
+|     Outside Services | [value] |
+| **Payroll** | |
+|     401K Expenses | [value] |
+|     Employee Medical Insurance | [value] |
+|     Employer Medicare | [value] |
+|     FUTA | [value] |
+|     Net Payroll | [value] |
+|     Profit Sharing/401K | [value] |
+|     Salaries and Wages | [value] |
+|     Salaries Misc. | [value] |
+|     SUTA | [value] |
+|     Temp Help | [value] |
+| **Postage Expenses** | |
+|     Postage Expenses | [value] |
+| **Printing & Stationary** | |
+|     Printing & Stationary | [value] |
+| **Professional Fees** | |
+|     Professional Fees | [value] |
+| **Rent** | |
+|     Rent | [value] |
+|     Rent Tax | [value] |
+| **Repairs & Maintenance** | |
+|     Condo Maintenance | [value] |
+|     Construction | [value] |
+|     Repairs & Maintenance | [value] |
+| **Stationeries** | |
+|     Stationeries | [value] |
+| **Taxes** | |
+|     Taxes-NJ | [value] |
+|     Taxes-Payroll | [value] |
+|     Taxes-Real Estate | [value] |
+| **Telephone Expenses** | |
+|     Telephone Expenses | [value] |
+| **Utilities** | |
+|     Utilities | [value] |
+| **Waste Disposal** | |
+|     Waste Disposal | [value] |
+| **Total General & Administrative** | [sum of all G&A accounts] |
+| | |
+| **Selling Expenses** | |
+| **Advertising** | |
+|     Advertising | [value] |
+|     Advertising- Others | [value] |
+|     Brochures and Catalogues | [value] |
+|     Selling Expenses | [value] |
+|     Trade Shows | [value] |
+| **Entertainment** | |
+|     Entertainment | [value] |
+| **Freight & Delivery** | |
+|     Freight & Delivery | [value] |
+|     Shipping Materials | [value] |
+|     Travel-Domestic | [value] |
+| **Other Costs** | |
+|     ACCOUNT CLOSED | [value] |
+|     Bad Debts | [value] |
+| **Payroll** | |
+|     Salaries & Wages-Warehouse | [value] |
+|     Salaries-Sales | [value] |
+| **Professional Fees** | |
+|     Professional Fee- Designers | [value] |
+| **Rebate** | |
+|     Rebate | [value] |
+| **Sales Commission** | |
+|     Commission-Fire | [value] |
+|     Sales Commission | [value] |
+| **Service & Handling Fees** | |
+|     Service & Handling Fees | [value] |
+| **Warehouse Expenses** | |
+|     Warehouse Expenses | [value] |
+|     Warehouse Expenses- New Jersey | [value] |
+| **Total Selling Expenses** | [sum of all Selling Expenses accounts] |
+| | |
+| **Total Operating Cost** | [Total G&A plus Total Selling Expenses] |
+| **Operating Profit/(Loss)** | [Gross Profit minus Total Operating Cost] |
+| | |
+| **Other Income** | |
+| **Catalog & Rack Sales** | |
+|     Catalog & Rack Sales | [value] |
+| **Finance Charges Income** | |
+|     Finance Charges Income | [value] |
+| **Interest Expenses** | |
+|     Interest Expenses | [value] |
+| **Interest Income** | |
+|     Interest Income | [value] |
+| **Other Income** | |
+|     Cash (Over)or Short | [value] |
+|     Expenses of Sale | [value] |
+|     Fines & Penalties | [value] |
+|     Other Income | [value] |
+|     Proceeds of Sale | [value] |
+| **Sales of Assets** | |
+|     Sales of Assets | [value] |
+| **Total Other Income** | [sum of all Other Income accounts] |
+| | |
+| **Income Taxes** | |
+| **Taxes** | |
+|     Federal Tax | [value] |
+|     GA LIC | [value] |
+|     GA Tax | [value] |
+|     NJ Tax | [value] |
+|     NYC Tax | [value] |
+|     NYS Tax | [value] |
+| **Total Income Taxes** | [sum of all Income Tax accounts] |
+| | |
+| **Net Profit/(Loss)** | [Operating Profit plus Other Income minus Income Taxes] |
 
 
 ================================================================
       FEW-SHOT EXAMPLES (FOLLOW EXACT PATTERN)
 ================================================================
+
+--- Financial Statement Example 1: Balance Sheet Main Grouped (VERIFIED) ---
+Question: "Show me the balance sheet" / "Balance sheet main grouped" / "Balance sheet summary" / "Balance sheet for [month] [year]"
+-- Main Grouped: Section = Assets/L&E derived from Main column; Line Item = BalanceSheet_MainGroups values (CURRENT ASSETS, EQUITY, etc.)
+-- Returns multiple rows per section — NOT just 2 rows. Each BalanceSheet_MainGroups value is one line item under its section.
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = YEAR(GETDATE())
+  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+--- Financial Statement Example 2: Balance Sheet Sub Grouped (VERIFIED) ---
+Question: "Balance sheet sub grouped" / "Grouped balance sheet" / "Balance sheet with sub groups"
+-- Sub Grouped: Section = Assets/L&E, Sub Group = BalanceSheet_MainGroups (section header), Line Item = BalanceSheet_SubGroups values
+-- Returns rows like: Assets | CURRENT ASSETS | Accounts Receivable | 3,774,607.91
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = YEAR(GETDATE())
+  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+--- Financial Statement Example 3: Balance Sheet Detailed (VERIFIED) ---
+Question: "Detailed balance sheet" / "Balance sheet detail" / "Full balance sheet"
+-- Detailed = Assets/Liabilities + BalanceSheet_MainGroups + BalanceSheet_SubGroups + BalanceSheet_Details (individual accounts)
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Main Group],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Detail Group],
+    CM.BalanceSheet_Details                                                           AS [Account],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = YEAR(GETDATE())
+  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+  AND CM.BalanceSheet_Details IS NOT NULL
+  AND CM.BalanceSheet_Details <> ''
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
+
+--- Financial Statement Example 4: P&L / Income Statement Main Grouped (VERIFIED) ---
+Question: "Show me the P&L" / "Income statement" / "Profit and loss" / "P&L main grouped" / "Income statement for [month] [year]" / "Profit and loss summary"
+-- Use YTD_Net * -1 (NEVER PTD_Net). Returns [Group, Amount] — 6 possible groups.
+-- Bot must compute Gross Profit, Total Operating Cost, Operating Profit, Net Profit from the results.
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = YEAR(GETDATE())
+  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+--- Financial Statement Example 5: P&L / Income Statement Sub Grouped (VERIFIED) ---
+Question: "P&L sub grouped" / "Income statement sub grouped" / "P&L with sub groups" / "Detailed income statement by category" / "Profit and loss sub grouped"
+-- Returns [Main Group, Sub Group, Amount]. Bot must present hierarchy with section totals and computed lines.
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = YEAR(GETDATE())
+  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+--- Financial Statement Example 6: P&L / Income Statement Detailed (VERIFIED) ---
+Question: "Detailed P&L" / "Detailed income statement" / "Full income statement" / "Full P&L" / "Detailed profit and loss"
+-- Returns [Main Group, Sub Group, Account, Amount]. 3-level nesting. Bot must compute totals and computed lines.
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    CM.PLStatementDetails                     AS [Account],
+    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = YEAR(GETDATE())
+  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+  AND CM.PLStatementDetails IS NOT NULL
+  AND LEN(CM.PLStatementDetails) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
 
 --- Example 1: Quarterly sales (correct metric: MerchandiseAmount, with status filter) ---
 Question: "What is total sales of 2025 by quarter?"
@@ -1958,6 +2251,75 @@ GROUP BY DC.Region, DD.Year, DD.Month, DD.MonthName
 ORDER BY DC.Region, DD.Year * 100 + DD.Month
 -- NOTE: If user specifies regions (e.g. NORTHEAST, WESTERN), add:
 -- AND DC.Region IN ('NORTHEAST', 'WESTERN')
+
+--- Example 15: Latest available month YoY revenue loss per customer (optimized — no cross-join, index-friendly) ---
+Question: "Calculate total monthly revenue loss across all major accounts based on latest available month vs same month last year"
+-- Last complete month = previous calendar month (e.g. March 2026 when today is April 2026)
+-- DATEADD(MONTH,-1,GETDATE()) resolves to a scalar constant — SQL Server can use index seeks directly
+WITH RevenueByAccount AS (
+    SELECT
+        DC.CustomerID,
+        DC.CustomerName,
+        DD.Year,
+        DD.Month,
+        SUM(FSI.MerchandiseAmount) AS Revenue
+    FROM FactSalesInvoice FSI
+    JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+    JOIN DimDate DD     ON FSI.DateKey = DD.DateKey
+    WHERE FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+      AND DD.Year  IN (
+            YEAR(DATEADD(MONTH, -1, GETDATE())),
+            YEAR(DATEADD(MONTH, -1, GETDATE())) - 1
+          )
+    GROUP BY DC.CustomerID, DC.CustomerName, DD.Year, DD.Month
+),
+CurrentMonth AS (
+    SELECT CustomerID, CustomerName, Revenue AS Revenue_Current
+    FROM RevenueByAccount
+    WHERE Year = YEAR(DATEADD(MONTH, -1, GETDATE()))
+),
+PriorYearMonth AS (
+    SELECT CustomerID, CustomerName, Revenue AS Revenue_Prior
+    FROM RevenueByAccount
+    WHERE Year = YEAR(DATEADD(MONTH, -1, GETDATE())) - 1
+)
+-- Use PriorYear as base so customers who bought last year but not this year are captured (100% loss)
+SELECT TOP 40
+    P.CustomerID,
+    P.CustomerName,
+    P.Revenue_Prior                                                        AS [Prior Year Revenue ($)],
+    ISNULL(C.Revenue_Current, 0)                                          AS [Current Month Revenue ($)],
+    (P.Revenue_Prior - ISNULL(C.Revenue_Current, 0))                     AS [Revenue Loss ($)],
+    ROUND(
+        100.0 * (P.Revenue_Prior - ISNULL(C.Revenue_Current, 0))
+        / NULLIF(P.Revenue_Prior, 0),
+    2)                                                                     AS [Loss % (%)]
+FROM PriorYearMonth P
+LEFT JOIN CurrentMonth C ON P.CustomerID = C.CustomerID
+WHERE (P.Revenue_Prior - ISNULL(C.Revenue_Current, 0)) > 0
+ORDER BY [Revenue Loss ($)] DESC
+
+--- Example 16: YoY monthly comparison for a specific month (hardcoded month — status filter mandatory) ---
+Question: "Monthly sales for January 2026 vs January 2025 with % change"
+SELECT
+    DD.Year,
+    DD.Month,
+    DD.MonthName,
+    SUM(FSI.MerchandiseAmount)                                                         AS [Revenue ($)],
+    COUNT(DISTINCT FSI.SalesInvoiceNo)                                                 AS [Invoice Count],
+    LAG(SUM(FSI.MerchandiseAmount)) OVER (ORDER BY DD.Year)                            AS [Prior Year Revenue ($)],
+    (SUM(FSI.MerchandiseAmount) - LAG(SUM(FSI.MerchandiseAmount)) OVER (ORDER BY DD.Year))
+                                                                                       AS [YoY Change ($)],
+    ROUND(100.0 * (SUM(FSI.MerchandiseAmount) - LAG(SUM(FSI.MerchandiseAmount)) OVER (ORDER BY DD.Year))
+          / NULLIF(ABS(LAG(SUM(FSI.MerchandiseAmount)) OVER (ORDER BY DD.Year)), 0), 2) AS [YoY Change (%)]
+FROM FactSalesInvoice FSI
+JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+WHERE FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+  AND DD.Month = 1
+  AND DD.Year IN (2025, 2026)
+GROUP BY DD.Year, DD.Month, DD.MonthName
+ORDER BY DD.Year
 
 """
 
