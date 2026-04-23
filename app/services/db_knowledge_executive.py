@@ -1240,6 +1240,515 @@ P&L STATEMENT:
 - THRESHOLDS: Add minimum volume threshold for trend analysis.
 - RANKING: Include rank column in final SELECT for top-N queries.
 
+================================================================
+      FINANCIAL STATEMENT OUTPUT RULES:
+- The formats below define the EXACT layout for each financial statement view.
+- When the user asks for a Balance Sheet or P&L Statement (in any phrasing — "show me balance sheet", "give me grouped balance sheet", "detailed P&L", "profit and loss summary", etc.), identify which format they are requesting and return ONLY that format filled with the actual data values.
+- The user may request any level of detail: Main/Grouped, Sub-Grouped, or Detailed. Match the closest format below.
+- NEVER output the word "template", "format", "layout", or any meta-commentary about the structure in your response.
+- NEVER show placeholder labels like [value] in your response — replace every [value] with the actual computed number from the data.
+- Present the output as a clean formatted output exactly matching the structure below. No extra headings, no SQL, no explanations, and no raw table.
+================================================================
+------------------------
+Balance Sheet Templates:- 
+------------------------
+
+*Balance Sheet Main Grouping/Grouped*
+
+Assets                          Amount
+Current Assets                  [value]
+Property And Equipment          [value]
+Other Non Current Assets        [value]
+Total Assets                    [value]
+
+Liabilities & Equity            Amount
+Current Liabilities             [value]
+Equity                          [value]
+Total Liabilities & Equity      [value]
+
+
+*Balance Sheet Sub Grouping*
+
+  Assets                            Amount
+  Current Assets                    [value]
+  Accounts Receivable               [value]
+  Cash And Cash Equivalents         [value]
+  Intercompanybalances              [value]
+  Inventory                         [value]
+  Other Current Assets              [value]
+  Other Receivables                 [value]
+  Prepaid Expenses                  [value]
+  Total                             [value]
+
+Property And Equipment              Amount
+  Property And Equipment            [value]
+  Accumulated Depreciation          [value]
+  Total                             [value]
+
+Other Non Current Assets            Amount
+  Other Assets                      [value]
+
+Total Assets                        [value]
+
+Liabilities & Equity                [value]
+
+Current Liabilities                 Amount
+  Accounts Payable                  [value]
+  Accrued Expense                   [value]
+  Current Portion Long-Term         [value]
+  Customer Security Deposits        [value]
+  Loan Payable                      [value]
+  Long-Term Debt Net Of Current     [value]
+  Notes Payable                     [value]
+  Notes Payable-Officer             [value]
+  Other Accrued Expenses            [value]
+  Other Payables                    [value]
+  Payroll Taxes Payable             [value]
+  Refund To Customer                [value]
+  Sales Taxes Payable               [value]
+  Taxes Payable                     [value]
+  Total Current Liabilities         [value]
+
+Equity                              Amount
+  Capital                           [value]
+  P&L Accumulated                   [value]
+  Total Equity                      [value]
+
+Total Liabilities & Equity          [value]
+
+
+*Balance Sheet Detailed*
+
+Assets                                          Amount
+
+Current Assets
+  Accounts Receivable
+    A/R-Adjustment                              [value]
+    Accounts Receivable                         [value]
+    Disputed CB                                 [value]
+
+  Cash And Cash Equivalents
+    Checking Account                            [value]
+    Money Market Acct.                          [value]
+    Payroll Account                             [value]
+    Petty Cash                                  [value]
+    Stock Investment                            [value]
+    Unapplied Cash                              [value]
+    Undeposited Cash                            [value]
+
+  Intercompanybalances
+    Due To/From 3490 Hamilton Blvd              [value]
+    Due To/From AARM LLC                        [value]
+    Due To/From Home Brands                     [value]
+    Due To/From Momeni & Sons, Inc              [value]
+    Due To/From Momeni Realty LLC               [value]
+    Due To/From Saman Realty Corp.              [value]
+    Inter-Company(Euro-Design)                  [value]
+    Momeni-Atlanta                              [value]
+    Sun Rugs Inc.                               [value]
+
+  Inventory
+    Consignment                                 [value]
+    Inventory                                   [value]
+    Inventory Control                           [value]
+    Inventory Transfer                          [value]
+    Inventory-ADJ                               [value]
+
+  Other Current Assets
+    Loans and Exchanges                         [value]
+
+  Other Receivables
+    Discounted Notes Paid                       [value]
+    Discounted Notes Returned                   [value]
+    Suspense                                    [value]
+    Write-Off                                   [value]
+
+  Prepaid Expenses
+    Prepaid Expense                             [value]
+    Prepaid Insurance                           [value]
+    Prepaid Taxes                               [value]
+
+Total Current Assets                            [value]
+
+Other Non Current Assets
+    Accum Amortization-Goodwill                 [value]
+    Accum Amortization-Org Costs                [value]
+    Deposits                                    [value]
+    Goodwill                                    [value]
+    Officers Loans Receivable                   [value]
+    Organization Costs                          [value]
+Total Other Non Current Assets                  [value]
+
+Property And Equipment
+  Property And Equipment
+    Deferred Financing Costs                    [value]
+    Property & Equipment                        [value]
+    Vehicles                                    [value]
+
+  Accumulated Depreciation
+    Accum Depreciation                          [value]
+    Accum Depreciation-Rugs                     [value]
+    Accum Depreciation-Vehicle                  [value]
+
+Total Property And Equipment                    [value]
+
+Total Assets                                    [value]
+
+
+Liabilities & Equity
+
+Current Liabilities
+  Accounts Payable
+    Accounts Payable                            [value]
+    Prior AP Balance                            [value]
+
+  Accrued Expense
+    Accrued Expense                             [value]
+
+  Current Portion Long-Term
+    CA Carpet-Assessment Fee                    [value]
+
+  Customer Security Deposits
+    Customer Security Deposits                  [value]
+
+  Loan Payable
+    Dudley Ventures                             [value]
+    DV Community Investment LLC                 [value]
+    Loan Payable- Merchant Bank-II              [value]
+    Loan Payable- Short Term                    [value]
+    Loan Payable-Merchant Bank-LoC              [value]
+    Loans Payable-Merchants Bank                [value]
+    Long Term Notes-Curr Portion                [value]
+
+  Long-Term Debt Net Of Current
+    Long Term Notes-Net of Current              [value]
+
+  Notes Payable
+    Note Payable - Mrs. Momeni                  [value]
+    Notes Payable-Merchants Bank                [value]
+
+  Notes Payable-Officer
+    A.A.M. Loan Payable                         [value]
+    A.M. Loan Payable                           [value]
+    M.M. Loan Payable                           [value]
+    Notes Payable-Officer                       [value]
+    R.M. Loan Payable                           [value]
+
+  Other Accrued Expenses
+    Accrued Interest                            [value]
+    Accrued Other Expenses                      [value]
+    Car Loan                                    [value]
+    Deferred Interest                           [value]
+    Exchange                                    [value]
+    L & E - A. M.                               [value]
+    L & E - AR. M.                              [value]
+    L & E - H. M.                               [value]
+    L & E - R. M.                               [value]
+    Loan                                        [value]
+    Loans Other                                 [value]
+    Officer's Loan                              [value]
+    Payroll Taxes Payable                       [value]
+
+  Other Payables
+    401K Payable                                [value]
+    Dental Insurance Payable                    [value]
+    Merch. Exchange                             [value]
+
+  Payroll Taxes Payable
+    Federal Withholding Tax Payabl              [value]
+    GA State Withholding Taxes Pay              [value]
+    Local Withholding Taxes Payabl              [value]
+    Medicare Withholding Tax payab              [value]
+    NJ State Withholding Taxes Pay              [value]
+    P/Y Taxes                                   [value]
+    Social Security Tax Payable                 [value]
+    State Withholding Taxes Payabl              [value]
+    Unemployment Insurance Tax                  [value]
+
+  Refund To Customer
+    Refund to Customer                          [value]
+
+  Sales Taxes Payable
+    Sales Taxes Payable                         [value]
+
+  Taxes Payable
+    Deferred Taxes                              [value]
+    Federal Corp. Taxes                         [value]
+    GA Taxes Payable                            [value]
+    NYC Corp. Taxes                             [value]
+    NYS Corp. Taxes                             [value]
+    Other Corp. Taxes                           [value]
+
+Total Current Liabilities                       [value]
+
+Equity
+  Capital
+    Additional Paid in Capital                  [value]
+    Capital                                     [value]
+
+  P&L Accumulated
+    P&L Summary                                 [value]
+    Distribution                                [value]
+    (Profit) Loss                               [value]
+
+Total Equity                                    [value]
+
+Total Liabilities & Equity                      [value]
+
+
+------------------------
+P&L Statement Templates:-
+------------------------
+
+*P&L Statement / Income Statement Main Grouped*
+
+For the period: [period]
+
+                                                
+Sales                                           Amount
+Cost Of Sales                                   [value]
+Gross Profit/(Loss)                             [value]
+
+Operating Cost                                  Amount
+  General & Administrative                      [value]
+  Selling Expenses                              [value]
+Total Operating Cost                            [value]
+
+Operating Profit/(Loss)                         Amount
+
+Other Income                                    [value]
+Income Taxes                                    [value]
+
+Net Profit/(Loss)                               [value]
+
+
+*P&L Statement / Income Statement Sub Grouped*
+
+For the period: [period]
+
+Sales                                           Amount
+  Adj. & Discounts                              [value]
+  Freight Collected                             [value]
+  Sales                                         [value]
+  Sales Discounts                               [value]
+  Sales Returns & Allowances                    [value]
+  Service Revenue                               [value]
+Total Sales                                     [value]
+
+Cost Of Sales                                   Amount
+  Commission                                    [value]
+  Cost Of Goods Sold                            [value]
+  Custom & Duty                                 [value]
+  Demurrage Expenses                            [value]
+  Freight                                       [value]
+  Insurance                                     [value]
+  Other Costs                                   [value]
+  Purchase Returns & Allowances                 [value]
+  Royalty                                       [value]
+Total Cost Of Sales                             [value]
+
+Gross Profit/(Loss)                             [value]
+
+Operating Cost
+  General & Administrative                      Amount
+    Auto Expenses                               [value]
+    Bank Charges                                [value]
+    Compute Expenses                            [value]
+    Contribution                                [value]
+    Depreciation                                [value]
+    Depreciation Expenses                       [value]
+    Dues & Subscriptions                        [value]
+    Insurance                                   [value]
+    Legal & Accounting                          [value]
+    Misc. Expenses                              [value]
+    Office Expenses                             [value]
+    Outside Services                            [value]
+    Payroll                                     [value]
+    Postage Expenses                            [value]
+    Printing & Stationary                       [value]
+    Professional Fees                           [value]
+    Rent                                        [value]
+    Repairs & Maintenance                       [value]
+    Stationeries                                [value]
+    Taxes                                       [value]
+    Telephone Expenses                          [value]
+    Utilities                                   [value]
+    Waste Disposal                              [value]
+  Total General & Administrative                [value]
+
+  Selling Expenses                              Amount
+    Advertising                                 [value]
+    Entertainment                               [value]
+    Freight & Delivery                          [value]
+    Other Costs                                 [value]
+    Payroll                                     [value]
+    Professional Fees                           [value]
+    Rebate                                      [value]
+    Sales Commission                            [value]
+    Service & Handling Fees                     [value]
+    Warehouse Expenses                          [value]
+  Total Selling Expenses                        [value]
+
+Total Operating Expenses                        [value]
+
+Operating Profit/(Loss)                         [value]
+
+Other Income                                    Amount
+  Catalog & Rack Sales                          [value]
+  Finance Charges Income                        [value]
+  Interest Expenses                             [value]
+  Interest Income                               [value]
+  Other Income                                  [value]
+  Sales Of Assets                               [value]
+Total Other Income                              [value]
+
+Income Taxes                                    Amount
+  Taxes                                         [value]
+Total Income Taxes                              [value]
+
+Net Profit/(Loss)                               [value]
+
+
+*P&L Statement / Income Statement Detailed*
+
+For the period: [period]
+
+Sales                                           Amount
+  Adj. & Discounts                              [value]
+  Freight Collected (SALES)                     [value]
+  Sales                                         [value]
+  Sales Discounts                               [value]
+  Sales Returns & Allowances                    [value]
+  Service Collected (SALES)                     [value]
+Total Sales                                     [value]
+
+Cost Of Sales                                   Amount
+  Cost of Goods Sold                            [value]
+  Custom & Duty                                 [value]
+  Custom Examinations                           [value]
+  Demurrage Expenses                            [value]
+  Designer Commission                           [value]
+  Freight                                       [value]
+  Insurance                                     [value]
+  Inventory Adjustment                          [value]
+  Inventory Change                              [value]
+  L/C & Others                                  [value]
+  Misc. Brokerage Charges                       [value]
+  Overseas Agent Expenses                       [value]
+  Purchase                                      [value]
+  Purchase Diff                                 [value]
+  Purchase Returns & Allowances                 [value]
+  Purchases Discounts                           [value]
+  Royalty                                       [value]
+  Storage & Demmurage Charges                   [value]
+  Storage Expenses                              [value]
+  Travel                                        [value]
+  Commission                                    [value]
+Total Cost Of Sales                             [value]
+
+Gross Profit                                    [value]
+
+Operating Cost
+  General & Administrative                      Amount
+    401K Expenses                               [value]
+    Alarm & Protection                          [value]
+    Auto Expenses                               [value]
+    Bank Service Charges                        [value]
+    Computer-Kumquat                            [value]
+    Computer-Purchase                           [value]
+    Computer-Service Contract                   [value]
+    Computer-Software Expenses                  [value]
+    Condo Maintenance                           [value]
+    Construction                                [value]
+    Contribution                                [value]
+    Contributions                               [value]
+    Depreciation                                [value]
+    Depreciation Expenses                       [value]
+    Dues & Subscriptions                        [value]
+    Employee Medical Insurance                  [value]
+    Employer Medicare                           [value]
+    FUTA                                        [value]
+    Garnish                                     [value]
+    Gift                                        [value]
+    Insurance-General                           [value]
+    Insurance-Group Health                      [value]
+    Legal & Accounting                          [value]
+    Misc. Expenses                              [value]
+    Net Payroll                                 [value]
+    Office Expenses                             [value]
+    Outside Services                            [value]
+    Postage Expenses                            [value]
+    Printing & Stationary                       [value]
+    Professional Fees                           [value]
+    Profit Sharing/401K                         [value]
+    Rent                                        [value]
+    Rent Tax                                    [value]
+    Repairs & Maintenance                       [value]
+    Salaries and Wages                          [value]
+    Salaries Misc.                              [value]
+    Stationeries                                [value]
+    Supplies Expenses                           [value]
+    SUTA                                        [value]
+    Taxes-NJ                                    [value]
+    Taxes-Payroll                               [value]
+    Taxes-Real Estate                           [value]
+    Telephone Expenses                          [value]
+    Temp Help                                   [value]
+    Utilities                                   [value]
+    Waste Disposal                              [value]
+  Total General & Administrative                [value]
+
+  Selling Expenses                              Amount
+    ACCOUNT CLOSED                              [value]
+    Advertising                                 [value]
+    Advertising- others                         [value]
+    Bad Debts                                   [value]
+    Brochures and Catalogues                    [value]
+    Commission-Fire                             [value]
+    Entertainment                               [value]
+    Freight & Delivery                          [value]
+    Professional Fee- Designers                 [value]
+    Rebate                                      [value]
+    Salaries & Wages-Warehouse                  [value]
+    Salaries-Sales                              [value]
+    Sales Commission                            [value]
+    Selling Expenses                            [value]
+    Service & Handling Fees                     [value]
+    Shipping Materials                          [value]
+    Trade Shows                                 [value]
+    Travel-Domestic                             [value]
+    Warehouse Expenses                          [value]
+    Warehouse Expenses- New Jersey              [value]
+  Total Selling Expenses                        [value]
+
+Total Operating Expenses                        [value]
+
+Operating Profit/(Loss)                         [value]
+
+Other Income                                    Amount
+  Cash (Over)or Short                           [value]
+  Catalog & Rack Sales                          [value]
+  Expenses of Sale                              [value]
+  Finance Charges Income                        [value]
+  Fines & Penalties                             [value]
+  Interest Expenses                             [value]
+  Interest Income                               [value]
+  Other Income                                  [value]
+  Proceeds of Sale                              [value]
+  Sales of Assets                               [value]
+Total Other Income                              [value]
+
+Income Taxes                                    Amount
+  Federal Tax                                   [value]
+  GA LIC                                        [value]
+  GA Tax                                        [value]
+  NJ Tax                                        [value]
+  NYC Tax                                       [value]
+  NYS Tax                                       [value]
+Total Income Taxes                              [value]
+
+Net Profit/(Loss)                               [value]
+
 
 ================================================================
       FEW-SHOT EXAMPLES (FOLLOW EXACT PATTERN)
