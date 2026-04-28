@@ -522,6 +522,44 @@ _USER_FACING_FORBIDDEN = [
 ]
 
 
+def _strip_sql_fences(text: str) -> str:
+    """Remove ```sql ... ``` code blocks using plain string operations — no regex."""
+    parts: list[str] = []
+    remaining = text
+    lower = remaining.lower()
+    while True:
+        start = lower.find("```sql")
+        if start == -1:
+            parts.append(remaining)
+            break
+        parts.append(remaining[:start])
+        after_open = start + 6  # len("```sql") == 6
+        end = lower.find("```", after_open)
+        if end == -1:
+            # No closing fence — drop everything from the opening marker onward
+            break
+        remaining = remaining[end + 3:]
+        lower = remaining.lower()
+    return "".join(parts).strip()
+
+
+def _strip_captured_sql(text: str, captured_sql: str) -> str:
+    """Remove the exact captured SQL from the response using str.replace — no regex.
+
+    Tries a verbatim match first, then falls back to a single-line (whitespace-
+    collapsed) match to handle cases where the LLM writes the SQL on one line
+    while the captured version has newlines and indentation.
+    """
+    if not captured_sql or not text:
+        return text
+    if captured_sql in text:
+        return text.replace(captured_sql, "").strip()
+    sql_one_line = " ".join(captured_sql.split())
+    if sql_one_line in text:
+        return text.replace(sql_one_line, "").strip()
+    return text
+
+
 def _sanitize_user_response(text: str) -> str:
     """Replace technical phrases so user never sees 'query', 'sql', 'returned no results' etc."""
     if not text or not text.strip():
@@ -774,6 +812,31 @@ async def stream_chat_with_database(
             + "\n• ONLY exception: a query returning exactly ONE row (SELECT SUM/COUNT with no GROUP BY) does not need TOP."
             + "\n• NEVER run any multi-row SELECT without TOP — fact tables contain millions of rows."
             + "\n• If user asks for row counts, run SELECT COUNT(*) with no GROUP BY — do NOT select all rows."
+            + "\n• TOP-N PER GROUP (CRITICAL PATTERN): When the user asks for 'top N per category', 'top N per group',"
+            + "\n  'top N within each X', or 'N items from each Y' — this is a PARTITION query, NOT a simple TOP query."
+            + "\n  MANDATORY STRUCTURE:"
+            + "\n    Step 1 — Compute the classification/grouping in a CTE (e.g. ABC_Category)"
+            + "\n    Step 2 — In a separate CTE, assign ROW_NUMBER() OVER (PARTITION BY <classification_col> ORDER BY <metric> DESC) AS rn"
+            + "\n    Step 3 — Final SELECT filters WHERE rn <= N  ← this is where the user's 'top N' is applied"
+            + "\n    Step 4 — Outer SELECT TOP = N × number_of_groups  (e.g. top 10 per 3 ABC categories = SELECT TOP 30)"
+            + "\n  CRITICAL: The user's 'top N' maps to WHERE rn <= N — NOT to the outer SELECT TOP clause."
+            + "\n  CRITICAL: ALL groups must appear in the result — NEVER filter to just one group."
+            + "\n  CRITICAL: NEVER add a WHERE clause that limits to a single group value (e.g. WHERE ABCCategory = 'A')."
+            + "\n  CRITICAL: NEVER say 'only X category shown due to row limit' — show all groups using PARTITION BY."
+            + "\n  CRITICAL PARTITION BY RULE: The PARTITION BY must contain ONLY the classification/group column."
+            + "\n    CORRECT: PARTITION BY ABC_Category"
+            + "\n    WRONG:   PARTITION BY ABC_Category, DP.Category   ← adding extra dimension columns creates thousands of micro-groups"
+            + "\n    Adding any extra column to PARTITION BY (e.g. product Category, Region, Warehouse) multiplies the number"
+            + "\n    of partitions and makes the rn filter meaningless — each tiny group gets rn=1,2,3... independently."
+            + "\n  CRITICAL ABC ANALYSIS RULE: ABC classification must use the cumulative Pareto method (running sum):"
+            + "\n    A = items where cumulative inventory value (ordered high→low) ≤ 80% of total inventory value"
+            + "\n    B = cumulative value between 80% and 95%"
+            + "\n    C = cumulative value above 95%"
+            + "\n    Use SUM() OVER (ORDER BY value DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) for running total."
+            + "\n    NEVER use PERCENTILE_CONT or value thresholds for ABC — only the cumulative Pareto running-sum method."
+            + "\n  Example: 'top 5 per ABC category' (3 groups) → PARTITION BY ABC_Category only, WHERE rn <= 5, SELECT TOP 15."
+            + "\n  Example: 'top 3 products per warehouse' (8 warehouses) → PARTITION BY WarehouseKey only, WHERE rn <= 3, SELECT TOP 24."
+            + "\n  If N × number_of_groups exceeds 40, reduce N so that all groups still appear (e.g. top 13 × 3 = 39 ≤ 40)."
 
             + "\n\n=== COMPLETENESS ==="
             + "\n• Present the FULL result up to TOP 40. NEVER say 'similar data available for others'."
@@ -870,6 +933,9 @@ async def stream_chat_with_database(
             + "\n• Do NOT show intermediate reasoning, retries, or tool calls — final result only."
             + "\n• If no matching rows: say exactly \"I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query.\" and briefly suggest why."
             + "\n• NEVER use the words 'query', 'SQL', or 'returned no results' in your response."
+            + "\n• NEVER include SQL code in your final answer — not as a code block, not inline, not as a summary."
+            + "\n  The SQL is captured and shown to users separately. Your answer must contain ONLY the business interpretation of the results."
+            + "\n  Any SELECT, WITH, FROM, JOIN, WHERE, GROUP BY, or ORDER BY clause appearing in your final answer is a strict violation."
             + "\n• NEVER fabricate data, use illustrative values, or produce a table when the tool returned empty."
 
             + "\n\n=== DATA QUALITY — MANDATORY FILTERS ==="
@@ -979,15 +1045,16 @@ async def stream_chat_with_database(
         if "illustrative" in agent_output.lower() or "no results" in agent_output.lower():
             print("[LangChainAgent] WARNING: Agent output may contain fabricated or empty data")
 
-        # Clean the final output: strip ```sql...``` blocks and intermediate reasoning
-        full_response = re.sub(
-            r"```\s*sql\s*.*?```",
-            "",
-            agent_output,
-            flags=re.IGNORECASE | re.DOTALL,
-        ).strip()
+        # Extract captured SQL early — used both for cleaning and the done event
+        sql_query = getattr(handler, "_last_sql", None) or ""
+
+        # Strip fenced SQL blocks (no regex) then remove any bare SQL that matches
+        # exactly what was executed (verbatim or whitespace-collapsed)
+        full_response = _strip_sql_fences(agent_output)
         if not full_response:
             full_response = agent_output
+        if sql_query:
+            full_response = _strip_captured_sql(full_response, sql_query)
 
         print(f"[LangChainAgent] Full response length: {len(full_response)} chars")
 
@@ -1061,8 +1128,6 @@ async def stream_chat_with_database(
                 table_columns = qcols
                 has_table = True
                 print(f"[LangChainAgent] Using captured query result (fallback): {len(qdata)} rows, {len(qcols)} cols")
-
-        sql_query = getattr(handler, "_last_sql", None) or ""
 
         # Emit done event
         done_event = json.dumps({
