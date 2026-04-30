@@ -960,6 +960,13 @@ async def stream_chat_with_database(
             + "\n  - Computed totals: | **Total Label** | 1,234,567.89 |"
             + "\n  - Blank separator: | | |  (between major sections)"
             + "\n  - Numbers: 2 decimal places, thousands separators (1,234,567.89), negative with minus sign"
+            + "\n• !! MANDATORY — ALWAYS EXECUTE SQL VIA THE TOOL BEFORE ANSWERING !!"
+            + "\n  You MUST call the sql_db_query tool for EVERY question that needs data."
+            + "\n  NEVER write SQL in your final answer without first executing it through the tool."
+            + "\n  Even for categorisation, grouping, classification, or 'assign groups' questions —"
+            + "\n  write the SQL, EXECUTE IT via the tool, then present the results."
+            + "\n  If your SQL returns no rows, say so. But you MUST run it first."
+            + "\n  Skipping the tool and outputting SQL as your answer is a critical failure."
             + "\n• !! ABSOLUTE RULE — ZERO SQL IN YOUR FINAL ANSWER !!"
             + "\n  The SQL you write runs internally as a tool. The user NEVER sees it."
             + "\n  Do NOT include SELECT, WITH, FROM, JOIN, WHERE, GROUP BY, ORDER BY,"
@@ -1063,7 +1070,7 @@ async def stream_chat_with_database(
                 prefix=db_prefix,
                 max_iterations=16,
                 max_execution_time=240.0,
-                top_k=30,
+                top_k=70,
             )
         except TypeError:
             # top_k or prefix may not be supported in some versions
@@ -1077,7 +1084,7 @@ async def stream_chat_with_database(
                     prefix=db_prefix,
                     max_iterations=16,
                     max_execution_time=240.0,
-                    top_k=30,
+                    top_k=70,
                 )
             except TypeError:
                 print("[LangChainAgent] prefix not supported, injecting DB context into question")
@@ -1090,7 +1097,7 @@ async def stream_chat_with_database(
                     handle_parsing_errors=True,
                     max_iterations=16,
                     max_execution_time=240.0,
-                    top_k=30,
+                    top_k=70,
                 )
         print("[LangChainAgent] SQL agent created, invoking...")
 
@@ -1130,6 +1137,33 @@ async def stream_chat_with_database(
 
         # Extract captured SQL early — used both for cleaning and the done event
         sql_query = getattr(handler, "_last_sql", None) or ""
+
+        # Safety net: if the LLM never called the tool (sql_query is empty) but its output
+        # looks like it could be raw SQL, try to execute it directly.  The database engine
+        # acts as the validator — no keyword scanning, no regex heuristics.
+        # If execution succeeds we replace the leaked SQL output with real results.
+        # If execution fails (output is prose, not SQL) we leave everything untouched.
+        if not sql_query:
+            candidate_sql = agent_output.strip()
+            if candidate_sql:
+                try:
+                    print("[LangChainAgent] No tool was called — attempting to auto-execute agent output as SQL")
+                    raw_result = sql_db.run_no_throw(candidate_sql)
+                    if raw_result and not str(raw_result).startswith("Error"):
+                        parsed = _parse_sql_tool_result_to_table(raw_result)
+                        if parsed:
+                            cols, data = parsed
+                            handler._last_sql = candidate_sql
+                            handler._query_result_columns = cols
+                            handler._query_result_table = data
+                            sql_query = candidate_sql
+                            print(f"[LangChainAgent] Auto-executed LLM output as SQL: {len(data)} rows, {len(cols)} cols")
+                        else:
+                            print("[LangChainAgent] Auto-execute: SQL ran but result could not be parsed (0 rows or bad format)")
+                    else:
+                        print(f"[LangChainAgent] Auto-execute: output is not valid SQL (DB returned error) — treating as text")
+                except Exception as _ae:
+                    print(f"[LangChainAgent] Auto-execute attempt raised exception: {_ae} — treating output as text")
 
         # Strip fenced SQL blocks (no regex) then remove any bare SQL that matches
         # exactly what was executed (verbatim or whitespace-collapsed)
