@@ -325,16 +325,25 @@ def _fix_response_table_pipes(
             header_cells = [c.strip() for c in hdr.split("|") if c.strip()]
 
             if len(header_cells) == len(captured_cols) and len(block) >= 2:
-                # Keep original header + separator, rebuild data rows
-                result.append(block[0])
-                result.append(block[1])
-                for row in captured_data:
-                    cells = [
-                        str(row.get(col, "")).replace("|", "\\|")
-                        for col in captured_cols
-                    ]
-                    result.append("| " + " | ".join(cells) + " |")
-                print(f"[TablePipeFix] Rebuilt markdown table: {len(captured_data)} rows, {len(captured_cols)} cols")
+                # If the LLM's table has MORE data rows than the raw SQL result,
+                # it means the LLM added computed/derived rows (e.g. P&L template
+                # with Gross Profit, Operating Profit, Net Profit lines).
+                # Preserve those rows — do NOT overwrite with raw SQL data.
+                lm_data_row_count = len(block) - 2  # subtract header + separator
+                if lm_data_row_count > len(captured_data):
+                    result.extend(block)
+                    print(f"[TablePipeFix] Preserved LLM-computed table ({lm_data_row_count} rows > {len(captured_data)} SQL rows)")
+                else:
+                    # Same or fewer rows — rebuild with properly escaped raw SQL data
+                    result.append(block[0])
+                    result.append(block[1])
+                    for row in captured_data:
+                        cells = [
+                            str(row.get(col, "")).replace("|", "\\|")
+                            for col in captured_cols
+                        ]
+                        result.append("| " + " | ".join(cells) + " |")
+                    print(f"[TablePipeFix] Rebuilt markdown table: {len(captured_data)} rows, {len(captured_cols)} cols")
             else:
                 # Column-count mismatch — leave table as-is
                 result.extend(block)
@@ -546,17 +555,33 @@ def _strip_sql_fences(text: str) -> str:
 def _strip_captured_sql(text: str, captured_sql: str) -> str:
     """Remove the exact captured SQL from the response using str.replace — no regex.
 
-    Tries a verbatim match first, then falls back to a single-line (whitespace-
-    collapsed) match to handle cases where the LLM writes the SQL on one line
-    while the captured version has newlines and indentation.
+    Three passes in increasing looseness:
+    1. Verbatim match — fastest, handles the common case.
+    2. Single-line collapsed match — handles LLM writing SQL on one line vs
+       the captured version having newlines/indentation.
+    3. Full whitespace-normalization of BOTH sides — handles two edge cases:
+       a) LLM writes the SQL twice fused end-to-end (no separator), producing
+          a double-copy that neither Pass 1 nor Pass 2 can match.
+       b) LLM writes bare unfenced SQL whose surrounding whitespace differs from
+          the captured version in any other way.
+       Because str.replace removes ALL occurrences, it clears both copies in
+       case (a) in a single call.
     """
     if not captured_sql or not text:
         return text
+    # Pass 1: verbatim
     if captured_sql in text:
         return text.replace(captured_sql, "").strip()
+    # Pass 2: single-line collapsed
     sql_one_line = " ".join(captured_sql.split())
     if sql_one_line in text:
         return text.replace(sql_one_line, "").strip()
+    # Pass 3: fully normalize both sides — removes duplicates/fused copies too
+    text_normalized = " ".join(text.split())
+    sql_normalized = " ".join(captured_sql.split())
+    if sql_normalized in text_normalized:
+        cleaned = text_normalized.replace(sql_normalized, "").strip()
+        return cleaned
     return text
 
 
@@ -837,6 +862,15 @@ async def stream_chat_with_database(
             + "\n  Example: 'top 5 per ABC category' (3 groups) → PARTITION BY ABC_Category only, WHERE rn <= 5, SELECT TOP 15."
             + "\n  Example: 'top 3 products per warehouse' (8 warehouses) → PARTITION BY WarehouseKey only, WHERE rn <= 3, SELECT TOP 24."
             + "\n  If N × number_of_groups exceeds 40, reduce N so that all groups still appear (e.g. top 13 × 3 = 39 ≤ 40)."
+            + "\n• CLASSIFICATION SUMMARY QUERIES: When the user asks for a summary or analysis that classifies items"
+            + "\n  into computed buckets using cumulative window functions (running totals, percentile tiers, ranked bands),"
+            + "\n  the query MUST follow this two-stage structure:"
+            + "\n    Stage 1 — Classification CTE: compute the bucket label for EVERY row using window functions. NO TOP here."
+            + "\n              Applying TOP at this stage truncates the running total mid-way and collapses all rows into the first bucket."
+            + "\n    Stage 2 — Aggregation SELECT: GROUP BY the computed bucket column to produce one summary row per bucket."
+            + "\n              Apply SELECT TOP only here — the result has at most as many rows as there are buckets (typically 3–10)."
+            + "\n  This rule applies to any analysis that assigns items to ranked tiers based on cumulative value, count, or percentage."
+            + "\n  NEVER apply TOP to the intermediate classification step or to the row-level data before aggregation."
 
             + "\n\n=== COMPLETENESS ==="
             + "\n• Present the FULL result up to TOP 40. NEVER say 'similar data available for others'."
@@ -876,27 +910,38 @@ async def stream_chat_with_database(
             + "\n"
             + "\n  P&L / INCOME STATEMENT — HOW TO FORMAT EACH QUERY LEVEL:"
             + "\n  IMPORTANT: P&L and Income Statement are the same report. Both use the same templates."
+            + "\n  CRITICAL — DETECT LEVEL BY COLUMN COUNT BEFORE DOING ANYTHING ELSE:"
+            + "\n    2 columns in result  → LEVEL 1  ← apply the mandatory template below, NEVER dump raw rows"
+            + "\n    3 columns in result  → LEVEL 2"
+            + "\n    4 columns in result  → LEVEL 3"
             + "\n"
-            + "\n  LEVEL 1 — Main Grouped (SQL returns 2 cols: Group, Amount):"
-            + "\n    The query returns raw group amounts. You MUST compute and insert the derived lines:"
-            + "\n      Gross Profit/(Loss)     = SALES amount - COST OF SALES amount"
-            + "\n      Total Operating Cost    = GENERAL & ADMINISTRATIVE amount + SELLING EXPENSES amount"
-            + "\n      Operating Profit/(Loss) = Gross Profit - Total Operating Cost"
-            + "\n      Net Profit/(Loss)       = Operating Profit + OTHER INCOME amount - INCOME TAXES amount"
-            + "\n    Output order (regardless of ORDER BY in SQL):"
+            + "\n  LEVEL 1 — Main Grouped (SQL returns EXACTLY 2 cols: Group name + Amount):"
+            + "\n  !! MANDATORY — when you receive exactly 2 columns for a P&L / Income Statement query:"
+            + "\n    NEVER output the rows as a plain table. The raw 2-column output is ALWAYS wrong."
+            + "\n    You MUST restructure it using the steps below, every single time."
+            + "\n    Step 1 — Collect the group amounts from the result rows."
+            + "\n             If any of these 6 groups is absent from the result, treat its amount as 0.00:"
+            + "\n             SALES | COST OF SALES | GENERAL & ADMINISTRATIVE | SELLING EXPENSES | OTHER INCOME | INCOME TAXES"
+            + "\n    Step 2 — Expense groups are stored as NEGATIVE numbers. Compute derived lines by adding:"
+            + "\n             Gross Profit/(Loss)     = SALES + COST OF SALES"
+            + "\n             Total Operating Cost    = GENERAL & ADMINISTRATIVE + SELLING EXPENSES"
+            + "\n             Operating Profit/(Loss) = Gross Profit + Total Operating Cost"
+            + "\n             Net Profit/(Loss)       = Operating Profit + OTHER INCOME + INCOME TAXES"
+            + "\n    Step 3 — Output EXACTLY this structure (apply thousands separators and 2 decimal places):"
             + "\n      | **Sales** | <SALES amount> |"
             + "\n      | **Cost Of Sales** | <COST OF SALES amount> |"
-            + "\n      | **Gross Profit/(Loss)** | <computed> |"
+            + "\n      | **Gross Profit/(Loss)** | <computed Gross Profit> |"
             + "\n      | | |"
             + "\n      | **Operating Cost** | |"
-            + "\n      |     General & Administrative | <GENERAL & ADMINISTRATIVE amount> |"
-            + "\n      |     Selling Expenses | <SELLING EXPENSES amount> |"
-            + "\n      | **Total Operating Cost** | <computed> |"
-            + "\n      | **Operating Profit/(Loss)** | <computed> |"
+            + "\n      |     General & Administrative | <G&A amount, 0.00 if absent> |"
+            + "\n      |     Selling Expenses | <Selling amount, 0.00 if absent> |"
+            + "\n      | **Total Operating Cost** | <computed Total Op Cost> |"
+            + "\n      | **Operating Profit/(Loss)** | <computed Operating Profit> |"
             + "\n      | | |"
-            + "\n      | **Other Income** | <OTHER INCOME amount> |"
-            + "\n      | **Income Taxes** | <INCOME TAXES amount> |"
-            + "\n      | **Net Profit/(Loss)** | <computed> |"
+            + "\n      | **Other Income** | <Other Income amount, 0.00 if absent> |"
+            + "\n      | **Income Taxes** | <Income Taxes amount, 0.00 if absent> |"
+            + "\n      | **Net Profit/(Loss)** | <computed Net Profit> |"
+            + "\n    NEVER skip any of these rows. NEVER output raw group rows without this full structure."
             + "\n"
             + "\n  LEVEL 2 — Sub Grouped (SQL returns 3 cols: Main Group, Sub Group, Amount):"
             + "\n    For SALES and COST OF SALES: bold section header, indented sub-group items, bold Total row."
@@ -906,7 +951,7 @@ async def stream_chat_with_database(
             + "\n"
             + "\n  LEVEL 3 — Detailed (SQL returns 4 cols: Main Group, Sub Group, Account, Amount):"
             + "\n    3-level nesting: bold Main Group header -> bold Sub Group header -> indented Account items."
-            + "\n    Insert same computed lines (Gross Profit, Operating Profit, Net Profit) as bold rows."
+            + "\n    Insert same computed lines (Gross Profit, Operating Profit, Net Profit) as computed bold rows."
             + "\n"
             + "\n  FORMATTING RULES (apply to ALL levels):"
             + "\n  - Section/Main headers: | **Header** | |  (no amount)"
@@ -919,6 +964,10 @@ async def stream_chat_with_database(
             + "\n  The SQL you write runs internally as a tool. The user NEVER sees it."
             + "\n  Do NOT include SELECT, WITH, FROM, JOIN, WHERE, GROUP BY, ORDER BY,"
             + "\n  CASE WHEN, HAVING, or ANY other SQL keyword or syntax in the text you send to the user."
+            + "\n  Do NOT preface the results with the query you used."
+            + "\n  Do NOT show the SQL at the top, bottom, or anywhere in your answer — not even without code fences."
+            + "\n  Do NOT repeat the SQL inline between paragraphs or between the summary and the table."
+            + "\n  This applies to ALL query types: trial balance, account listings, financial statements, sales reports, everything."
             + "\n  Violating this rule means your response is wrong regardless of the data."
             + "\n  1. If user requests for descriptive repsonse then use summarized descriptive response and then show the data as a markdown table, along 2 3 lines text."
             + "\n     - Write like a business analyst, not a developer."
@@ -968,6 +1017,40 @@ async def stream_chat_with_database(
             + "\n• Subtraction for net amounts: always parenthesise: (SalesAmount - CostAmount) AS ProfitAmount"
             + "\n• When combining SUM and arithmetic, apply SUM before dividing:"
             + "  RIGHT:  SUM(col1) / NULLIF(SUM(col2), 0)    WRONG:  SUM(col1 / col2)"
+            + "\n• PERCENT_RANK / TOP-X% — DIRECTION RULE:"
+            + "\n  PERCENT_RANK() assigns 0.0 to the first row in the ORDER BY sequence and approaches 1.0 for the last."
+            + "\n  When ORDER BY <metric> DESC (highest first): 0.0 = highest value, ~1.0 = lowest value."
+            + "\n  Therefore — to select the TOP X% of rows by a descending metric: WHERE rank <= X / 100.0"
+            + "\n  To select the BOTTOM X%:                                          WHERE rank >= 1.0 - (X / 100.0)"
+            + "\n  NEVER use >= (1 - threshold) to mean 'top X%' — that selects the BOTTOM of the distribution."
+            + "\n  Safe alternative: NTILE(100) partitions rows into 100 equal buckets; WHERE Tile <= X returns the top X%."
+
+            + "\n\n=== SQL SERVER SYNTAX RESTRICTIONS ==="
+            + "\n• COUNT(DISTINCT expr) OVER (PARTITION BY ...) is NOT valid SQL Server syntax — it raises error 10759."
+            + "\n  NEVER use DISTINCT inside any window function (COUNT, SUM, AVG) combined with OVER()."
+            + "\n  Correct pattern: use a CTE to aggregate distinct values first, then join the result back:"
+            + "\n    Step 1 CTE — SELECT group_col, COUNT(DISTINCT value_col) AS DistinctCount"
+            + "\n                 FROM table GROUP BY group_col"
+            + "\n    Step 2 — JOIN that CTE on group_col in the outer query."
+            + "\n  The same restriction applies to SUM(DISTINCT ...) OVER(...) and AVG(DISTINCT ...) OVER(...)."
+
+            + "\n\n=== KNOWN SCHEMA JOIN RULES ==="
+            + "\n• DimProduct.Vendor stores a VendorID code (e.g. '000027'), NOT a vendor name."
+            + "\n  To join DimProduct to DimVendors: JOIN DimVendors DV ON DP.Vendor = DV.VendorID"
+            + "\n  NEVER join ON DP.Vendor = DV.VendorName — that produces no matches because the column holds IDs."
+            + "\n• FactSalesInvoice.SalesmanKey is sparsely populated (mostly NULL in production data)."
+            + "\n  Do NOT use SalesmanKey to aggregate or attribute revenue/performance to a sales representative."
+            + "\n  For sales rep performance, commission, or revenue attribution queries, use instead:"
+            + "\n    FactSalesCommission  — has SalesRepKey, TotalAmount, AmountForCommission, CommissionRate"
+            + "\n    FactCommissionRates  — has SalesRepKey + per-customer/collection rate configuration"
+            + "\n    FactCommissionInvoice — has SalesRepKey, TotalAmount, PaidAmount"
+            + "\n• FactSalesInvoice.PaymentTermKey is sparsely populated (mostly NULL in production data)."
+            + "\n  Do NOT join FactSalesInvoice to DimPaymentTerms via PaymentTermKey — it returns no results."
+            + "\n  For a customer's default payment terms: use DimCustomer.PaymentTermKey (an INTEGER FK)"
+            + "\n  with JOIN DimPaymentTerms DPT ON DC.PaymentTermKey = DPT.PaymentTermKey."
+            + "\n  NOTE: DimCustomer has NO column called 'PaymentTerm' — the correct column is PaymentTermKey."
+            + "\n  For full payment term details (due days, discount days): use FactSalesOrders.PaymentTermKey"
+            + "\n  with JOIN DimPaymentTerms DPT ON FSO.PaymentTermKey = DPT.PaymentTermKey."
         )
         print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
         try:
