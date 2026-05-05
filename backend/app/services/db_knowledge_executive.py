@@ -1477,74 +1477,68 @@ Balance Sheet Templates:-
 Assets                                          Amount
 
 Current Assets
-  *** Free To Use                               [value]
-  ACCOUNT RECEIVABLE                            [value]
+  Account Receivable                            [value]
   Accrued Insurance Expense                     [value]
   Accrued Lease-Toshiba Printer                 [value]
   Accrued Not Due Interest Payab                [value]
   Advances - Deposits                           [value]
-  AmExp CC                                      [value]
+  Amexp Cc                                      [value]
   Cash Account                                  [value]
-  CASH IN HAND                                  [value]
-  Credit Card AR-Receipts                       [value]
-  First Bank PPP Checking A/c                   [value]
-  First Bank TN                                 [value]
+  Cash In Hand                                  [value]
+  Credit Card Ar-Receipts                       [value]
+  First Bank Ppp Checking A/C                   [value]
+  First Bank Tn                                 [value]
   Inter Bank Transfer                           [value]
   Inventory Adj.                                [value]
   Inventory Asset                               [value]
   Inventory Change                              [value]
   Inventory Control                             [value]
-  Inventory on Consignment                      [value]
+  Inventory On Consignment                      [value]
   Inventory Transfer                            [value]
   Inventory-Prepaid Import Costs                [value]
-  Loan & Adv. EMPLOYEES                         [value]
-  PETTY CASH                                    [value]
+  Loan & Adv. Employees                         [value]
+  Petty Cash                                    [value]
   Prepaid Expenses                              [value]
-  RAW MATERIAL                                  [value]
-  Refund to Customer                            [value]
-  REGIONS                                       [value]
+  Raw Material                                  [value]
+  Refund To Customer                            [value]
+  Regions                                       [value]
   Reserve For Doubtful Debts                    [value]
   Tax Refundable                                [value]
-  TRADE-AM                                      [value]
+  Trade-Am                                      [value]
   Truist                                        [value]
-  VENDORS - Advances                            [value]
+  Vendors - Advances                            [value]
   Warehouse Sale Credit Card                    [value]
-  WORK IN PROGRESS                              [value]
+  Work In Progress                              [value]
 Total Current Assets                            [value]
 
 Non Current Assets
-  2B Reused-CLARK ORDER PICKER                  [value]
-  2B Reused-Clrk Hyster 02/05/18               [value]
-  2B Reused-Clrk Ord Picker 0119               [value]
-  2B Reused-New Clark Ord Picker                [value]
-  2B Reused-Pallet Jack 9/28/16                [value]
-  ACCUM. AMORTIZATION-CUST LIST                 [value]
-  ACCUM. DEPRECIATION                           [value]
-  Accumulated Amortization                      [value]
-  BUILDING                                      [value]
+  Building                                      [value]
   Cell Phone                                    [value]
   Customer Claim Disputes                       [value]
-  CUSTOMER LIST                                 [value]
-  Deffered Exp.(sample)Rug                      [value]
-  DEPOSITS                                      [value]
+  Customer List                                 [value]
+  Deffered Exp.(Sample)Rug                      [value]
+  Deposits                                      [value]
   Design & Art Work (Atlanta)                   [value]
-  ELECTRONICS                                   [value]
-  FURNITURE                                     [value]
+  Electronics                                   [value]
+  Free To Use                                   [value]
+  Furniture                                     [value]
   Intangible Assets                             [value]
-  LAND                                          [value]
+  Land                                          [value]
   Leasehold Improvements                        [value]
-  LOAN FEE                                      [value]
-  Motorola Scanner 11/17/16                     [value]
-  RACK                                          [value]
+  Loan Fee                                      [value]
+  Rack                                          [value]
   Sample Rugs                                   [value]
-  Samples at Warehouse                          [value]
-  SIENNA-2015                                   [value]
-  Suspense                                      [value]
-  UNDEPOSITED FUNDS                             [value]
-  VEHICLES                                      [value]
+  Samples At Warehouse                          [value]
+  Scanner                                       [value]
+  Sienna-2015                                   [value]
+  Undeposited Funds                             [value]
+  Vehicles                                      [value]
   Warehouse Equipment-Racks                     [value]
   Warehouse Vehicles                            [value]
-  WebSpars Software System                      [value]
+  Webspars Software System                      [value]
+  Accum. Amortization-Cust List                 [value]
+  Accum. Depreciation                           [value]
+  Accumulated Amortization                      [value]
 Total Non Current Assets                        [value]
 
 Total Assets                                    [value]
@@ -1555,43 +1549,43 @@ Liabilities & Equity
 Current Liabilities
   401K Contribution Payable                     [value]
   ACCOUNT PAYABLE-AMEX                          [value]
-  ACCOUNT PAYABLE-CASH                          [value]
-  ACCOUNT PAYABLE-EXPENSES                      [value]
-  ACCOUNT PAYABLE-RENT                          [value]
-  ACCOUNT PAYABLE-VENDOR                        [value]
+  Account Payable-Cash                          [value]
+  Account Payable-Expenses                      [value]
+  Account Payable-Rent                          [value]
+  Account Payable-Vendor                        [value]
   ACCOUNT PAYABLE-VISA                          [value]
   Accrued Insurance Expense                     [value]
   Accrued Lease-Toshiba Printer                 [value]
-  ACCURED EXPENSES                              [value]
-  Advance from customer                         [value]
+  Accured Expenses                              [value]
+  Advance From Customer                         [value]
   Allowance For Doubtful Debts                  [value]
-  AP- OTHER                                     [value]
+  Ap- Other                                     [value]
   BB&T                                          [value]
   Bills Payable                                 [value]
-  Drip Capital Control A/c                      [value]
+  Drip Capital Control A/C                      [value]
   Employee Benefits Plan Payable                [value]
-  FirstBank Loan A/c 2570107680                 [value]
-  Free Bank A/c to use                          [value]
-  Free to Use                                   [value]
-  FSG BANK-CREDIT LINE                          [value]
-  FUTA PAYABLE                                  [value]
+  Firstbank Loan A/C 2570107680                 [value]
+  Free Bank A/C To Use                          [value]
+  Free To Use                                   [value]
+  Fsg Bank-Credit Line                          [value]
+  Futa Payable                                  [value]
   Garnishment-Child Support                     [value]
-  INTREST ACCRUED                               [value]
-  LOAN                                          [value]
-  LOAN ON EQUITY                                [value]
+  Intrest Accrued                               [value]
+  Loan                                          [value]
+  Loan On Equity                                [value]
   Not To Use Accrued Lease                      [value]
-  NOTE PAYABLE                                  [value]
-  PAYROLL                                       [value]
-  PAYROLL TAX                                   [value]
-  PPP 2nd Draw                                  [value]
-  PPP Loan - First Bank                         [value]
+  Note Payable                                  [value]
+  Payroll                                       [value]
+  Payroll Tax                                   [value]
+  Ppp 2Nd Draw                                  [value]
+  Ppp Loan - First Bank                         [value]
   Ransomware Recovery Claim                     [value]
-  REGIONS BANK - LINE OF CREDIT                 [value]
-  SALES TAX                                     [value]
+  Regions Bank - Line Of Credit                 [value]
+  Sales Tax                                     [value]
   SBA-EIDL Loan                                 [value]
-  STATE W/H PAYABLE                             [value]
+  State W/H Payable                             [value]
   SUTA PAYABLE                                  [value]
-  UNSECURED LOAN                                [value]
+  Unsecured Loan                                [value]
 Total Current Liabilities                       [value]
 
 Long Term Liabilities
@@ -1621,41 +1615,131 @@ Total Liabilities & Equity                      [value]
 |:---|---:|---:|
 | **Assets** | | |
 | **Current Assets** | | |
-| **Accounts Receivable** | | |
-|     ACCOUNT RECEIVABLE | [value] | [value] |
-|     Refund to Customer | [value] | [value] |
-|     Reserve For Doubtful Debts | [value] | [value] |
-| **Cash and Cash Equivalents** | | |
-|     AmExp CC | [value] | [value] |
+|     Account Receivable | [value] | [value] |
+|     Accrued Insurance Expense | [value] | [value] |
+|     Accrued Lease-Toshiba Printer | [value] | [value] |
+|     Accrued Not Due Interest Payab | [value] | [value] |
+|     Advances - Deposits | [value] | [value] |
+|     Amexp Cc | [value] | [value] |
 |     Cash Account | [value] | [value] |
-|     (... all cash accounts ...) | [value] | [value] |
-| **Inventory** | | |
+|     Cash In Hand | [value] | [value] |
+|     Credit Card Ar-Receipts | [value] | [value] |
+|     First Bank Ppp Checking A/C | [value] | [value] |
+|     First Bank Tn | [value] | [value] |
+|     Inter Bank Transfer | [value] | [value] |
+|     Inventory Adj. | [value] | [value] |
 |     Inventory Asset | [value] | [value] |
-|     (... all inventory accounts ...) | [value] | [value] |
-| **Other Receivables** | | |
-|     (... all other receivable accounts ...) | [value] | [value] |
+|     Inventory Change | [value] | [value] |
+|     Inventory Control | [value] | [value] |
+|     Inventory On Consignment | [value] | [value] |
+|     Inventory Transfer | [value] | [value] |
+|     Inventory-Prepaid Import Costs | [value] | [value] |
+|     Loan & Adv. Employees | [value] | [value] |
+|     Petty Cash | [value] | [value] |
+|     Prepaid Expenses | [value] | [value] |
+|     Raw Material | [value] | [value] |
+|     Refund To Customer | [value] | [value] |
+|     Regions | [value] | [value] |
+|     Reserve For Doubtful Debts | [value] | [value] |
+|     Tax Refundable | [value] | [value] |
+|     Trade-Am | [value] | [value] |
+|     Truist | [value] | [value] |
+|     Vendors - Advances | [value] | [value] |
+|     Warehouse Sale Credit Card | [value] | [value] |
+|     Work In Progress | [value] | [value] |
 | **Total Current Assets** | [computed] | [computed] |
 | | | |
 | **Non Current Assets** | | |
-| **Other Non Current Assets** | | |
-|     (... accounts ...) | [value] | [value] |
-| **Property Plant & Equipments** | | |
-|     (... accounts ...) | [value] | [value] |
+|     Building | [value] | [value] |
+|     Cell Phone | [value] | [value] |
+|     Customer Claim Disputes | [value] | [value] |
+|     Customer List | [value] | [value] |
+|     Deffered Exp.(Sample)Rug | [value] | [value] |
+|     Deposits | [value] | [value] |
+|     Design & Art Work (Atlanta) | [value] | [value] |
+|     Electronics | [value] | [value] |
+|     Free To Use | [value] | [value] |
+|     Furniture | [value] | [value] |
+|     Intangible Assets | [value] | [value] |
+|     Land | [value] | [value] |
+|     Leasehold Improvements | [value] | [value] |
+|     Loan Fee | [value] | [value] |
+|     Rack | [value] | [value] |
+|     Sample Rugs | [value] | [value] |
+|     Samples At Warehouse | [value] | [value] |
+|     Scanner | [value] | [value] |
+|     Sienna-2015 | [value] | [value] |
+|     Undeposited Funds | [value] | [value] |
+|     Vehicles | [value] | [value] |
+|     Warehouse Equipment-Racks | [value] | [value] |
+|     Warehouse Vehicles | [value] | [value] |
+|     Webspars Software System | [value] | [value] |
+|     Accum. Amortization-Cust List | [value] | [value] |
+|     Accum. Depreciation | [value] | [value] |
+|     Accumulated Amortization | [value] | [value] |
 | **Total Non Current Assets** | [computed] | [computed] |
 | | | |
 | **Total Assets** | [computed] | [computed] |
 | | | |
 | **Liabilities & Equity** | | |
 | **Current Liabilities** | | |
-|     (... accounts ...) | [value] | [value] |
+|     401K Contribution Payable | [value] | [value] |
+|     ACCOUNT PAYABLE-AMEX | [value] | [value] |
+|     Account Payable-Cash | [value] | [value] |
+|     Account Payable-Expenses | [value] | [value] |
+|     Account Payable-Rent | [value] | [value] |
+|     Account Payable-Vendor | [value] | [value] |
+|     ACCOUNT PAYABLE-VISA | [value] | [value] |
+|     Accrued Insurance Expense | [value] | [value] |
+|     Accrued Lease-Toshiba Printer | [value] | [value] |
+|     Accured Expenses | [value] | [value] |
+|     Advance From Customer | [value] | [value] |
+|     Allowance For Doubtful Debts | [value] | [value] |
+|     Ap- Other | [value] | [value] |
+|     BB&T | [value] | [value] |
+|     Bills Payable | [value] | [value] |
+|     Drip Capital Control A/C | [value] | [value] |
+|     Employee Benefits Plan Payable | [value] | [value] |
+|     Firstbank Loan A/C 2570107680 | [value] | [value] |
+|     Free Bank A/C To Use | [value] | [value] |
+|     Free To Use | [value] | [value] |
+|     Fsg Bank-Credit Line | [value] | [value] |
+|     Futa Payable | [value] | [value] |
+|     Garnishment-Child Support | [value] | [value] |
+|     Intrest Accrued | [value] | [value] |
+|     Loan | [value] | [value] |
+|     Loan On Equity | [value] | [value] |
+|     Not To Use Accrued Lease | [value] | [value] |
+|     Note Payable | [value] | [value] |
+|     Payroll | [value] | [value] |
+|     Payroll Tax | [value] | [value] |
+|     Ppp 2Nd Draw | [value] | [value] |
+|     Ppp Loan - First Bank | [value] | [value] |
+|     Ransomware Recovery Claim | [value] | [value] |
+|     Regions Bank - Line Of Credit | [value] | [value] |
+|     Sales Tax | [value] | [value] |
+|     SBA-EIDL Loan | [value] | [value] |
+|     State W/H Payable | [value] | [value] |
+|     SUTA PAYABLE | [value] | [value] |
+|     Unsecured Loan | [value] | [value] |
 | **Total Current Liabilities** | [computed] | [computed] |
 | | | |
 | **Long Term Liabilities** | | |
-|     (... accounts ...) | [value] | [value] |
+|     Clark Order Picker 042117 Loan | [value] | [value] |
+|     LINE OF CREDIT | [value] | [value] |
+|     LONG TERM LIABILITIES | [value] | [value] |
+|     NOTE PAYABLE | [value] | [value] |
+|     Obligation under Capital Lease | [value] | [value] |
+|     STOCKHOLDER LOAN | [value] | [value] |
 | **Total Long Term Liabilities** | [computed] | [computed] |
 | | | |
 | **Stockholder Equity** | | |
-|     (... accounts ...) | [value] | [value] |
+|     COMMON STOCK | [value] | [value] |
+|     DISTRIBUTIONS | [value] | [value] |
+|     OWNERS | [value] | [value] |
+|     Profit/(Loss) | [value] | [value] |
+|     REALITY | [value] | [value] |
+|     RETAINED EARNING | [value] | [value] |
 | **Total Stockholder Equity** | [computed] | [computed] |
 | | | |
 | **Total Liabilities & Equity** | [computed] | [computed] |
@@ -1846,130 +1930,106 @@ CRITICAL LABEL RULES — NEVER rename or substitute any group name from the SQL 
 
 Sales                                                   Amount
   Sales                                                 [value]
-  Do Not Use - PURCHASE  DISCO                          [value]
-  Shipping & Handling                                   [value]
-  Do Not Use S/H (Outgoing)                             [value]
-  Returns Shipping & Service Cha                        [value]
-  Do Not Use S/H (Outgoing)-Truc                        [value]
-  Returns on Sales                                      [value]
-  Sales Returns (Not Received)                          [value]
-  Prior Sales Returns                                   [value]
-  Free To Use                                           [value]
-  Do Not Use- CHARGE BACK (sales                        [value]
-  Services & Other Charges                              [value]
-  Serv-Drop Ship Fees                                   [value]
   Sales Discount                                        [value]
-  Do Not Use-Discount-Amazon                            [value]
-  Do Not Use-Discount-Groupon                           [value]
-  Do Not Use Sales Discount_-Men                        [value]
-  Do Not Use Sales Discount_-Ho                         [value]
-  Do Not Use Sales Discount_-Kho                        [value]
-  Do Not Use Sales Discount_-Nei                        [value]
-  Do Not Use-Sales Discount-Wayf                        [value]
-  Do Not Use Sales Discount_Tues                        [value]
-  Do Not Use-Discount-Home Depo                         [value]
-  Do Not Use-Discount-Overstock                         [value]
+  Sales Discount - Albertsons                           [value]
+  Sales Discount - Amz Marketplace                      [value]
+  Sales Discount - Bison Commerce                       [value]
+  Sales Discount - Bob'S Discount Ecomm A/C             [value]
+  Sales Discount - Gordon Co                            [value]
+  Sales Discount - Home Depot Pr                        [value]
+  Sales Discount - Jc Penny                             [value]
+  Sales Discount - Lowe'S                               [value]
+  Sales Discount - Nebraska / Home Maker                [value]
+  Sales Discount - Pier 1                               [value]
+  Sales Discount - Rugs Direct                          [value]
+  Sales Discount - Wayfair Ca                           [value]
+  Sales Discount - Wm Marketplace                       [value]
+  Sales Discount - Zulily                               [value]
+  Sales Discount -Rug& Home Group                       [value]
+  Sales Discount -Weekends Only                         [value]
   Sales Discount-Amazon                                 [value]
-  Sales Discount-Overstock                              [value]
-  Sales Discount-Wayfair                                [value]
-  Sales Discount-Home Depot                             [value]
-  Sales Discount-Amazon CA                              [value]
-  Sales Discount-Groupon                                [value]
+  Sales Discount-Amazon Ca                              [value]
+  Sales Discount-Ashley Furnit                          [value]
   Sales Discount-Bealls                                 [value]
-  Sales Discount-Kirkland                               [value]
-  Sales Discount-Menards                                [value]
-  Sales Discount-Walmart                                [value]
   Sales Discount-Bed Bath & Beyo                        [value]
-  Sales Discount-Old Time Potte                         [value]
   Sales Discount-Cost Plus Wor                          [value]
-  Sales Discount-Home Roots                             [value]
+  Sales Discount-Faire                                  [value]
+  Sales Discount-Groupon                                [value]
   Sales Discount-Hayneedle                              [value]
+  Sales Discount-Home Depot                             [value]
+  Sales Discount-Home Roots                             [value]
+  Sales Discount-Kirkland                               [value]
   Sales Discount-Macys                                  [value]
+  Sales Discount-Menards                                [value]
+  Sales Discount-Mink & Sons                            [value]
+  Sales Discount-Old Time Potte                         [value]
+  Sales Discount-Others                                 [value]
+  Sales Discount-Overstock                              [value]
   Sales Discount-Plush Rugs                             [value]
   Sales Discount-Pottery Barn                           [value]
-  Sales Discount-Mink & Sons                            [value]
-  Sales Discount - Zulily                               [value]
-  Sales Discount - Pier 1                               [value]
-  Sales Discount-QVC                                    [value]
-  Sales Discount -Weekends Only                         [value]
-  Sales Discount-Faire                                  [value]
-  Sales Discount-Ashley Furnit                          [value]
-  Sales Discount - JC Penny                             [value]
-  Sales Discount - Rugs Direct                          [value]
-  Sales Discount - WM Marketplace                       [value]
-  Sales Discount - Wayfair CA                           [value]
-  Sales Discount - Gordon Co                            [value]
-  Sales Discount - Lowe's                               [value]
-  Sales Discount - AMZ Marketplace                      [value]
-  Sales Discount - Home Depot PR                        [value]
-  Sales Discount - Albertsons                           [value]
-  Sales Discount -Rug& Home Group                       [value]
-  Sales Discount - Nebraska / Home Maker                [value]
-  Sales Discount - Bison Commerce                       [value]
-  Sales Discount - Bob's Discount Ecomm A/c             [value]
-  Sales Discount-Others                                 [value]
+  Sales Discount-Qvc                                    [value]
+  Sales Discount-Walmart                                [value]
+  Sales Discount-Wayfair                                [value]
+  Sales Returns (Not Received)                          [value]
   Sales-Price Differences                               [value]
   Sales-Short Shipment Deduction                        [value]
-  Claim Receipts from Customers                         [value]
+  Serv-Drop Ship Fees                                   [value]
+  Services & Other Charges                              [value]
+  Shipping & Handling                                   [value]
+  Charge Back                                           [value]
+  Claim Receipts From Customers                         [value]
   Claim Receipts-Home Depot                             [value]
+  Prior Sales Returns                                   [value]
+  Returns On Sales                                      [value]
+  Returns Shipping & Service Cha                        [value]
 Total Sales                                             [value]
 
 Cost Of Goods Sold
-  Do Not Use Inventory Adjustmen                        [value]
-  Do Not Use Sales Price differ                         [value]
-  Damaged-Discarded Inventory                           [value]
-  Purchase Discount                                     [value]
-  Vendor Defective Reimbursement                        [value]
-  Insert Materials Cost                                 [value]
-  Insert - Pillow                                       [value]
-  Insert-Pouf / Pet Beds Filling                        [value]
+  Cost Of Goods Sold                                    [value]
   Box Program Job Work Costs                            [value]
-  Third Party Warehouse Charges                         [value]
-  Do Not Use -Short Shipment                            [value]
-  Packing Expense                                       [value]
-  FedEx/UPS Shipping Expense                            [value]
-  FedEx/UPS Additional Handling                         [value]
+  Damaged-Discarded Inventory                           [value]
+  Designing & Development Expens                        [value]
+  Dhl-Sample Mailing Expense                            [value]
   Domestic Trucking Line Freight                        [value]
-  Domestic Trucking Line Freight - LVT                  [value]
-  DHL-Sample Mailing Expense                            [value]
-  Truck-Trailer Rent Costs                              [value]
-  Labelling & Ticketing Expense                         [value]
-  Freight Discount on LR                                [value]
+  Domestic Trucking Line Freight - Lvt                  [value]
+  Fab Floors-Clearing & Forwarding Expense              [value]
+  Fedex/Ups Additional Handling                         [value]
+  Fedex/Ups Shipping Expense                            [value]
+  Freight - Pillow-Poufs                                [value]
   Freight Cap Promotions Expense                        [value]
   Freight Costs-Replacements Etc                        [value]
-  Freight - Pillow-Poufs                                [value]
-  UPC Code Purchase                                     [value]
-  Merchandising&Inspection Fee                          [value]
-  Designing & Development Expens                        [value]
-  Inventory Adjustment Account                          [value]
-  Obsolete Inventory                                    [value]
-  Temporary Labor Expenses                              [value]
-  Freight Damage Loss/Gain A/c                          [value]
-  Processing Charge                                     [value]
-  Use 5051-004 Import  Duty                             [value]
-  Import Clearing and Forwarding                        [value]
-  Import-Air Freight                                    [value]
-  Import-Ocean Freight                                  [value]
-  Import-Customs Documents Chgs                         [value]
-  Import-State Custom Duty                              [value]
-  Import-Customs Clearance Cost                         [value]
-  Import-Container Truck Freight                        [value]
-  Import-Container Storage -Detention Chgs              [value]
-  Import-Cargo Insurance                                [value]
-  Import-Tariffs                                        [value]
-  FAB Floors-Clearing & Forwarding Expense              [value]
+  Freight Damage Loss/Gain A/C                          [value]
+  Freight Discount On Lr                                [value]
   Import - Prepaid Import Costs                         [value]
-  Use 5051-002 Import-Freight                           [value]
-  Use 5051-001 Import -Air Frgt                         [value]
-  Use 5051-006 Import -Trucking                         [value]
-  Use 5051-003 Import Doc. Chgs                         [value]
-  Use 5051-005 Import Clearance                         [value]
-  Use 5051-007 Import Deten. Etc                        [value]
-  Use 5051-008 Import-Insurance                         [value]
-  Do Not Use Insurance                                  [value]
-  US Customs Bond fee                                   [value]
+  Import Clearing And Forwarding                        [value]
+  Import-Air Freight                                    [value]
+  Import-Cargo Insurance                                [value]
+  Import-Container Storage -Detention Chgs              [value]
+  Import-Container Truck Freight                        [value]
+  Import-Customs Clearance Cost                         [value]
+  Import-Customs Documents Chgs                         [value]
+  Import-Ocean Freight                                  [value]
+  Import-State Custom Duty                              [value]
+  Import-Tariffs                                        [value]
+  Insert - Pillow                                       [value]
+  Insert Materials Cost                                 [value]
+  Insert-Pouf / Pet Beds Filling                        [value]
+  Inventory Adjustment Account                          [value]
+  Labelling & Ticketing Expense                         [value]
+  Merchandising&Inspection Fee                          [value]
+  Obsolete Inventory                                    [value]
+  Packing Expense                                       [value]
+  Processing Charge                                     [value]
+  Purchase Discount                                     [value]
   Rug Cleaning                                          [value]
   Rug Surging, Cutting,Repairng                         [value]
+  Temporary Labor Expenses                              [value]
+  Third Party Warehouse Charges                         [value]
+  Truck-Trailer Rent Costs                              [value]
+  Upc Code Purchase                                     [value]
+  Us Customs Bond Fee                                   [value]
+  Use 5051-004 Import  Duty                             [value]
+  Vendor Defective Reimbursement                        [value]
 Total Cost Of Goods Sold                                [value]
 
 Gross Profit/(Loss)                                     [value]
@@ -1979,334 +2039,285 @@ Operating Cost
 
 General & Administrative
   Auto Expenses                                         [value]
-  Auto Reimbursement Exp ??                             [value]
+  Auto Expenses-Auto Insurance                          [value]
   Auto Expenses-Fuel                                    [value]
   Auto Expenses-Repairs & Maint.                        [value]
   Auto Expenses-Tag Fees Etc.                           [value]
-  Auto Expenses-Auto Insurance                          [value]
-  Do Not use CAR REPAIR                                 [value]
-  Warehouse Equipment Repairs                           [value]
-  Do Not Use - GAS-WEF 070717                           [value]
-  Use 8002-Bad Debt                                     [value]
-  Small Balances Written Off                            [value]
+  Auto Reimbursement Exp ??                             [value]
+  Car Insurance                                         [value]
   Cash Discounts                                        [value]
-  Do Not Use CB - OVERSTOCK                             [value]
-  Do Not Use - CB-AMAZON                                [value]
-  Do Not Use- CB - BED, BATH, &                         [value]
-  Do Not Use CB - MENARDS                               [value]
-  Do Not Use - CB - GARDEN RIDGE                        [value]
-  Do Not Use - CB-HOME DEPOT                            [value]
-  Do Not Use CB - KHOL'S                                [value]
-  Do Not Use - CB - LOWES                               [value]
-  Do Not Use - CB-MARVIN'S                              [value]
-  Do Not Use - CB - NEIMAN MARCU                        [value]
-  Do Not Use Sales Dis -                                [value]
-  Do Not Use- CB - TUESDAY MORNI                        [value]
-  Do Not Use - CB - RUE LA LA                           [value]
-  Do Not Use - CB - CUSTOMER                            [value]
-  Free To Use                                           [value]
-  CB-Damage Allowance                                   [value]
-  CB-Damage Allownace-Amazon                            [value]
-  CB-Shipping Allowance                                 [value]
-  CB-Shipping Allowance-Amazon                          [value]
-  Do Not Use - Processing Fees                          [value]
-  Do Not Use - Overstock First C                        [value]
-  Do Not Use Shipping Cost - Ove                        [value]
-  Do Not Use Short -Ship - Overs                        [value]
+  Cb Compliance-Amazon                                  [value]
+  Cb Compliance-Big Lots                                [value]
+  Cb Compliance-Home Depot                              [value]
+  Cb Compliance-Kirklands                               [value]
+  Cb Compliance-Overstock                               [value]
+  Cb Compliance-Walmart                                 [value]
+  Cb-Bealls Compliance Charge Back                      [value]
+  Cb-Compliance - Zulily                                [value]
+  Cb-Compliance -Others                                 [value]
+  Cb-Compliance-Amazon Ca                               [value]
+  Cb-Compliance-Bed Bath                                [value]
+  Cb-Customer Compliance - Nfm                          [value]
+  Cb-Customer Compliance - Pottery Barn                 [value]
+  Cb-Damage Allowance                                   [value]
+  Cb-Damage Allownace-Amazon                            [value]
+  Cb-Shipping Allowance                                 [value]
+  Cb-Shipping Allowance-Amazon                          [value]
+  Cell Phone                                            [value]
+  Charge Back                                           [value]
   Chargeback Customer Compliance                        [value]
-  Do Not Use - Chargeback-Damage                        [value]
-  CB Compliance-Amazon                                  [value]
-  CB Compliance-Overstock                               [value]
-  CB Compliance-Home Depot                              [value]
-  CB-Compliance-Amazon CA                               [value]
-  CB-Bealls Compliance Charge Back                      [value]
-  CB Compliance-Kirklands                               [value]
-  CB Compliance-Walmart                                 [value]
-  CB-Compliance-Bed Bath                                [value]
-  CB-Customer Compliance - Pottery Barn                 [value]
-  CB-Compliance - Zulily                                [value]
-  CB-Customer Compliance - NFM                          [value]
-  CB Compliance-Big Lots                                [value]
-  CB-Compliance -Others                                 [value]
-  Commission                                            [value]
   Comm - Amy Bruce                                      [value]
   Comm - Ashutosh Laddha                                [value]
   Comm - Bill Robertson                                 [value]
   Comm - Billy Waynerich                                [value]
+  Comm - Black Goswick                                  [value]
+  Comm - Bridget Favaloro                               [value]
   Comm - Charless Reason                                [value]
   Comm - Christine Reagon                               [value]
+  Comm - Dan Statuto                                    [value]
   Comm - Daren Kozlowski                                [value]
-  Comm - David McEleven                                 [value]
-  Comm-Dointe Tyree Johnson                             [value]
+  Comm - David Mceleven                                 [value]
   Comm - Eric Fleat                                     [value]
-  Comm - Russell Givens                                 [value]
+  Comm - Jeanin Maxey                                   [value]
   Comm - Jim Caserio                                    [value]
   Comm - Jim Swan                                       [value]
   Comm - John Mccaul                                    [value]
   Comm - Joseph Gray                                    [value]
-  Comm - Richard Leckbee                                [value]
-  Comm - Marvin Junior                                  [value]
-  Comm - Natalie Smith                                  [value]
-  Comm - Reverse atlanta                                [value]
-  Comm - Teressa Huff                                   [value]
-  Comm - TONY SPEIRS                                    [value]
-  Comm - Taylor Malore                                  [value]
-  Comm - Jeanin Maxey                                   [value]
-  Comm - Bridget Favaloro                               [value]
+  Comm - Kim Susan White                                [value]
   Comm - M K Inc.                                       [value]
-  COMM - Robin grassi                                   [value]
-  COMM - Kim Susan White                                [value]
+  Comm - Marvin Junior                                  [value]
   Comm - Mike V. Kehnast                                [value]
+  Comm - Natalie Smith                                  [value]
+  Comm  Peyton Gay                                      [value]
   Comm - Ramona D Myrick                                [value]
-  Comm -Mike Thomson                                    [value]
+  Comm - Reverse Atlanta                                [value]
+  Comm - Richard Leckbee                                [value]
+  Comm - Robin Grassi                                   [value]
+  Comm - Russell Givens                                 [value]
+  Comm - Taylor Malore                                  [value]
+  Comm - Teressa Huff                                   [value]
+  Comm - Tony Speirs                                    [value]
+  Comm - Victor Hugo                                    [value]
   Comm- Emil Qirilla                                    [value]
-  COMM - VICTOR HUGO                                    [value]
-  Comm - Black Goswick                                  [value]
-  COMM - Dan Statuto                                    [value]
+  Comm -Mike Thomson                                    [value]
+  Comm-Dointe Tyree Johnson                             [value]
   Commi  - V-Von Sales                                  [value]
   Commi - Joe Barkley                                   [value]
-  COMMISSION -Stacy Garcia                              [value]
-  Comm  Peyton Gay                                      [value]
+  Commission                                            [value]
+  Commission -Stacy Garcia                              [value]
+  Computer Accessories & Supplie                        [value]
+  Computer Server Restoration                           [value]
+  Designing And Development                             [value]
+  Donations                                             [value]
+  Dues And Subscriptions                                [value]
+  Employee Benefit Plan Contribu                        [value]
+  Employee Insurances                                   [value]
+  Employees Holiday Celeberation                        [value]
+  Fab Floors-Dues & Subscriptions                       [value]
+  General Expenses                                      [value]
+  Insurance Administrative Fees                         [value]
+  Insurance-Auto                                        [value]
+  Insurance-Commercial                                  [value]
+  Insurance-Commercial Policies                         [value]
+  Insurance-Dental & Vision                             [value]
+  Insurance-Medical                                     [value]
+  Insurance-Receivables Credit Coverage                 [value]
+  Insurance-Workmen'S Comp.                             [value]
+  Insurnace-Workmens Compensatio                        [value]
+  Internet & Cable                                      [value]
+  Inventory Adjustment                                  [value]
+  Misscellaneous                                        [value]
+  Office Expenses                                       [value]
+  Office Supplies                                       [value]
+  Postage & Delivery                                    [value]
+  Printing & Stationary                                 [value]
+  Recruitment & Training                                [value]
+  Repairs & Maintance                                   [value]
   Royalties                                             [value]
   Royalties - Stacy Garcia                              [value]
   Royalties -Evette Rios                                [value]
   Royalties-London Fog                                  [value]
-  Cell Phone                                            [value]
-  706-218-8089 -Cell Phone VBL                          [value]
-  706-280-4301-Chris                                    [value]
-  706-459-8358 -Cell Phone RL                           [value]
-  706-280-5055 - Cell Phone SKL                         [value]
-  706-483-1673 -Cell Phone Colle                        [value]
-  Telephone Expenses                                    [value]
-  706-259-0155 -LR Office                               [value]
-  706-847-4479 -Vonage Office                           [value]
-  404-749-4832                                          [value]
-  EDI SERVICES                                          [value]
-  Internet & Cable                                      [value]
-  Postage & Delivery                                    [value]
   Sample Mailing Charges                                [value]
-  DUES AND SUBSCRIPTIONS                                [value]
-  FAB Floors-Dues & Subscriptions                       [value]
-  Software Monthly Fees                                 [value]
-  Computer Server Restoration                           [value]
-  Car Insurance                                         [value]
-  Insurance-Commercial Policies                         [value]
-  Insurance-Workmen's Comp.                             [value]
-  Insurance-Auto                                        [value]
-  Insurance-Receivables Credit Coverage                 [value]
-  Service Charge                                        [value]
-  Warehouse Insurance                                   [value]
-  Insurnace-Workmens Compensatio                        [value]
-  Insurance-Commercial                                  [value]
-  Insurnace-Free To Use                                 [value]
-  Insurance-Free to Use                                 [value]
-  Employee Insurances                                   [value]
-  Insurance-Dental & Vision                             [value]
-  Insurance-Medical                                     [value]
-  Insurance Administrative Fees                         [value]
-  Supplement Insurance                                  [value]
-  Do Not Use Inventory Adjustmen                        [value]
-  Do Not Use DAMAGE INVENTORY                           [value]
-  Do Not Use SALES DISCOUNT(E                           [value]
-  Do Not Use-SDISCOUNT-AMAZON                           [value]
-  Do Not Use- SDISCOUNT-GROUPON                         [value]
-  Do Not Use SDISCOUNT-MENARDS                          [value]
-  Do Not Use - SDISCOUNT-HOME DE                        [value]
-  Do Not Use - SDISCOUNT-KOHL'S                         [value]
-  Do Not Use - SDISCOUNT-NEIMAN                         [value]
-  Do Not Use-SDISCOUNT-WAYFAIR                          [value]
-  Do Not Use SDISCOUNT-TUESDAY M                        [value]
-  Do Not Use-SDISCOUNT-BURLINGTO                        [value]
-  Do Not Use SMALL BALANCES WRIT                        [value]
-  Do Not Use - SHORT SHIPMENT                           [value]
-  Use A/c 6020-000 Ware. Eqp Rep                        [value]
-  Do Not Use - Warehouse One                            [value]
-  Do Not Use - WAREHOUSE Dallas                         [value]
-  USE 6000-004 -Car Tag Renewal                         [value]
-  Recruitment & Training                                [value]
-  Designing And Development                             [value]
   Security Expenses                                     [value]
-  DONATIONS                                             [value]
-  General Expenses                                      [value]
+  Service Charge                                        [value]
+  Small Balances Written Off                            [value]
+  Software Monthly Fees                                 [value]
   Software Upgrade & Maintainanc                        [value]
-  ELE-.Equipment Lease Expenses                         [value]
-  ELE-Toshiba Printer Lease Expe                        [value]
-  ELE-Y2020 Servers Lease Expens                        [value]
-  ELE-Yale Picker Lease Expenses                        [value]
-  ELE-Linde V15 Lease Expense                           [value]
-  Misscellaneous                                        [value]
-  Repairs & Maintance                                   [value]
-  Office Supplies                                       [value]
-  Computer Accessories & Supplie                        [value]
-  Printing & Stationary                                 [value]
+  Supplement Insurance                                  [value]
+  Telephone Expenses                                    [value]
+  Use 6000-004 -Car Tag Renewal                         [value]
+  Use 8002-Bad Debt                                     [value]
+  Use A/C 6020-000 Ware. Eqp Rep                        [value]
   Utilities                                             [value]
-  UTILITIES - Electricity, Gas & Water                  [value]
-  UTILITIES - Trash Removal & Recycling                 [value]
-  UTILITIES - Pest Control                              [value]
-  UTILITIES - Office Cleaning                           [value]
-  UTILITIES - Lawn Maintenance                          [value]
-  UTILITIES - Security Monitoring                       [value]
-  UTILITIES - Propane Gas Tanks                         [value]
-  Employee Benefit Plan Contribu                        [value]
-  Employees Holiday Celeberation                        [value]
+  Utilities - Electricity, Gas & Water                  [value]
+  Utilities - Lawn Maintenance                          [value]
+  Utilities - Office Cleaning                           [value]
+  Utilities - Pest Control                              [value]
+  Utilities - Propane Gas Tanks                         [value]
+  Utilities - Security Monitoring                       [value]
+  Utilities - Trash Removal & Recycling                 [value]
+  Warehouse Equipment Repairs                           [value]
+  Warehouse Insurance                                   [value]
+  404-749-4832                                          [value]
+  706-218-8089 -Cell Phone Vbl                          [value]
+  706-259-0155 -Lr Office                               [value]
+  706-280-4301-Chris                                    [value]
+  706-280-5055 - Cell Phone Skl                         [value]
+  706-459-8358 -Cell Phone Rl                           [value]
+  706-483-1673 -Cell Phone Colle                        [value]
+  706-847-4479 -Vonage Office                           [value]
+  Edi Services                                          [value]
+  Ele-.Equipment Lease Expenses                         [value]
+  Ele-Linde V15 Lease Expense                           [value]
+  Ele-Toshiba Printer Lease Expe                        [value]
+  Ele-Y2020 Servers Lease Expens                        [value]
+  Ele-Yale Picker Lease Expenses                        [value]
 Total General & Administrative                          [value]
 
 Selling Expenses
-  Do Not Use Outsourcing                                [value]
-  OutS.-G.K.Laddha                                     [value]
-  OutS.-Rajendra Maheshwari                             [value]
-  OutS.-Soumya Maheshwari                               [value]
-  Do Not Use LABOR EXPENSES                             [value]
-  Do Not Use - PACKING                                  [value]
-  Do Not Use - FEDEX                                    [value]
-  Do Not Use - UPS                                      [value]
-  Do Not Use - Trucking                                 [value]
-  Do Not Use - DHL                                      [value]
-  Do Not Use - LABEL                                    [value]
-  Payroll                                               [value]
-  PR - VAIBHAV LADDHA                                   [value]
-  PR - VINAMRA LADDHA                                   [value]
-  PR - KRISHNA LADDHA                                   [value]
-  PR - RAJANI LADDHA                                    [value]
-  PR - G K LADDHA                                       [value]
-  PR - AMY ROBERTS                                      [value]
-  PR - ARTHUR M THOMPSON                                [value]
-  PR - EDDIE DAVIS                                      [value]
-  PR - JOHNNY MEENDEZ                                   [value]
-  PR - KATIKA HADDEN                                    [value]
-  PR - KENNETH R MORGAN                                 [value]
-  PR - MELLISA FOWLER                                   [value]
-  PR - MELLISA JOHNSON                                  [value]
-  PR - PAULENE C COCHRAN                                [value]
-  PR - PRATIK BHATTER                                   [value]
-  PR - STACEY CARPENTER                                 [value]
-  PR - SETEVE E STULTZ                                  [value]
-  PR - TRACY R LOVAIN                                   [value]
-  PR - ZUBAIR FARIDI                                    [value]
-  Payroll SS & Medicare                                 [value]
-  SUTA                                                  [value]
-  FUTA                                                  [value]
-  Free To Use                                           [value]
-  401K-LR Contribution                                  [value]
-  Bonus                                                 [value]
-  L R 401K Contribution A/c                             [value]
-  Xtra                                                  [value]
+  401K-Lr Contribution                                  [value]
   Accounting                                            [value]
-  Professional Fees                                     [value]
-  Consulting                                            [value]
-  Legal Fees                                            [value]
-  USE 7730 - Visa fees                                  [value]
-  Do Not Use - RATE DIFFERENCE                          [value]
-  NFA Rebate                                            [value]
-  Atlanta Showroom                                      [value]
-  Warehouse Rent                                        [value]
-  Warehouse Rent-LR Realty                              [value]
-  Warehouse Rent-LR2-3012 Parque                        [value]
-  Warehouse Rent-LR3-3002 Parque                        [value]
-  Warehouse Rent-LR4-3351 Box Dr                        [value]
-  HP Show.Rent Old A/c.Use 7612-                        [value]
-  Do Not User High Point Showroo                        [value]
-  Guest House Rent                                      [value]
-  Free To Use                                           [value]
-  R.C. Willey Advertisement                             [value]
-  Weekends Only Advertisement                           [value]
-  Do Not Use Software monthly fe                        [value]
-  Advertising Expenses                                  [value]
-  DNU-User 7540-701-Adv Amazon                          [value]
-  Advertising-Amazon                                    [value]
-  Advertising-Overstock                                 [value]
-  Advertising-Wayfair                                   [value]
-  Advertising-Home Depot                                [value]
-  Advertising-Walmart                                   [value]
-  Advertising-Zulily                                    [value]
-  Advertising-Houzz                                     [value]
-  Advertising-Faire                                     [value]
-  Advertising-WM Marketplace                            [value]
-  Advertising-Others                                    [value]
   Advertising Display Rack                              [value]
-  Catalog Printing-Mailing Exp.                         [value]
-  Exhibition                                            [value]
+  Advertising Expenses                                  [value]
+  Advertising-Amazon                                    [value]
+  Advertising-Faire                                     [value]
+  Advertising-Home Depot                                [value]
+  Advertising-Houzz                                     [value]
+  Advertising-Others                                    [value]
+  Advertising-Overstock                                 [value]
+  Advertising-Walmart                                   [value]
+  Advertising-Wayfair                                   [value]
+  Advertising-Wm Marketplace                            [value]
+  Advertising-Zulily                                    [value]
+  Amortization                                          [value]
+  Atlanta Showroom                                      [value]
+  Atlanta Showroom Exp-Advt.                            [value]
   Atlanta Showroom Expenses                             [value]
-  Atlanta Showroom Exp-Rent                             [value]
-  Atlanta Showroom Exp-Utility                          [value]
-  Atlanta Showroom Exp-Hotel                            [value]
   Atlanta Showroom Exp-Food                             [value]
+  Atlanta Showroom Exp-General                          [value]
+  Atlanta Showroom Exp-Hotel                            [value]
+  Atlanta Showroom Exp-Rent                             [value]
   Atlanta Showroom Exp-Traval                           [value]
   Atlanta Showroom Exp-Trucking                         [value]
-  Atlanta Showroom Exp-General                          [value]
-  Atlanta Showroom Exp-Advt.                            [value]
-  High Point - Showroom Expenses                        [value]
-  High Point - Rent Expense                             [value]
-  High Point - Utility Expense                          [value]
-  High Point - Hotel Exepnse                            [value]
+  Atlanta Showroom Exp-Utility                          [value]
+  Bad & Doubtful Debts                                  [value]
+  Bonus                                                 [value]
+  Car Rental                                            [value]
+  Catalog Printing-Mailing Exp.                         [value]
+  Consulting                                            [value]
+  Depreciation Expense                                  [value]
+  Dnu-User 7540-701-Adv Amazon                          [value]
+  Ecommerce Product Listing                             [value]
+  Exhibition                                            [value]
+  FUTA                                                  [value]
+  Guest House Rent                                      [value]
+  High Point - Advertising                              [value]
   High Point - Food Expense                             [value]
+  High Point - General Expense                          [value]
+  High Point - Hotel Exepnse                            [value]
+  High Point - Rent Expense                             [value]
+  High Point - Showroom Expenses                        [value]
   High Point - Travel Expense                           [value]
   High Point - Trucking                                 [value]
-  High Point - General Expense                          [value]
-  High Point - Advertising                              [value]
-  Promotional Expenses                                  [value]
-  Promotional Expenses-OX Bay                           [value]
-  Promotional Expenses-Wayfair                          [value]
-  Promotional Exp-Home Depot                            [value]
-  Promotional Expenses-RC Willey                        [value]
-  Promotional Expenses-Nebraska Furniture Mart          [value]
+  High Point - Utility Expense                          [value]
+  Hp Show.Rent Old A/C.Use 7612-                        [value]
+  L R 401K Contribution A/C                             [value]
+  Legal Fees                                            [value]
+  Loss On Sale Of Assets                                [value]
   Marketing Consultancy                                 [value]
   Marketing Consultancy - Joe Barkley                   [value]
-  Social Media-Email Marketing                          [value]
-  Website - Ecom Data Management                        [value]
-  Product Photo Images AI                               [value]
-  Websites Crawling-Uploading                           [value]
-  Ecommerce Product Listing                             [value]
-  Sampling Expense                                      [value]
-  Do Not Use - Truck Renting                            [value]
-  DO NOT USE -Medical Exp. - Sta                        [value]
-  Use 6970-Business Cards                               [value]
-  Website                                               [value]
+  Marketing Expenses                                    [value]
+  Nfa Rebate                                            [value]
+  Outs.-G.K.Laddha                                     [value]
+  Outs.-Rajendra Maheshwari                             [value]
+  Outs.-Soumya Maheshwari                               [value]
+  Payroll                                               [value]
+  Payroll Ss & Medicare                                 [value]
   Pocket Folders                                        [value]
-  Car Rental                                            [value]
-  Traveling Expenses_Food                               [value]
-  Travel-Hotel Expense                                  [value]
-  Travel-Visa-Medical-Misc Exp.                         [value]
+  Pr - Amy Roberts                                      [value]
+  Pr - Arthur M Thompson                                [value]
+  Pr - Eddie Davis                                      [value]
+  Pr - G K Laddha                                       [value]
+  Pr - Johnny Meendez                                   [value]
+  Pr - Katika Hadden                                    [value]
+  Pr - Kenneth R Morgan                                 [value]
+  Pr - Krishna Laddha                                   [value]
+  Pr - Mellisa Fowler                                   [value]
+  Pr - Mellisa Johnson                                  [value]
+  Pr - Paulene C Cochran                                [value]
+  Pr - Pratik Bhatter                                   [value]
+  Pr - Rajani Laddha                                    [value]
+  Pr - Seteve E Stultz                                  [value]
+  Pr - Stacey Carpenter                                 [value]
+  Pr - Tracy R Lovain                                   [value]
+  Pr - Vaibhav Laddha                                   [value]
+  Pr - Vinamra Laddha                                   [value]
+  Pr - Zubair Faridi                                    [value]
+  Product Photo Images Ai                               [value]
+  Professional Fees                                     [value]
+  Promotional Expenses                                  [value]
+  Promotional Expenses-Nebraska Furniture Mart          [value]
+  Promotional Expenses-Ox Bay                           [value]
+  Promotional Expenses-Rc Willey                        [value]
+  Promotional Expenses-Wayfair                          [value]
+  Promotional Exp-Home Depot                            [value]
+  Provision For Expenses                                [value]
+  R.C. Willey Advertisement                             [value]
+  Rent                                                  [value]
+  Sampling Expense                                      [value]
+  Social Media-Email Marketing                          [value]
+  Software Monthly Fee                                  [value]
+  SUTA                                                  [value]
   Travel Conveyance,Toll,Parking                        [value]
   Travel Ticketing Exp Account                          [value]
-  Depreciation Expense                                  [value]
-  Loss on Sale of Assets                                [value]
-  Amortization                                          [value]
-  Provision For Expenses                                [value]
-  Bad & Doubtful Debts                                  [value]
+  Travel-Hotel Expense                                  [value]
+  Traveling Expenses_Food                               [value]
+  Travel-Visa-Medical-Misc Exp.                         [value]
+  Use 6970-Business Cards                               [value]
+  Use 7730 - Visa Fees                                  [value]
+  Warehouse Rent                                        [value]
+  Warehouse Rent-Lr Realty                              [value]
+  Warehouse Rent-Lr2-3012 Parque                        [value]
+  Warehouse Rent-Lr3-3002 Parque                        [value]
+  Warehouse Rent-Lr4-3351 Box Dr                        [value]
+  Website                                               [value]
+  Website - Ecom Data Management                        [value]
+  Websites Crawling-Uploading                           [value]
+  Weekends Only Advertisement                           [value]
+  Xtra                                                  [value]
 Total Selling Expenses                                  [value]
 
 Total Operating Cost                                    [value]
 
-Operating Profit/(Loss)                                 [value]
+Operating Profit /(Loss)                                [value]
 
 
 Finance Charges
-  Other Interest-Financial Charg                        [value]
-  Credit Card Payment Processing                        [value]
-  Warehouse Equipment Loan Inter                        [value]
-  LTL Equip.2019 A/c 2570037503                         [value]
-  LTL-Equip.2021 A/c 2570065987                         [value]
   Bank Service Charge                                   [value]
   Bank Wire Transfer Charges                            [value]
-  Regions Bank Interest                                 [value]
-  FirstBank Interest                                    [value]
-  FistBank 2nd Line Interest                            [value]
-  EIDL Loan Interest                                    [value]
-  Drip Capital Loan Interest                            [value]
-  Regions Loan Fees                                     [value]
-  Prius Loan Interest Expenses                          [value]
-  Prius Loan Interest -2016                             [value]
-  Prius Loan Interest - 2017                            [value]
   Camry Interest -2013                                  [value]
-  Sienna 2015 Loan Interest                             [value]
-  Mercedes car- Interest A/c                            [value]
-  MB-EQB 300 Loan Interest A/c                          [value]
-  Finance Charge                                        [value]
-  FC-Interest On Lease                                  [value]
-  Regions Bank Int. on Eq Loan                          [value]
   Credit Card Interest & Fees                           [value]
+  Credit Card Payment Processing                        [value]
+  Drip Capital Loan Interest                            [value]
+  Eidl Loan Interest                                    [value]
+  Fc-Interest On Lease                                  [value]
+  Finance Charge                                        [value]
+  Firstbank Interest                                    [value]
+  Fistbank 2Nd Line Interest                            [value]
   Import - Bank Document Collect                        [value]
+  Ltl Equip.2019 A/C 2570037503                         [value]
+  Ltl-Equip.2021 A/C 2570065987                         [value]
+  Mb-Eqb 300 Loan Interest A/C                          [value]
+  Mercedes Car- Interest A/C                            [value]
+  Other Interest-Financial Charg                        [value]
+  Prius Loan Interest - 2017                            [value]
+  Prius Loan Interest -2016                             [value]
+  Prius Loan Interest Expenses                          [value]
+  Regions Bank Int. On Eq Loan                          [value]
+  Regions Bank Interest                                 [value]
+  Regions Loan Fees                                     [value]
+  Sienna 2015 Loan Interest                             [value]
+  Warehouse Equipment Loan Inter                        [value]
 Total Finance Charges                                   [value]
 
 
@@ -2324,17 +2335,14 @@ Total Other Income/Expense                              [value]
 
 
 Taxes
-  Use 7201 Fm 01/01/19-Payroll S                        [value]
   State                                                 [value]
   Property Tax                                          [value]
   Licenses-Tax-Permit-Penalties                         [value]
   Business Licenses & Permits                           [value]
-  Use 7202 -Suta                                        [value]
-  Use 7203 - Futa                                       [value]
-  940-FOR 2012                                          [value]
-Total Taxes                                             [value]
+  Taxes                                                 [value]
+Total  Taxes                                            [value]
 
-Net Profit/(Loss)                                       [value]
+Net Profit /(Loss)                                      [value]
 
 *P&L Detailed — Multi-Month (2+ months requested)*
 (Same account-level structure but one amount column per month, side-by-side. Use SQL Example 12.)
@@ -2342,59 +2350,414 @@ Net Profit/(Loss)                                       [value]
 | Description | [Month1 Year] ($) | [Month2 Year] ($) |
 |:---|---:|---:|
 | **Sales** | | |
-| **Gross Sales** | | |
 |     Sales | [value] | [value] |
-| **Discount** | | |
 |     Sales Discount | [value] | [value] |
-|     (... all Discount accounts ...) | [value] | [value] |
-| **Returns** | | |
-|     Returns on Sales | [value] | [value] |
-|     (... all Returns accounts ...) | [value] | [value] |
-| **SHIPPING & HANDLING** | | |
+|     Sales Discount - Albertsons | [value] | [value] |
+|     Sales Discount - Amz Marketplace | [value] | [value] |
+|     Sales Discount - Bison Commerce | [value] | [value] |
+|     Sales Discount - Bob'S Discount Ecomm A/C | [value] | [value] |
+|     Sales Discount - Gordon Co | [value] | [value] |
+|     Sales Discount - Home Depot Pr | [value] | [value] |
+|     Sales Discount - Jc Penny | [value] | [value] |
+|     Sales Discount - Lowe'S | [value] | [value] |
+|     Sales Discount - Nebraska / Home Maker | [value] | [value] |
+|     Sales Discount - Pier 1 | [value] | [value] |
+|     Sales Discount - Rugs Direct | [value] | [value] |
+|     Sales Discount - Wayfair Ca | [value] | [value] |
+|     Sales Discount - Wm Marketplace | [value] | [value] |
+|     Sales Discount - Zulily | [value] | [value] |
+|     Sales Discount -Rug& Home Group | [value] | [value] |
+|     Sales Discount -Weekends Only | [value] | [value] |
+|     Sales Discount-Amazon | [value] | [value] |
+|     Sales Discount-Amazon Ca | [value] | [value] |
+|     Sales Discount-Ashley Furnit | [value] | [value] |
+|     Sales Discount-Bealls | [value] | [value] |
+|     Sales Discount-Bed Bath & Beyo | [value] | [value] |
+|     Sales Discount-Cost Plus Wor | [value] | [value] |
+|     Sales Discount-Faire | [value] | [value] |
+|     Sales Discount-Groupon | [value] | [value] |
+|     Sales Discount-Hayneedle | [value] | [value] |
+|     Sales Discount-Home Depot | [value] | [value] |
+|     Sales Discount-Home Roots | [value] | [value] |
+|     Sales Discount-Kirkland | [value] | [value] |
+|     Sales Discount-Macys | [value] | [value] |
+|     Sales Discount-Menards | [value] | [value] |
+|     Sales Discount-Mink & Sons | [value] | [value] |
+|     Sales Discount-Old Time Potte | [value] | [value] |
+|     Sales Discount-Others | [value] | [value] |
+|     Sales Discount-Overstock | [value] | [value] |
+|     Sales Discount-Plush Rugs | [value] | [value] |
+|     Sales Discount-Pottery Barn | [value] | [value] |
+|     Sales Discount-Qvc | [value] | [value] |
+|     Sales Discount-Walmart | [value] | [value] |
+|     Sales Discount-Wayfair | [value] | [value] |
+|     Sales Returns (Not Received) | [value] | [value] |
+|     Sales-Price Differences | [value] | [value] |
+|     Sales-Short Shipment Deduction | [value] | [value] |
+|     Serv-Drop Ship Fees | [value] | [value] |
+|     Services & Other Charges | [value] | [value] |
 |     Shipping & Handling | [value] | [value] |
-|     (... all S&H accounts ...) | [value] | [value] |
-| (... other Sales sub-groups ...) | [value] | [value] |
+|     Charge Back | [value] | [value] |
+|     Claim Receipts From Customers | [value] | [value] |
+|     Claim Receipts-Home Depot | [value] | [value] |
+|     Prior Sales Returns | [value] | [value] |
+|     Returns On Sales | [value] | [value] |
+|     Returns Shipping & Service Cha | [value] | [value] |
 | **Total Sales** | [computed] | [computed] |
 | | | |
 | **Cost Of Goods Sold** | | |
-| **Cost of Goods Sold** | | |
 |     Cost Of Goods Sold | [value] | [value] |
-|     (... all COGS accounts ...) | [value] | [value] |
-| (... other COGS sub-groups ...) | [value] | [value] |
+|     Box Program Job Work Costs | [value] | [value] |
+|     Damaged-Discarded Inventory | [value] | [value] |
+|     Designing & Development Expens | [value] | [value] |
+|     Dhl-Sample Mailing Expense | [value] | [value] |
+|     Domestic Trucking Line Freight | [value] | [value] |
+|     Domestic Trucking Line Freight - Lvt | [value] | [value] |
+|     Fab Floors-Clearing & Forwarding Expense | [value] | [value] |
+|     Fedex/Ups Additional Handling | [value] | [value] |
+|     Fedex/Ups Shipping Expense | [value] | [value] |
+|     Freight - Pillow-Poufs | [value] | [value] |
+|     Freight Cap Promotions Expense | [value] | [value] |
+|     Freight Costs-Replacements Etc | [value] | [value] |
+|     Freight Damage Loss/Gain A/C | [value] | [value] |
+|     Freight Discount On Lr | [value] | [value] |
+|     Import - Prepaid Import Costs | [value] | [value] |
+|     Import Clearing And Forwarding | [value] | [value] |
+|     Import-Air Freight | [value] | [value] |
+|     Import-Cargo Insurance | [value] | [value] |
+|     Import-Container Storage -Detention Chgs | [value] | [value] |
+|     Import-Container Truck Freight | [value] | [value] |
+|     Import-Customs Clearance Cost | [value] | [value] |
+|     Import-Customs Documents Chgs | [value] | [value] |
+|     Import-Ocean Freight | [value] | [value] |
+|     Import-State Custom Duty | [value] | [value] |
+|     Import-Tariffs | [value] | [value] |
+|     Insert - Pillow | [value] | [value] |
+|     Insert Materials Cost | [value] | [value] |
+|     Insert-Pouf / Pet Beds Filling | [value] | [value] |
+|     Inventory Adjustment Account | [value] | [value] |
+|     Labelling & Ticketing Expense | [value] | [value] |
+|     Merchandising&Inspection Fee | [value] | [value] |
+|     Obsolete Inventory | [value] | [value] |
+|     Packing Expense | [value] | [value] |
+|     Processing Charge | [value] | [value] |
+|     Purchase Discount | [value] | [value] |
+|     Rug Cleaning | [value] | [value] |
+|     Rug Surging, Cutting,Repairng | [value] | [value] |
+|     Temporary Labor Expenses | [value] | [value] |
+|     Third Party Warehouse Charges | [value] | [value] |
+|     Truck-Trailer Rent Costs | [value] | [value] |
+|     Upc Code Purchase | [value] | [value] |
+|     Us Customs Bond Fee | [value] | [value] |
+|     Use 5051-004 Import  Duty | [value] | [value] |
+|     Vendor Defective Reimbursement | [value] | [value] |
 | **Total Cost Of Goods Sold** | [computed] | [computed] |
 | | | |
 | **Gross Profit/(Loss)** | [computed] | [computed] |
 | | | |
 | **Operating Cost** | | |
 | **General & Administrative** | | |
-| **Automobile Expenses** | | |
-|     (... all Automobile accounts ...) | [value] | [value] |
-| (... other G&A sub-groups with all accounts ...) | [value] | [value] |
+|     Auto Expenses | [value] | [value] |
+|     Auto Expenses-Auto Insurance | [value] | [value] |
+|     Auto Expenses-Fuel | [value] | [value] |
+|     Auto Expenses-Repairs & Maint. | [value] | [value] |
+|     Auto Expenses-Tag Fees Etc. | [value] | [value] |
+|     Auto Reimbursement Exp ?? | [value] | [value] |
+|     Car Insurance | [value] | [value] |
+|     Cash Discounts | [value] | [value] |
+|     Cb Compliance-Amazon | [value] | [value] |
+|     Cb Compliance-Big Lots | [value] | [value] |
+|     Cb Compliance-Home Depot | [value] | [value] |
+|     Cb Compliance-Kirklands | [value] | [value] |
+|     Cb Compliance-Overstock | [value] | [value] |
+|     Cb Compliance-Walmart | [value] | [value] |
+|     Cb-Bealls Compliance Charge Back | [value] | [value] |
+|     Cb-Compliance - Zulily | [value] | [value] |
+|     Cb-Compliance -Others | [value] | [value] |
+|     Cb-Compliance-Amazon Ca | [value] | [value] |
+|     Cb-Compliance-Bed Bath | [value] | [value] |
+|     Cb-Customer Compliance - Nfm | [value] | [value] |
+|     Cb-Customer Compliance - Pottery Barn | [value] | [value] |
+|     Cb-Damage Allowance | [value] | [value] |
+|     Cb-Damage Allownace-Amazon | [value] | [value] |
+|     Cb-Shipping Allowance | [value] | [value] |
+|     Cb-Shipping Allowance-Amazon | [value] | [value] |
+|     Cell Phone | [value] | [value] |
+|     Charge Back | [value] | [value] |
+|     Chargeback Customer Compliance | [value] | [value] |
+|     Comm - Amy Bruce | [value] | [value] |
+|     Comm - Ashutosh Laddha | [value] | [value] |
+|     Comm - Bill Robertson | [value] | [value] |
+|     Comm - Billy Waynerich | [value] | [value] |
+|     Comm - Black Goswick | [value] | [value] |
+|     Comm - Bridget Favaloro | [value] | [value] |
+|     Comm - Charless Reason | [value] | [value] |
+|     Comm - Christine Reagon | [value] | [value] |
+|     Comm - Dan Statuto | [value] | [value] |
+|     Comm - Daren Kozlowski | [value] | [value] |
+|     Comm - David Mceleven | [value] | [value] |
+|     Comm - Eric Fleat | [value] | [value] |
+|     Comm - Jeanin Maxey | [value] | [value] |
+|     Comm - Jim Caserio | [value] | [value] |
+|     Comm - Jim Swan | [value] | [value] |
+|     Comm - John Mccaul | [value] | [value] |
+|     Comm - Joseph Gray | [value] | [value] |
+|     Comm - Kim Susan White | [value] | [value] |
+|     Comm - M K Inc. | [value] | [value] |
+|     Comm - Marvin Junior | [value] | [value] |
+|     Comm - Mike V. Kehnast | [value] | [value] |
+|     Comm - Natalie Smith | [value] | [value] |
+|     Comm  Peyton Gay | [value] | [value] |
+|     Comm - Ramona D Myrick | [value] | [value] |
+|     Comm - Reverse Atlanta | [value] | [value] |
+|     Comm - Richard Leckbee | [value] | [value] |
+|     Comm - Robin Grassi | [value] | [value] |
+|     Comm - Russell Givens | [value] | [value] |
+|     Comm - Taylor Malore | [value] | [value] |
+|     Comm - Teressa Huff | [value] | [value] |
+|     Comm - Tony Speirs | [value] | [value] |
+|     Comm - Victor Hugo | [value] | [value] |
+|     Comm- Emil Qirilla | [value] | [value] |
+|     Comm -Mike Thomson | [value] | [value] |
+|     Comm-Dointe Tyree Johnson | [value] | [value] |
+|     Commi  - V-Von Sales | [value] | [value] |
+|     Commi - Joe Barkley | [value] | [value] |
+|     Commission | [value] | [value] |
+|     Commission -Stacy Garcia | [value] | [value] |
+|     Computer Accessories & Supplie | [value] | [value] |
+|     Computer Server Restoration | [value] | [value] |
+|     Designing And Development | [value] | [value] |
+|     Donations | [value] | [value] |
+|     Dues And Subscriptions | [value] | [value] |
+|     Employee Benefit Plan Contribu | [value] | [value] |
+|     Employee Insurances | [value] | [value] |
+|     Employees Holiday Celeberation | [value] | [value] |
+|     Fab Floors-Dues & Subscriptions | [value] | [value] |
+|     General Expenses | [value] | [value] |
+|     Insurance Administrative Fees | [value] | [value] |
+|     Insurance-Auto | [value] | [value] |
+|     Insurance-Commercial | [value] | [value] |
+|     Insurance-Commercial Policies | [value] | [value] |
+|     Insurance-Dental & Vision | [value] | [value] |
+|     Insurance-Medical | [value] | [value] |
+|     Insurance-Receivables Credit Coverage | [value] | [value] |
+|     Insurance-Workmen'S Comp. | [value] | [value] |
+|     Insurnace-Workmens Compensatio | [value] | [value] |
+|     Internet & Cable | [value] | [value] |
+|     Inventory Adjustment | [value] | [value] |
+|     Misscellaneous | [value] | [value] |
+|     Office Expenses | [value] | [value] |
+|     Office Supplies | [value] | [value] |
+|     Postage & Delivery | [value] | [value] |
+|     Printing & Stationary | [value] | [value] |
+|     Recruitment & Training | [value] | [value] |
+|     Repairs & Maintance | [value] | [value] |
+|     Royalties | [value] | [value] |
+|     Royalties - Stacy Garcia | [value] | [value] |
+|     Royalties -Evette Rios | [value] | [value] |
+|     Royalties-London Fog | [value] | [value] |
+|     Sample Mailing Charges | [value] | [value] |
+|     Security Expenses | [value] | [value] |
+|     Service Charge | [value] | [value] |
+|     Small Balances Written Off | [value] | [value] |
+|     Software Monthly Fees | [value] | [value] |
+|     Software Upgrade & Maintainanc | [value] | [value] |
+|     Supplement Insurance | [value] | [value] |
+|     Telephone Expenses | [value] | [value] |
+|     Use 6000-004 -Car Tag Renewal | [value] | [value] |
+|     Use 8002-Bad Debt | [value] | [value] |
+|     Use A/C 6020-000 Ware. Eqp Rep | [value] | [value] |
+|     Utilities | [value] | [value] |
+|     Utilities - Electricity, Gas & Water | [value] | [value] |
+|     Utilities - Lawn Maintenance | [value] | [value] |
+|     Utilities - Office Cleaning | [value] | [value] |
+|     Utilities - Pest Control | [value] | [value] |
+|     Utilities - Propane Gas Tanks | [value] | [value] |
+|     Utilities - Security Monitoring | [value] | [value] |
+|     Utilities - Trash Removal & Recycling | [value] | [value] |
+|     Warehouse Equipment Repairs | [value] | [value] |
+|     Warehouse Insurance | [value] | [value] |
+|     404-749-4832 | [value] | [value] |
+|     706-218-8089 -Cell Phone Vbl | [value] | [value] |
+|     706-259-0155 -Lr Office | [value] | [value] |
+|     706-280-4301-Chris | [value] | [value] |
+|     706-280-5055 - Cell Phone Skl | [value] | [value] |
+|     706-459-8358 -Cell Phone Rl | [value] | [value] |
+|     706-483-1673 -Cell Phone Colle | [value] | [value] |
+|     706-847-4479 -Vonage Office | [value] | [value] |
+|     Edi Services | [value] | [value] |
+|     Ele-.Equipment Lease Expenses | [value] | [value] |
+|     Ele-Linde V15 Lease Expense | [value] | [value] |
+|     Ele-Toshiba Printer Lease Expe | [value] | [value] |
+|     Ele-Y2020 Servers Lease Expens | [value] | [value] |
+|     Ele-Yale Picker Lease Expenses | [value] | [value] |
 | **Total General & Administrative** | [computed] | [computed] |
 | | | |
 | **Selling Expenses** | | |
-| **Payroll** | | |
-|     (... all Payroll accounts ...) | [value] | [value] |
-| (... other Selling sub-groups with all accounts ...) | [value] | [value] |
+|     401K-Lr Contribution | [value] | [value] |
+|     Accounting | [value] | [value] |
+|     Advertising Display Rack | [value] | [value] |
+|     Advertising Expenses | [value] | [value] |
+|     Advertising-Amazon | [value] | [value] |
+|     Advertising-Faire | [value] | [value] |
+|     Advertising-Home Depot | [value] | [value] |
+|     Advertising-Houzz | [value] | [value] |
+|     Advertising-Others | [value] | [value] |
+|     Advertising-Overstock | [value] | [value] |
+|     Advertising-Walmart | [value] | [value] |
+|     Advertising-Wayfair | [value] | [value] |
+|     Advertising-Wm Marketplace | [value] | [value] |
+|     Advertising-Zulily | [value] | [value] |
+|     Amortization | [value] | [value] |
+|     Atlanta Showroom | [value] | [value] |
+|     Atlanta Showroom Exp-Advt. | [value] | [value] |
+|     Atlanta Showroom Expenses | [value] | [value] |
+|     Atlanta Showroom Exp-Food | [value] | [value] |
+|     Atlanta Showroom Exp-General | [value] | [value] |
+|     Atlanta Showroom Exp-Hotel | [value] | [value] |
+|     Atlanta Showroom Exp-Rent | [value] | [value] |
+|     Atlanta Showroom Exp-Traval | [value] | [value] |
+|     Atlanta Showroom Exp-Trucking | [value] | [value] |
+|     Atlanta Showroom Exp-Utility | [value] | [value] |
+|     Bad & Doubtful Debts | [value] | [value] |
+|     Bonus | [value] | [value] |
+|     Car Rental | [value] | [value] |
+|     Catalog Printing-Mailing Exp. | [value] | [value] |
+|     Consulting | [value] | [value] |
+|     Depreciation Expense | [value] | [value] |
+|     Dnu-User 7540-701-Adv Amazon | [value] | [value] |
+|     Ecommerce Product Listing | [value] | [value] |
+|     Exhibition | [value] | [value] |
+|     FUTA | [value] | [value] |
+|     Guest House Rent | [value] | [value] |
+|     High Point - Advertising | [value] | [value] |
+|     High Point - Food Expense | [value] | [value] |
+|     High Point - General Expense | [value] | [value] |
+|     High Point - Hotel Exepnse | [value] | [value] |
+|     High Point - Rent Expense | [value] | [value] |
+|     High Point - Showroom Expenses | [value] | [value] |
+|     High Point - Travel Expense | [value] | [value] |
+|     High Point - Trucking | [value] | [value] |
+|     High Point - Utility Expense | [value] | [value] |
+|     Hp Show.Rent Old A/C.Use 7612- | [value] | [value] |
+|     L R 401K Contribution A/C | [value] | [value] |
+|     Legal Fees | [value] | [value] |
+|     Loss On Sale Of Assets | [value] | [value] |
+|     Marketing Consultancy | [value] | [value] |
+|     Marketing Consultancy - Joe Barkley | [value] | [value] |
+|     Marketing Expenses | [value] | [value] |
+|     Nfa Rebate | [value] | [value] |
+|     Outs.-G.K.Laddha | [value] | [value] |
+|     Outs.-Rajendra Maheshwari | [value] | [value] |
+|     Outs.-Soumya Maheshwari | [value] | [value] |
+|     Payroll | [value] | [value] |
+|     Payroll Ss & Medicare | [value] | [value] |
+|     Pocket Folders | [value] | [value] |
+|     Pr - Amy Roberts | [value] | [value] |
+|     Pr - Arthur M Thompson | [value] | [value] |
+|     Pr - Eddie Davis | [value] | [value] |
+|     Pr - G K Laddha | [value] | [value] |
+|     Pr - Johnny Meendez | [value] | [value] |
+|     Pr - Katika Hadden | [value] | [value] |
+|     Pr - Kenneth R Morgan | [value] | [value] |
+|     Pr - Krishna Laddha | [value] | [value] |
+|     Pr - Mellisa Fowler | [value] | [value] |
+|     Pr - Mellisa Johnson | [value] | [value] |
+|     Pr - Paulene C Cochran | [value] | [value] |
+|     Pr - Pratik Bhatter | [value] | [value] |
+|     Pr - Rajani Laddha | [value] | [value] |
+|     Pr - Seteve E Stultz | [value] | [value] |
+|     Pr - Stacey Carpenter | [value] | [value] |
+|     Pr - Tracy R Lovain | [value] | [value] |
+|     Pr - Vaibhav Laddha | [value] | [value] |
+|     Pr - Vinamra Laddha | [value] | [value] |
+|     Pr - Zubair Faridi | [value] | [value] |
+|     Product Photo Images Ai | [value] | [value] |
+|     Professional Fees | [value] | [value] |
+|     Promotional Expenses | [value] | [value] |
+|     Promotional Expenses-Nebraska Furniture Mart | [value] | [value] |
+|     Promotional Expenses-Ox Bay | [value] | [value] |
+|     Promotional Expenses-Rc Willey | [value] | [value] |
+|     Promotional Expenses-Wayfair | [value] | [value] |
+|     Promotional Exp-Home Depot | [value] | [value] |
+|     Provision For Expenses | [value] | [value] |
+|     R.C. Willey Advertisement | [value] | [value] |
+|     Rent | [value] | [value] |
+|     Sampling Expense | [value] | [value] |
+|     Social Media-Email Marketing | [value] | [value] |
+|     Software Monthly Fee | [value] | [value] |
+|     SUTA | [value] | [value] |
+|     Travel Conveyance,Toll,Parking | [value] | [value] |
+|     Travel Ticketing Exp Account | [value] | [value] |
+|     Travel-Hotel Expense | [value] | [value] |
+|     Traveling Expenses_Food | [value] | [value] |
+|     Travel-Visa-Medical-Misc Exp. | [value] | [value] |
+|     Use 6970-Business Cards | [value] | [value] |
+|     Use 7730 - Visa Fees | [value] | [value] |
+|     Warehouse Rent | [value] | [value] |
+|     Warehouse Rent-Lr Realty | [value] | [value] |
+|     Warehouse Rent-Lr2-3012 Parque | [value] | [value] |
+|     Warehouse Rent-Lr3-3002 Parque | [value] | [value] |
+|     Warehouse Rent-Lr4-3351 Box Dr | [value] | [value] |
+|     Website | [value] | [value] |
+|     Website - Ecom Data Management | [value] | [value] |
+|     Websites Crawling-Uploading | [value] | [value] |
+|     Weekends Only Advertisement | [value] | [value] |
+|     Xtra | [value] | [value] |
 | **Total Selling Expenses** | [computed] | [computed] |
 | | | |
 | **Total Operating Cost** | [computed] | [computed] |
-| **Operating Profit/(Loss)** | [computed] | [computed] |
+| **Operating Profit /(Loss)** | [computed] | [computed] |
 | | | |
 | **Finance Charges** | | |
-| **Finance Charges** | | |
-|     (... all Finance Charge accounts ...) | [value] | [value] |
+|     Bank Service Charge | [value] | [value] |
+|     Bank Wire Transfer Charges | [value] | [value] |
+|     Camry Interest -2013 | [value] | [value] |
+|     Credit Card Interest & Fees | [value] | [value] |
+|     Credit Card Payment Processing | [value] | [value] |
+|     Drip Capital Loan Interest | [value] | [value] |
+|     Eidl Loan Interest | [value] | [value] |
+|     Fc-Interest On Lease | [value] | [value] |
+|     Finance Charge | [value] | [value] |
+|     Firstbank Interest | [value] | [value] |
+|     Fistbank 2Nd Line Interest | [value] | [value] |
+|     Import - Bank Document Collect | [value] | [value] |
+|     Ltl Equip.2019 A/C 2570037503 | [value] | [value] |
+|     Ltl-Equip.2021 A/C 2570065987 | [value] | [value] |
+|     Mb-Eqb 300 Loan Interest A/C | [value] | [value] |
+|     Mercedes Car- Interest A/C | [value] | [value] |
+|     Other Interest-Financial Charg | [value] | [value] |
+|     Prius Loan Interest - 2017 | [value] | [value] |
+|     Prius Loan Interest -2016 | [value] | [value] |
+|     Prius Loan Interest Expenses | [value] | [value] |
+|     Regions Bank Int. On Eq Loan | [value] | [value] |
+|     Regions Bank Interest | [value] | [value] |
+|     Regions Loan Fees | [value] | [value] |
+|     Sienna 2015 Loan Interest | [value] | [value] |
+|     Warehouse Equipment Loan Inter | [value] | [value] |
 | **Total Finance Charges** | [computed] | [computed] |
 | | | |
 | **Other Income/Expense** | | |
-|     (... all Other Income accounts ...) | [value] | [value] |
+|     Other Income | [value] | [value] |
+|     Profit On Sale Of Asset | [value] | [value] |
+|     OIN-PPP Loan Forgiven | [value] | [value] |
+|     Other Income-Interest Received | [value] | [value] |
+|     Restocking Fee | [value] | [value] |
+|     Other Income-Bad Debts Recovered | [value] | [value] |
+|     Abnormal Income | [value] | [value] |
+|     Free To Use | [value] | [value] |
+|     Interest Income | [value] | [value] |
 | **Total Other Income/Expense** | [computed] | [computed] |
 | | | |
 | **Taxes** | | |
-|     (... all Tax accounts ...) | [value] | [value] |
-| **Total Taxes** | [computed] | [computed] |
+|     State | [value] | [value] |
+|     Property Tax | [value] | [value] |
+|     Licenses-Tax-Permit-Penalties | [value] | [value] |
+|     Business Licenses & Permits | [value] | [value] |
+|     Taxes | [value] | [value] |
+| **Total  Taxes** | [computed] | [computed] |
 | | | |
-| **Net Profit/(Loss)** | [computed] | [computed] |
+| **Net Profit /(Loss)** | [computed] | [computed] |
 
 
 ================================================================
@@ -2426,6 +2789,86 @@ Example 2-month table layout (use this exact structure for ALL 6 templates):
 | | | |
 | **Liabilities & Equity** | | |
 | **Total Liabilities & Equity** | [computed] | [computed] |
+
+================================================================
+
+================================================================
+  ANNUAL / MULTI-YEAR PRESENTATION RULE (MANDATORY)
+================================================================
+When a request covers FULL YEARS or compares multiple years (e.g.
+"annual P&L for 2023 and 2024", "compare 2022 vs 2023 vs 2024",
+"yearly balance sheet", "3-year trend", "2023–2025"), you MUST:
+
+SQL RULES:
+  1. For P&L / Income Statement: aggregate using SUM(FAM.PTD_Net * -1)
+     and GROUP BY DD.Year. Do NOT use ClosingBalance for P&L.
+  2. For Balance Sheet: use ClosingBalance for December (Month=12) of each year,
+     or the last available month of each year.
+  3. Add DD.Year to the SELECT and GROUP BY — one row per [line item + year].
+  4. Filter: WHERE DD.Year IN (year1, year2, ...) — list all requested years.
+
+PRESENTATION RULES (CRITICAL — NEVER dump raw SQL rows):
+  1. PIVOT the SQL result into a SINGLE unified table where:
+       - First column  = Description (line item / account name)
+       - Remaining columns = one per YEAR, labelled [YYYY ($)]
+  2. NEVER output one row per (line item, year) pair — that is the raw SQL
+     result format and must NOT be shown to the user.
+  3. NEVER produce a header like "| Description | 2023 ($) | 2024 ($) |"
+     and then put raw SQL rows with 4 columns underneath it. The number of
+     data columns MUST match the number of header columns exactly.
+  4. Each line item appears EXACTLY ONCE as a row, with each year's value
+     in its own column — the same pivot logic used for multi-month tables.
+  5. Still compute and show all subtotals / section totals for every year column.
+  6. Format all numbers with commas and 2 decimal places (e.g. 1,234,567.89).
+     Show negative values as negative (e.g. -885,898.77).
+
+Example 3-year P&L Sub Grouped layout (apply same logic to ALL templates):
+
+| Description | 2023 ($) | 2024 ($) | 2025 ($) |
+|:---|---:|---:|---:|
+| **Sales** | | | |
+|     Gross Sales | 14,180,958.87 | 11,954,540.29 | 13,335,853.04 |
+|     Discount | -885,898.77 | -641,485.38 | -591,203.15 |
+|     Returns | -374,441.88 | -483,414.52 | -540,336.59 |
+|     SHIPPING & HANDLING | 296,226.57 | 403,096.11 | 706,504.57 |
+|     (... other Sales sub-groups ...) | [value] | [value] | [value] |
+| **Total Sales** | [computed] | [computed] | [computed] |
+| | | | |
+| **Cost Of Goods Sold** | | | |
+|     Cost of Goods Sold | -6,937,928.37 | -5,354,339.69 | -6,058,195.36 |
+|     Freight | -337,360.62 | -382,890.92 | -713,295.51 |
+|     (... other COGS sub-groups ...) | [value] | [value] | [value] |
+| **Total Cost Of Goods Sold** | [computed] | [computed] | [computed] |
+| | | | |
+| **Gross Profit/(Loss)** | [computed] | [computed] | [computed] |
+| | | | |
+| **Operating Cost** | | | |
+| **General & Administrative** | | | |
+|     Commission | -333,375.87 | -332,887.07 | -592,920.14 |
+|     (... other G&A sub-groups ...) | [value] | [value] | [value] |
+| **Total General & Administrative** | [computed] | [computed] | [computed] |
+| | | | |
+| **Selling Expenses** | | | |
+|     Payroll | -1,715,380.03 | -1,620,770.11 | -1,685,327.49 |
+|     Marketing Expenses | -607,404.13 | -624,350.31 | -644,039.24 |
+|     (... other Selling sub-groups ...) | [value] | [value] | [value] |
+| **Total Selling Expenses** | [computed] | [computed] | [computed] |
+| | | | |
+| **Total Operating Cost** | [computed] | [computed] | [computed] |
+| **Operating Profit /(Loss)** | [computed] | [computed] | [computed] |
+| | | | |
+| **Finance Charges** | -414,636.60 | -467,563.52 | -413,787.39 |
+| **Other Income/Expense** | 0.00 | 0.77 | 21,984.66 |
+| **Taxes** | -8,875.25 | -9,409.97 | -8,223.21 |
+| **Net Profit /(Loss)** | [computed] | [computed] | [computed] |
+
+SAME RULE APPLIES TO ALL OTHER MULTI-PERIOD COMPARISONS:
+  - Quarterly comparisons (Q1 vs Q2 vs Q3 vs Q4): one column per quarter,
+    labelled [Q1 YYYY ($)], [Q2 YYYY ($)], etc.
+  - Half-year comparisons (H1 vs H2): one column per half, labelled
+    [H1 YYYY ($)], [H2 YYYY ($)].
+  - Any aggregation period: the column header describes the period,
+    but the row structure is always a single pivoted table — NEVER raw SQL rows.
 
 ================================================================
 
