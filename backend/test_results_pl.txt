@@ -1,0 +1,1283 @@
+P&L CONTINUATION TEST RESULTS
+================================================================================
+
+
+================================================================================
+[BS-Follow3] Grouped balance sheet as of December 2023 and December 2024 side by si
+Q: Grouped balance sheet as of December 2023 and December 2024 side by side
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2023-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2023],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2023-12-01', '2024-12-01')
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | December 2023 ($) | December 2024 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+|     CURRENT ASSETS | 8,619,434.85 | 7,784,669.16 |
+|     OTHER ASSETS | 0.00 | 0.00 |
+|     OTHER CURRENT ASSETS | 4,612.68 | 4,612.68 |
+|     PROPERTY AND EQUIPMENT | -832,539.70 | -934,350.70 |
+| **Total Assets** | 7,791,507.83 | 6,854,931.14 |
+| | | |
+| **Liabilities & Equity** | | |
+|     CURRENT LIABILITIES | 1,475,207.28 | 1,465,902.20 |
+|     CURRENT PORTION LONG-TERM | 0.00 | 0.00 |
+|     EQUITY | 5,534,892.53 | 4,830,636.70 |
+|     PAYROLL TAXES PAYABLE | 0.00 | 11,745.91 |
+| **Total Liabilities & Equity** | 7,010,099.81 | 6,308,284.81 |
+
+================================================================================
+[BS-Follow4] Which section has the highest value and why is it significant?
+Q: Which section has the highest value and why is it significant?
+================================================================================
+SQL:
+(none)
+
+RESPONSE:
+Here’s what you asked previously:
+
+1. Grouped balance sheet as of December 2023 and December 2024 side by side
+
+For your current question:
+
+The section with the highest value in both December 2023 ($8,619,434.85) and December 2024 ($7,784,669.16) is **Current Assets** under the Assets section. This is significant because it shows that the company holds most of its value in assets that are expected to be converted to cash or used up within a year, such as cash, accounts receivable, and inventory. High current assets typically indicate strong liquidity and the ability to meet short-term obligations, which is important for financial stability and operational flexibility.
+
+================================================================================
+[PL-Main-Jun2024] Show me the grouped P&L statement for June 2024
+Q: Show me the grouped P&L statement for June 2024
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2024-06-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 694,442.82 |
+| **Cost Of Sales** | 0.00 |
+| **Gross Profit/(Loss)** | 694,442.82 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -38,442.98 |
+|     Selling Expenses | -261,202.03 |
+| **Total Operating Cost** | -299,645.01 |
+| **Operating Profit/(Loss)** | 394,797.81 |
+| | |
+| **Other Income** | 0.00 |
+| **Income Taxes** | -96,352.91 |
+| **Net Profit/(Loss)** | 298,444.90 |
+
+================================================================================
+[PL-Main-Dec2024] Grouped income statement for December 2024 as per template
+Q: Grouped income statement for December 2024 as per template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2024-12-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 1,670,211.46 |
+| **Cost Of Sales** | 0.00 |
+| **Gross Profit/(Loss)** | 1,670,211.46 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -81,868.29 |
+|     Selling Expenses | -697,881.56 |
+| **Total Operating Cost** | -779,749.85 |
+| **Operating Profit/(Loss)** | 890,461.61 |
+| | |
+| **Other Income** | 0.00 |
+| **Income Taxes** | -116,689.39 |
+| **Net Profit/(Loss)** | 773,772.22 |
+
+================================================================================
+[PL-Main-Jan2025] Grouped P&L for January 2025
+Q: Grouped P&L for January 2025
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2025-01-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 1,142,781.77 |
+| **Cost Of Sales** | 0.00 |
+| **Gross Profit/(Loss)** | 1,142,781.77 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -24,624.67 |
+|     Selling Expenses | -519,858.87 |
+| **Total Operating Cost** | -544,483.54 |
+| **Operating Profit/(Loss)** | 598,298.23 |
+| | |
+| **Other Income** | 0.00 |
+| **Income Taxes** | -135,749.22 |
+| **Net Profit/(Loss)** | 462,549.01 |
+
+================================================================================
+[PL-Main-Dec2023] Grouped P&L statement for December 2023
+Q: Grouped P&L statement for December 2023
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2023-12-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 1,284,912.48 |
+| **Cost Of Sales** | 0.00 |
+| **Gross Profit/(Loss)** | 1,284,912.48 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -111,448.68 |
+|     Selling Expenses | -668,714.06 |
+| **Total Operating Cost** | -780,162.74 |
+| **Operating Profit/(Loss)** | 504,749.74 |
+| | |
+| **Other Income** | 0.00 |
+| **Income Taxes** | -87,660.68 |
+| **Net Profit/(Loss)** | 417,089.06 |
+
+================================================================================
+[PL-Sub-Jun2024] Sub grouped P&L statement for June 2024 as per template
+Q: Sub grouped P&L statement for June 2024 as per template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2024-06-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Sales | 694,442.82 |
+| **Total Sales** | 694,442.82 |
+| | |
+| **Cost Of Sales** | |
+|     Custom & Duty | 0.00 |
+|     Demurrage Expenses | 0.00 |
+|     Freight | 0.00 |
+|     Other Costs | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 694,442.82 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Compute Expenses | -3,821.33 |
+|     Depreciation | 0.00 |
+|     Misc. Expenses | 0.00 |
+|     Outside Services | 0.00 |
+|     Payroll | -29,492.78 |
+|     Postage Expenses | 0.00 |
+|     Rent | -5,067.00 |
+|     Repairs & Maintenance | 0.00 |
+|     Utilities | -61.87 |
+|     Waste Disposal | 0.00 |
+| **Total General & Administrative** | -38,442.98 |
+| | |
+| **Selling Expenses** | |
+|     Advertising | 0.00 |
+|     Payroll | -261,202.03 |
+|     Professional Fees | 0.00 |
+| **Total Selling Expenses** | -261,202.03 |
+| | |
+| **Total Operating Cost** | -299,645.01 |
+| **Operating Profit/(Loss)** | 394,797.81 |
+| | |
+| **Other Income** | |
+|     Finance Charges Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+|     Taxes | -96,352.91 |
+| **Total Income Taxes** | -96,352.91 |
+| | |
+| **Net Profit/(Loss)** | 298,444.90 |
+
+================================================================================
+[PL-Sub-Jan2025] Sub grouped income statement for January 2025 as per template
+Q: Sub grouped income statement for January 2025 as per template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2025-01-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Sales | 1,142,781.77 |
+| **Total Sales** | 1,142,781.77 |
+| | |
+| **Cost Of Sales** | |
+|     Custom & Duty | 0.00 |
+|     Demurrage Expenses | 0.00 |
+|     Freight | 0.00 |
+|     Other Costs | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 1,142,781.77 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Compute Expenses | -7,173.28 |
+|     Depreciation | 0.00 |
+|     Misc. Expenses | 0.00 |
+|     Outside Services | 0.00 |
+|     Payroll | -12,500.00 |
+|     Postage Expenses | 0.00 |
+|     Rent | -4,935.00 |
+|     Repairs & Maintenance | 0.00 |
+|     Utilities | -16.39 |
+|     Waste Disposal | 0.00 |
+| **Total General & Administrative** | -24,624.67 |
+| | |
+| **Selling Expenses** | |
+|     Advertising | 0.00 |
+|     Payroll | -519,858.87 |
+|     Professional Fees | 0.00 |
+| **Total Selling Expenses** | -519,858.87 |
+| | |
+| **Total Operating Cost** | -544,483.54 |
+| **Operating Profit/(Loss)** | 598,298.23 |
+| | |
+| **Other Income** | |
+|     Finance Charges Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+|     Taxes | -135,749.22 |
+| **Total Income Taxes** | -135,749.22 |
+| | |
+| **Net Profit/(Loss)** | 462,549.01 |
+
+================================================================================
+[PL-Det-Jun2024] Detailed P&L statement for June 2024 as per detailed template
+Q: Detailed P&L statement for June 2024 as per detailed template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    CM.PLStatementDetails                     AS [Account],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2024-06-01'
+  AND CM.PLStatementDetails IS NOT NULL
+  AND LEN(CM.PLStatementDetails) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+| **Sales** | |
+|     Sales | 694,442.82 |
+| **Total Sales** | 694,442.82 |
+| | |
+| **Cost Of Sales** | |
+| **Custom & Duty** | |
+|     Custom & Duty | 0.00 |
+| **Demurrage Expenses** | |
+|     Demurrage Expenses | 0.00 |
+| **Freight** | |
+|     Freight | 0.00 |
+| **Other Costs** | |
+|     Designer Commission | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 694,442.82 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+| **Compute Expenses** | |
+|     Computer-Software Expenses | -3,821.33 |
+| **Depreciation** | |
+|     Depreciation | 0.00 |
+| **Misc. Expenses** | |
+|     Garnish | 0.00 |
+| **Outside Services** | |
+|     Outside Services | 0.00 |
+| **Payroll** | |
+|     Salaries and Wages | 0.00 |
+|     Salaries Misc. | 0.00 |
+|     SUTA | -29,492.78 |
+| **Postage Expenses** | |
+|     Postage Expenses | 0.00 |
+| **Rent** | |
+|     Rent | -5,067.00 |
+| **Repairs & Maintenance** | |
+|     Repairs & Maintenance | 0.00 |
+| **Utilities** | |
+|     Utilities | -61.87 |
+| **Waste Disposal** | |
+|     Waste Disposal | 0.00 |
+| **Total General & Administrative** | -38,442.98 |
+| | |
+| **Selling Expenses** | |
+| **Advertising** | |
+|     Advertising | 0.00 |
+|     Advertising- others | 0.00 |
+|     Selling Expenses | 0.00 |
+| **Payroll** | |
+|     Salaries & Wages-Warehouse | 0.00 |
+|     Salaries-Sales | -261,202.03 |
+| **Professional Fees** | |
+|     Professional Fee- Designers | 0.00 |
+| **Total Selling Expenses** | -261,202.03 |
+| | |
+| **Total Operating Cost** | -299,645.01 |
+| **Operating Profit/(Loss)** | 394,797.81 |
+| | |
+| **Other Income** | |
+| **Finance Charges Income** | |
+|     Finance Charges Income | 0.00 |
+| **OTHER INCOME** | |
+|     Cash (Over)or Short | 0.00 |
+|     Expenses of Sale | 0.00 |
+|     Other Income | 0.00 |
+|     Proceeds of Sale | 0.00 |
+| **Sales of Assets** | |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+| **Taxes** | |
+|     Federal Tax | -96,352.91 |
+|     NYC Tax | 0.00 |
+|     NYS Tax | 0.00 |
+| **Total Income Taxes** | -96,352.91 |
+| | |
+| **Net Profit/(Loss)** | 298,444.90 |
+
+================================================================================
+[PL-Det-Jan2025] Detailed income statement for January 2025
+Q: Detailed income statement for January 2025
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    CM.PLStatementDetails                     AS [Account],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2025-01-01'
+  AND CM.PLStatementDetails IS NOT NULL
+  AND LEN(CM.PLStatementDetails) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+| **Sales** | |
+|     Sales | 1,142,781.77 |
+| **Total Sales** | 1,142,781.77 |
+| | |
+| **Cost Of Sales** | |
+| **Custom & Duty** | |
+|     Custom & Duty | 0.00 |
+| **Demurrage Expenses** | |
+|     Demurrage Expenses | 0.00 |
+| **Freight** | |
+|     Freight | 0.00 |
+| **Other Costs** | |
+|     Designer Commission | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 1,142,781.77 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+| **Compute Expenses** | |
+|     Computer-Software Expenses | -7,173.28 |
+| **Depreciation** | |
+|     Depreciation | 0.00 |
+| **Misc. Expenses** | |
+|     Garnish | 0.00 |
+| **Outside Services** | |
+|     Outside Services | 0.00 |
+| **Payroll** | |
+|     Salaries and Wages | 0.00 |
+|     Salaries Misc. | 0.00 |
+|     SUTA | -12,500.00 |
+| **Postage Expenses** | |
+|     Postage Expenses | 0.00 |
+| **Rent** | |
+|     Rent | -4,935.00 |
+| **Repairs & Maintenance** | |
+|     Repairs & Maintenance | 0.00 |
+| **Utilities** | |
+|     Utilities | -16.39 |
+| **Waste Disposal** | |
+|     Waste Disposal | 0.00 |
+| **Total General & Administrative** | -24,624.67 |
+| | |
+| **Selling Expenses** | |
+| **Advertising** | |
+|     Advertising | 0.00 |
+|     Advertising- others | 0.00 |
+|     Selling Expenses | 0.00 |
+| **Payroll** | |
+|     Salaries & Wages-Warehouse | 0.00 |
+|     Salaries-Sales | -519,858.87 |
+| **Professional Fees** | |
+|     Professional Fee- Designers | 0.00 |
+| **Total Selling Expenses** | -519,858.87 |
+| | |
+| **Total Operating Cost** | -544,483.54 |
+| **Operating Profit/(Loss)** | 598,298.23 |
+| | |
+| **Other Income** | |
+| **Finance Charges Income** | |
+|     Finance Charges Income | 0.00 |
+| **OTHER INCOME** | |
+|     Cash (Over)or Short | 0.00 |
+|     Expenses of Sale | 0.00 |
+|     Other Income | 0.00 |
+|     Proceeds of Sale | 0.00 |
+| **Sales of Assets** | |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+| **Taxes** | |
+|     Federal Tax | -135,749.22 |
+|     NYC Tax | 0.00 |
+|     NYS Tax | 0.00 |
+| **Total Income Taxes** | -135,749.22 |
+| | |
+| **Net Profit/(Loss)** | 462,549.01 |
+
+================================================================================
+[PL-Det-Dec2024] Full detailed P&L for December 2024 as per template
+Q: Full detailed P&L for December 2024 as per template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    CM.PLStatementDetails                     AS [Account],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2024-12-01'
+  AND CM.PLStatementDetails IS NOT NULL
+  AND LEN(CM.PLStatementDetails) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+| **Sales** | |
+|     Sales | 1,670,211.46 |
+| **Total Sales** | 1,670,211.46 |
+| | |
+| **Cost Of Sales** | |
+| **Custom & Duty** | |
+|     Custom & Duty | 0.00 |
+| **Demurrage Expenses** | |
+|     Demurrage Expenses | 0.00 |
+| **Freight** | |
+|     Freight | 0.00 |
+| **Other Costs** | |
+|     Designer Commission | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 1,670,211.46 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+| **Compute Expenses** | |
+|     Computer-Software Expenses | -2,024.66 |
+| **Depreciation** | |
+|     Depreciation | 0.00 |
+| **Misc. Expenses** | |
+|     Garnish | 0.00 |
+| **Outside Services** | |
+|     Outside Services | 0.00 |
+| **Payroll** | |
+|     Salaries and Wages | 0.00 |
+|     Salaries Misc. | 0.00 |
+|     SUTA | -76,138.36 |
+| **Postage Expenses** | |
+|     Postage Expenses | 0.00 |
+| **Rent** | |
+|     Rent | -4,000.00 |
+| **Repairs & Maintenance** | |
+|     Repairs & Maintenance | 0.00 |
+| **Utilities** | |
+|     Utilities | -19.00 |
+| **Waste Disposal** | |
+|     Waste Disposal | 313.73 |
+| **Total General & Administrative** | -81,868.29 |
+| | |
+| **Selling Expenses** | |
+| **Advertising** | |
+|     Advertising | 0.00 |
+|     Advertising- others | 0.00 |
+|     Selling Expenses | 0.00 |
+| **Payroll** | |
+|     Salaries & Wages-Warehouse | 1,338.91 |
+|     Salaries-Sales | -699,220.47 |
+| **Professional Fees** | |
+|     Professional Fee- Designers | 0.00 |
+| **Total Selling Expenses** | -697,881.56 |
+| | |
+| **Total Operating Cost** | -779,749.85 |
+| **Operating Profit/(Loss)** | 890,461.61 |
+| | |
+| **Other Income** | |
+| **Finance Charges Income** | |
+|     Finance Charges Income | 0.00 |
+| **OTHER INCOME** | |
+|     Cash (Over)or Short | 0.00 |
+|     Expenses of Sale | 0.00 |
+|     Other Income | 0.00 |
+|     Proceeds of Sale | 0.00 |
+| **Sales of Assets** | |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+| **Taxes** | |
+|     Federal Tax | -116,689.39 |
+|     NYC Tax | 0.00 |
+|     NYS Tax | 0.00 |
+| **Total Income Taxes** | -116,689.39 |
+| | |
+| **Net Profit/(Loss)** | 773,772.22 |
+
+================================================================================
+[PL-Main-2024] Grouped P&L statement for full year 2024
+Q: Grouped P&L statement for full year 2024
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2024-01-01'
+  AND FAM.PeriodStartDate < '2025-01-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Sales | 11,954,540.29 |
+| **Total Sales** | 11,954,540.29 |
+| | |
+| **Cost Of Sales** | |
+|     Custom & Duty | 0.00 |
+|     Demurrage Expenses | 0.00 |
+|     Freight | 0.00 |
+|     Other Costs | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 11,954,540.29 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Compute Expenses | -46,798.48 |
+|     Depreciation | 0.00 |
+|     Misc. Expenses | 0.00 |
+|     Outside Services | 0.00 |
+|     Payroll | -324,528.39 |
+|     Postage Expenses | 0.00 |
+|     Rent | -59,670.67 |
+|     Repairs & Maintenance | 0.00 |
+|     Utilities | -798.21 |
+|     Waste Disposal | 0.00 |
+| **Total General & Administrative** | -431,795.75 |
+| | |
+| **Selling Expenses** | |
+|     Advertising | 0.00 |
+|     Payroll | -5,266,012.50 |
+|     Professional Fees | 0.00 |
+| **Total Selling Expenses** | -5,266,012.50 |
+| | |
+| **Total Operating Cost** | -5,697,808.25 |
+| **Operating Profit/(Loss)** | 6,256,732.04 |
+| | |
+| **Other Income** | |
+|     Finance Charges Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+|     Taxes | -1,426,095.34 |
+| **Total Income Taxes** | -1,426,095.34 |
+| | |
+| **Net Profit/(Loss)** | 4,830,636.70 |
+
+================================================================================
+[PL-Main-2025] Grouped income statement for 2025
+Q: Grouped income statement for 2025
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2025-01-01'
+  AND FAM.PeriodStartDate < '2026-01-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Sales | 85,763,828.92 |
+| **Total Sales** | 85,763,828.92 |
+| | |
+| **Cost Of Sales** | |
+|     Custom & Duty | 0.00 |
+|     Demurrage Expenses | 0.00 |
+|     Freight | 0.00 |
+|     Other Costs | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 85,763,828.92 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Compute Expenses | -364,660.03 |
+|     Depreciation | 0.00 |
+|     Misc. Expenses | 0.00 |
+|     Outside Services | 0.00 |
+|     Payroll | -3,174,273.05 |
+|     Postage Expenses | 0.00 |
+|     Rent | -399,821.00 |
+|     Repairs & Maintenance | 0.00 |
+|     Utilities | -9,068.97 |
+|     Waste Disposal | 0.00 |
+| **Total General & Administrative** | -3,947,823.05 |
+| | |
+| **Selling Expenses** | |
+|     Advertising | 0.00 |
+|     Payroll | -38,399,411.10 |
+|     Professional Fees | 0.00 |
+| **Total Selling Expenses** | -38,399,411.10 |
+| | |
+| **Total Operating Cost** | -42,347,234.15 |
+| **Operating Profit/(Loss)** | 43,416,594.77 |
+| | |
+| **Other Income** | |
+|     Finance Charges Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+|     Taxes | -10,488,297.38 |
+| **Total Income Taxes** | -10,488,297.38 |
+| | |
+| **Net Profit/(Loss)** | 32,928,297.39 |
+
+================================================================================
+[PL-Sub-2024] Sub grouped P&L for 2024
+Q: Sub grouped P&L for 2024
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2024-01-01'
+  AND FAM.PeriodStartDate < '2025-01-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Sales | 11,954,540.29 |
+| **Total Sales** | 11,954,540.29 |
+| | |
+| **Cost Of Sales** | |
+|     Custom & Duty | 0.00 |
+|     Demurrage Expenses | 0.00 |
+|     Freight | 0.00 |
+|     Other Costs | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 11,954,540.29 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Compute Expenses | -46,798.48 |
+|     Depreciation | 0.00 |
+|     Misc. Expenses | 0.00 |
+|     Outside Services | 0.00 |
+|     Payroll | -324,528.39 |
+|     Postage Expenses | 0.00 |
+|     Rent | -59,670.67 |
+|     Repairs & Maintenance | 0.00 |
+|     Utilities | -798.21 |
+|     Waste Disposal | 0.00 |
+| **Total General & Administrative** | -431,795.75 |
+| | |
+| **Selling Expenses** | |
+|     Advertising | 0.00 |
+|     Payroll | -5,266,012.50 |
+|     Professional Fees | 0.00 |
+| **Total Selling Expenses** | -5,266,012.50 |
+| | |
+| **Total Operating Cost** | -5,697,808.25 |
+| **Operating Profit/(Loss)** | 6,256,732.04 |
+| | |
+| **Other Income** | |
+|     Finance Charges Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+|     Taxes | -1,426,095.34 |
+| **Total Income Taxes** | -1,426,095.34 |
+| | |
+| **Net Profit/(Loss)** | 4,830,636.70 |
+
+================================================================================
+[PL-Main-Multi1] Grouped P&L for January 2025 and February 2025 side by side
+Q: Grouped P&L for January 2025 and February 2025 side by side
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-01-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [January 2025],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-02-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [February 2025]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate IN ('2025-01-01', '2025-02-01')
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | January 2025 ($) | February 2025 ($) |
+|:---|---:|---:|
+| **Sales** | 1,142,781.77 | 2,217,055.75 |
+| **Cost Of Sales** | 0.00 | 0.00 |
+| **Gross Profit/(Loss)** | 1,142,781.77 | 2,217,055.75 |
+| | | |
+| **Operating Cost** | | |
+|     General & Administrative | -24,624.67 | -75,725.65 |
+|     Selling Expenses | -519,858.87 | -1,050,345.88 |
+| **Total Operating Cost** | -544,483.54 | -1,126,071.53 |
+| **Operating Profit/(Loss)** | 598,298.23 | 1,090,984.22 |
+| | | |
+| **Other Income** | 0.00 | 0.00 |
+| **Income Taxes** | -135,749.22 | -275,355.10 |
+| **Net Profit/(Loss)** | 462,549.01 | 815,629.12 |
+
+================================================================================
+[PL-Main-Multi2] Compare grouped P&L for June 2024 vs June 2025
+Q: Compare grouped P&L for June 2024 vs June 2025
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-06-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [June 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-06-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [June 2025]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate IN ('2024-06-01', '2025-06-01')
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | June 2024 ($) | June 2025 ($) |
+|:---|---:|---:|
+| **Sales** | 694,442.82 | 6,478,420.28 |
+| **Cost Of Sales** | 0.00 | 0.00 |
+| **Gross Profit/(Loss)** | 694,442.82 | 6,478,420.28 |
+| | | |
+| **Operating Cost** | | |
+|     General & Administrative | -38,442.98 | -286,301.77 |
+|     Selling Expenses | -261,202.03 | -2,982,547.95 |
+| **Total Operating Cost** | -299,645.01 | -3,268,849.72 |
+| **Operating Profit/(Loss)** | 394,797.81 | 3,209,570.56 |
+| | | |
+| **Other Income** | 0.00 | 0.00 |
+| **Income Taxes** | -96,352.91 | -840,830.79 |
+| **Net Profit/(Loss)** | 298,444.90 | 2,368,739.77 |
+
+================================================================================
+[PL-Sub-Multi1] Sub grouped income statement for January and February 2025 in crosstab
+Q: Sub grouped income statement for January and February 2025 in crosstab
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-01-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [January 2025],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-02-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [February 2025]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate IN ('2025-01-01', '2025-02-01')
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | January 2025 ($) | February 2025 ($) |
+|:---|---:|---:|
+| **Sales** | | |
+|     Sales | 1,142,781.77 | 2,217,055.75 |
+| **Total Sales** | 1,142,781.77 | 2,217,055.75 |
+| | | |
+| **Cost Of Sales** | | |
+|     Custom & Duty | 0.00 | 0.00 |
+|     Demurrage Expenses | 0.00 | 0.00 |
+|     Freight | 0.00 | 0.00 |
+|     Other Costs | 0.00 | 0.00 |
+| **Total Cost Of Sales** | 0.00 | 0.00 |
+| | | |
+| **Gross Profit/(Loss)** | 1,142,781.77 | 2,217,055.75 |
+| | | |
+| **Operating Cost** | | |
+| **General & Administrative** | | |
+|     Compute Expenses | -7,173.28 | -10,720.91 |
+|     Depreciation | 0.00 | 0.00 |
+|     Misc. Expenses | 0.00 | 0.00 |
+|     Outside Services | 0.00 | 0.00 |
+|     Payroll | -12,500.00 | -55,089.15 |
+|     Postage Expenses | 0.00 | 0.00 |
+|     Rent | -4,935.00 | -9,870.00 |
+|     Repairs & Maintenance | 0.00 | 0.00 |
+|     Utilities | -16.39 | -45.59 |
+|     Waste Disposal | 0.00 | 0.00 |
+| **Total General & Administrative** | -24,624.67 | -75,725.65 |
+| | | |
+| **Selling Expenses** | | |
+|     Advertising | 0.00 | 0.00 |
+|     Payroll | -519,858.87 | -1,050,345.88 |
+|     Professional Fees | 0.00 | 0.00 |
+| **Total Selling Expenses** | -519,858.87 | -1,050,345.88 |
+| | | |
+| **Total Operating Cost** | -544,483.54 | -1,126,071.53 |
+| **Operating Profit/(Loss)** | 598,298.23 | 1,090,984.22 |
+| | | |
+| **Other Income** | | |
+|     Finance Charges Income | 0.00 | 0.00 |
+|     OTHER INCOME | 0.00 | 0.00 |
+|     Sales of Assets | 0.00 | 0.00 |
+| **Total Other Income** | 0.00 | 0.00 |
+| | | |
+| **Income Taxes** | | |
+|     Taxes | -135,749.22 | -275,355.10 |
+| **Total Income Taxes** | -135,749.22 | -275,355.10 |
+| | | |
+| **Net Profit/(Loss)** | 462,549.01 | 815,629.12 |
+
+================================================================================
+[PL-Det-Multi1] Detailed P&L for October 2024 and November 2024 in two columns
+Q: Detailed P&L for October 2024 and November 2024 in two columns
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    CM.PLStatementDetails                     AS [Account],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-10-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [October 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-11-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [November 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate IN ('2024-10-01', '2024-11-01')
+  AND CM.PLStatementDetails IS NOT NULL
+  AND LEN(CM.PLStatementDetails) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+
+RESPONSE:
+| Description | October 2024 ($) | November 2024 ($) |
+|:---|---:|---:|
+| **Sales** | | |
+|     Sales | 873,783.38 | 1,048,694.63 |
+| **Total Sales** | 873,783.38 | 1,048,694.63 |
+| | | |
+| **Cost Of Sales** | | |
+|     Custom & Duty | 0.00 | 0.00 |
+|     Demurrage Expenses | 0.00 | 0.00 |
+|     Freight | 0.00 | 0.00 |
+|     Designer Commission | 0.00 | 0.00 |
+| **Total Cost Of Sales** | 0.00 | 0.00 |
+| | | |
+| **Gross Profit/(Loss)** | 873,783.38 | 1,048,694.63 |
+| | | |
+| **Operating Cost** | | |
+| **General & Administrative** | | |
+|     Computer-Software Expenses | -10,191.11 | -1,425.07 |
+|     Depreciation | 0.00 | 0.00 |
+|     Garnish | 0.00 | 0.00 |
+|     Outside Services | 0.00 | 0.00 |
+|     Salaries and Wages | 0.00 | 0.00 |
+|     Salaries Misc. | 0.00 | 0.00 |
+|     SUTA | -19,853.56 | -30,836.29 |
+|     Postage Expenses | 0.00 | 0.00 |
+|     Rent | -5,314.17 | -4,968.00 |
+|     Repairs & Maintenance | 0.00 | 0.00 |
+|     Utilities | -9.75 | 0.00 |
+|     Waste Disposal | -14.40 | 0.00 |
+| **Total General & Administrative** | -35,383.00 | -37,229.36 |
+| | | |
+| **Selling Expenses** | | |
+|     Advertising | 0.00 | 0.00 |
+|     Advertising- others | 0.00 | 0.00 |
+|     Selling Expenses | 0.00 | 0.00 |
+|     Salaries & Wages-Warehouse | 0.00 | 0.00 |
+|     Salaries-Sales | -380,070.86 | -550,354.95 |
+|     Professional Fee- Designers | 0.00 | 0.00 |
+| **Total Selling Expenses** | -380,070.86 | -550,354.95 |
+| | | |
+| **Total Operating Cost** | -415,453.86 | -587,584.31 |
+| **Operating Profit/(Loss)** | 458,329.52 | 461,110.32 |
+| | | |
+| **Other Income** | | |
+|     Finance Charges Income | 0.00 | 0.00 |
+|     Cash (Over)or Short | 0.00 | 0.00 |
+|     Expenses of Sale | 0.00 | 0.00 |
+|     Other Income | 0.00 | 0.00 |
+|     Proceeds of Sale | 0.00 | 0.00 |
+|     Sales of Assets | 0.00 | 0.00 |
+| **Total Other Income** | 0.00 | 0.00 |
+| | | |
+| **Income Taxes** | | |
+|     Federal Tax | -112,699.66 | -100,291.64 |
+|     NYC Tax | 0.00 | 0.00 |
+|     NYS Tax | 0.00 | 0.00 |
+| **Total Income Taxes** | -112,699.66 | -100,291.64 |
+| | | |
+| **Net Profit/(Loss)** | 345,629.86 | 360,818.68 |
+
+================================================================================
+[PL-Follow1] What is the gross profit margin based on the above P&L?
+Q: What is the gross profit margin based on the above P&L?
+================================================================================
+SQL:
+(none)
+
+RESPONSE:
+To calculate the gross profit margin for each month, use the formula:
+
+Gross Profit Margin (%) = (Gross Profit / Sales) × 100
+
+From the detailed P&L above:
+
+**October 2024:**
+- Sales = 873,783.38
+- Gross Profit = 873,783.38
+
+Gross Profit Margin = (873,783.38 / 873,783.38) × 100 = 1 × 100 = **100.00%**
+
+**November 2024:**
+- Sales = 1,048,694.63
+- Gross Profit = 1,048,694.63
+
+Gross Profit Margin = (1,048,694.63 / 1,048,694.63) × 100 = 1 × 100 = **100.00%**
+
+**Summary:**
+- October 2024 Gross Profit Margin: **100.00%**
+- November 2024 Gross Profit Margin: **100.00%**
+
+This is because Cost Of Sales is 0.00 in both months, so all sales are gross profit.
+
+================================================================================
+[PL-Follow2] Which expense category is the highest and what is its percentage of to
+Q: Which expense category is the highest and what is its percentage of total sales?
+================================================================================
+SQL:
+(none)
+
+RESPONSE:
+Based on the detailed P&L for October 2024 and November 2024:
+
+**Step 1: Identify the highest expense category in each month (excluding Cost Of Sales, which is 0.00):**
+
+- For both months, the largest expense is in the "Selling Expenses" section, specifically:
+  - October 2024: "Salaries-Sales" = 380,070.86
+  - November 2024: "Salaries-Sales" = 550,354.95
+
+**Step 2: Calculate the percentage of total sales for each month:**
+
+Formula: (Expense / Sales) × 100
+
+- October 2024:
+  - Expense: 380,070.86
+  - Sales: 873,783.38
+  - Percentage = (380,070.86 / 873,783.38) × 100 ≈ 43.50%
+
+- November 2024:
+  - Expense: 550,354.95
+  - Sales: 1,048,694.63
+  - Percentage = (550,354.95 / 1,048,694.63) × 100 ≈ 52.48%
+
+**Summary:**
+
+- October 2024: Highest expense is "Salaries-Sales" at $380,070.86 (43.50% of sales)
+- November 2024: Highest expense is "Salaries-Sales" at $550,354.95 (52.48% of sales)
+
+================================================================================
+[Cross1] Now give me the grouped balance sheet for December 2024
+Q: Now give me the grouped balance sheet for December 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     CURRENT ASSETS | 7,784,669.16 |
+|     OTHER ASSETS | 0.00 |
+|     OTHER CURRENT ASSETS | 4,612.68 |
+|     PROPERTY AND EQUIPMENT | -934,350.70 |
+| **Total Assets** | 6,854,931.14 |
+| | |
+| **Liabilities & Equity** | |
+|     CURRENT LIABILITIES | 1,465,902.20 |
+|     CURRENT PORTION LONG-TERM | 0.00 |
+|     EQUITY | 4,830,636.70 |
+|     PAYROLL TAXES PAYABLE | 11,745.91 |
+| **Total Liabilities & Equity** | 6,308,284.81 |
+
+================================================================================
+[Cross3] Show me the sub grouped balance sheet and sub grouped P&L for December
+Q: Show me the sub grouped balance sheet and sub grouped P&L for December 2024 together
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2024-12-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **CURRENT ASSETS** | |
+|     Accounts Receivable | 2,098,741.25 |
+|     Cash and Cash Equivalents | 6,971.80 |
+|     Inventory | 5,678,956.11 |
+|     Other Receivables | 0.00 |
+| **Total Current Assets** | 7,784,669.16 |
+| | |
+| **OTHER ASSETS** | |
+|     OTHER ASSETS | 0.00 |
+| **Total Other Assets** | 0.00 |
+| | |
+| **OTHER CURRENT ASSETS** | |
+|     InterCompanyBalances | 4,612.68 |
+| **Total Other Current Assets** | 4,612.68 |
+| | |
+| **PROPERTY AND EQUIPMENT** | |
+|     PROPERTY AND EQUIPMENT | -934,350.70 |
+| **Total Property and Equipment** | -934,350.70 |
+| | |
+| **Total Assets** | 6,854,931.14 |
+| | |
+| **Liabilities & Equity** | |
+| **CURRENT LIABILITIES** | |
+|     Accounts Payable | 1,439,815.98 |
+|     Accrued Expense | 26,086.22 |
+|     Customer Security Deposits | 0.00 |
+|     Other Payables | 0.00 |
+| **Total Current Liabilities** | 1,465,902.20 |
+| | |
+| **CURRENT PORTION LONG-TERM** | |
+|     Loan Payable | 0.00 |
+|     Taxes Payable | 0.00 |
+| **Total Current Portion Long-Term** | 0.00 |
+| | |
+| **EQUITY** | |
+|     P&L Accumulated | 4,830,636.70 |
+| **Total Equity** | 4,830,636.70 |
+| | |
+| **PAYROLL TAXES PAYABLE** | |
+|     PAYROLL TAXES PAYABLE | 11,745.91 |
+| **Total Payroll Taxes Payable** | 11,745.91 |
+| | |
+| **Total Liabilities & Equity** | 6,308,284.81 |
+| | |
+
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Sales | 1,670,211.46 |
+| **Total Sales** | 1,670,211.46 |
+| | |
+| **Cost Of Sales** | |
+|     Custom & Duty | 0.00 |
+|     Demurrage Expenses | 0.00 |
+|     Freight | 0.00 |
+|     Other Costs | 0.00 |
+| **Total Cost Of Sales** | 0.00 |
+| | |
+| **Gross Profit/(Loss)** | 1,670,211.46 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Compute Expenses | -2,024.66 |
+|     Depreciation | 0.00 |
+|     Misc. Expenses | 0.00 |
+|     Outside Services | 0.00 |
+|     Payroll | -76,138.36 |
+|     Postage Expenses | 0.00 |
+|     Rent | -4,000.00 |
+|     Repairs & Maintenance | 0.00 |
+|     Utilities | -19.00 |
+|     Waste Disposal | 313.73 |
+| **Total General & Administrative** | -81,868.29 |
+| | |
+| **Selling Expenses** | |
+|     Advertising | 0.00 |
+|     Payroll | -697,881.56 |
+|     Professional Fees | 0.00 |
+| **Total Selling Expenses** | -697,881.56 |
+| | |
+| **Total Operating Cost** | -779,749.85 |
+| **Operating Profit/(Loss)** | 890,461.61 |
+| | |
+| **Other Income** | |
+|     Finance Charges Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+|     Sales of Assets | 0.00 |
+| **Total Other Income** | 0.00 |
+| | |
+| **Income Taxes** | |
+|     Taxes | -116,689.39 |
+| **Total Income Taxes** | -116,689.39 |
+| | |
+| **Net Profit/(Loss)** | 773,772.22 |
+
+ALL P&L TESTS COMPLETE

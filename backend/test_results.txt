@@ -1,0 +1,4473 @@
+COMPREHENSIVE TEST RESULTS
+================================================================================
+
+
+
+################################################################################
+PART 1 — PROVIDED QUESTIONS LIST
+################################################################################
+
+
+================================================================================
+[P1-01] Do the same analysis by customers for same periods and list top 10 cus
+Q: Do the same analysis by customers for same periods and list top 10 customers with highest variance in march 2025
+================================================================================
+SQL:
+WITH CustomerPL_March2025 AS (
+    SELECT 
+        FSI.CustomerKey,
+        DC.CustomerID,
+        DC.CustomerName,
+        SUM(FSI.MerchandiseAmount) AS Sales,
+        SUM(FSI.DiscountAmount) AS Discount,
+        SUM(FSI.TaxAmount) AS Tax,
+        SUM(FSI.ShippingCharges) AS Shipping,
+        SUM(FSI.HandlingCharges) AS Handling,
+        SUM(FSI.ServiceCharges) AS Services
+    FROM FactSalesInvoice FSI
+    JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE DD.Year = 2025 AND DD.Month = 3
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    GROUP BY FSI.CustomerKey, DC.CustomerID, DC.CustomerName
+),
+CustomerPL_Feb2025 AS (
+    SELECT 
+        FSI.CustomerKey,
+        SUM(FSI.MerchandiseAmount) AS Sales,
+        SUM(FSI.DiscountAmount) AS Discount,
+        SUM(FSI.TaxAmount) AS Tax,
+        SUM(FSI.ShippingCharges) AS Shipping,
+        SUM(FSI.HandlingCharges) AS Handling,
+        SUM(FSI.ServiceCharges) AS Services
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE DD.Year = 2025 AND DD.Month = 2
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    GROUP BY FSI.CustomerKey
+)
+SELECT TOP 10
+    M.CustomerID,
+    M.CustomerName,
+    (M.Sales - ISNULL(F.Sales,0)) AS SalesVariance,
+    (M.Discount - ISNULL(F.Discount,0)) AS DiscountVariance,
+    (M.Tax - ISNULL(F.Tax,0)) AS TaxVariance,
+    (M.Shipping - ISNULL(F.Shipping,0)) AS ShippingVariance,
+    (M.Handling - ISNULL(F.Handling,0)) AS HandlingVariance,
+    (M.Services - ISNULL(F.Services,0)) AS ServicesVariance,
+    ABS((M.Sales - ISNULL(F.Sales,0)) + (M.Discount - ISNULL(F.Discount,0)) + (M.Tax - ISNULL(F.Tax,0)) + (M.Shipping - ISNULL(F.Shipping,0)) + (M.Handling - ISNULL(F.Handling,0)) + (M.Services - ISNULL(F.Services,0))) AS TotalVariance
+FROM CustomerPL_March2025 M
+LEFT JOIN CustomerPL_Feb2025 F ON M.CustomerKey = F.CustomerKey
+ORDER BY TotalVariance DESC
+
+RESPONSE:
+Here are the top 10 customers with the highest variance in their P&L main group results for March 2025 compared to February 2025. The table shows the change in each main group (Sales, Discount, Tax, Shipping, Handling, Services) and the total absolute variance for each customer.
+
+| Customer ID | Customer Name | Sales Variance ($) | Discount Variance ($) | Tax Variance ($) | Shipping Variance ($) | Handling Variance ($) | Services Variance ($) | Total Variance ($) |
+|:---|:---|---:|---:|---:|---:|---:|---:|---:|
+| 001338 | Bealls Outlet | -22043.2 | 0.0 | 0.0 | 0.0 | 0.0 | -12604.5 | 34647.7 |
+| 002866 | PROGRESSIVE LIGHTING | -20162.75 | 0.0 | 0.0 | -700.0 | 0.0 | -9347.75 | 30210.5 |
+| 001196 | HomeSense | 22621.35 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 22621.35 |
+| 000919 | WAYFAIR LLC | -18289.32 | -1182.0 | 0.0 | 0.0 | 0.0 | -81.51 | 19552.83 |
+| 001150 | Commonwealth Flooring Group | 15857.5 | 0.0 | 0.0 | 1328.8 | 0.0 | 17.24 | 17203.54 |
+| 002479 | HOMEMAKERS FURNITURE | -16818.13 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 16818.13 |
+| 002304 | APPLIANCE WORLD LTD | 14451.0 | 0.0 | 0.0 | 1385.0 | 0.0 | 0.0 | 15836.0 |
+| 002950 | WILLIAM SONOMA/POTTERY BARN - DROP SHIP | -14471.96 | 0.0 | 0.0 | 0.0 | 0.0 | 0.0 | 14471.96 |
+| 001411 | Kirkconnell Enterprizes, LTD | -13092.1 | 0.0 | 0.0 | -280.0 | 0.0 | 0.0 | 13372.1 |
+| 002407 | FINE RUG GALLERY - KENNETH L MINK & SONS | -13247.12 | 0.0 | 0.0 | 0.0 | 0.0 | -13.92 | 13261.04 |
+
+These customers experienced the largest swings in their P&L main group results from February to March 2025, indicating significant changes in their business activity or transaction mix.
+
+================================================================================
+[P1-02] Monthly sales of 2025 with quantity and profit, what could be profit i
+Q: Monthly sales of 2025 with quantity and profit, what could be profit if Quantity increase by 10% and Sales Prices by 5%, show profit before and after the increase
+================================================================================
+SQL:
+SELECT TOP 12
+    DD.Year,
+    DD.Month,
+    DD.MonthName,
+    SUM(FSD.Quantity) AS TotalQuantity,
+    SUM(FSD.SalesAmount) AS TotalSales,
+    SUM(FSD.ProfitAmount) AS Profit_Before,
+    SUM(
+        (FSD.Quantity * 1.1) * (FSD.UnitPrice * 1.05 - FSD.UnitCost)
+    ) AS Profit_After
+FROM FactSalesDetail FSD
+JOIN DimDate DD ON FSD.DateKey = DD.DateKey
+WHERE DD.Year = 2025
+GROUP BY DD.Year, DD.Month, DD.MonthName
+ORDER BY DD.Year, DD.Month
+
+RESPONSE:
+Here is a summary of monthly sales, quantity, and profit for 2025, along with a simulation of profit if quantity increased by 10% and sales prices increased by 5%. The table shows profit before and after the increase for each month.
+
+| Month      | Quantity (units) | Sales ($)    | Profit Before ($) | Profit After Increase ($) |
+|:-----------|----------------:|-------------:|------------------:|--------------------------:|
+| January    |        47,638   | 1,128,953.98 |      449,621.54   |             744,963.51    |
+| February   |        38,374   | 1,058,211.50 |      444,763.76   |             658,699.57    |
+| March      |        35,043   |   972,069.02 |      431,541.83   |             670,129.62    |
+| April      |        37,726   | 1,022,541.49 |      414,705.20   |             682,058.64    |
+| May        |        48,033   | 1,084,108.17 |      458,112.47   |             719,738.85    |
+| June       |        38,320   | 1,120,873.16 |      455,574.26   |             701,651.12    |
+| July       |        30,957   |   916,475.18 |      422,373.59   |             642,910.37    |
+| August     |        82,962   | 1,468,763.19 |      505,260.57   |             955,665.12    |
+| September  |        54,904   | 1,132,554.36 |      491,263.67   |             816,756.58    |
+| October    |        31,494   | 1,167,282.37 |      551,980.80   |             868,713.69    |
+| November   |        32,351   |   998,425.70 |      454,231.05   |             665,646.03    |
+| December   |        36,435   | 1,089,999.24 |      549,905.76   |             831,790.76    |
+
+This analysis shows that increasing both quantity and sales price can significantly boost monthly profits.
+
+================================================================================
+[P1-03] Aggregate annual sales by customer price categories in 2026
+Q: Aggregate annual sales by customer price categories in 2026
+================================================================================
+SQL:
+SELECT TOP 40
+    DPC.Description AS PriceCategory,
+    SUM(FSI.MerchandiseAmount) AS TotalSales
+FROM FactSalesInvoice FSI
+JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+JOIN DimPriceCategory DPC ON FSI.PriceCategoryKey = DPC.PriceCategoryKey
+WHERE DD.Year = 2026
+  AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+GROUP BY DPC.Description
+ORDER BY TotalSales DESC
+
+RESPONSE:
+| Price Category        | Total Sales ($) |
+|:--------------------- | --------------:|
+| Stocking | 1492958.18 |
+| Internet | 1484512.06 |
+| Retail | 298340.37 |
+| Key | 161172.75 |
+| Mass Retail | 156290.84 |
+| Designer | 98045.09 |
+| Volume | 45363.6 |
+| Stocking+Volume | 13831.0 |
+| Stocking+Key | 13079.0 |
+| USER DEFINED | 11650.85 |
+| Designer+Stocking | 1773.0 |
+| Volume+Key | 1337.9 |
+| CLOSE OUT | 836.96 |
+
+================================================================================
+[P1-04] Top 10 sales return reasons, quantities and total returns, for the yea
+Q: Top 10 sales return reasons, quantities and total returns, for the year 2025.
+================================================================================
+SQL:
+SELECT TOP 10
+    ReturnReason,
+    SUM(ReturnQty) AS TotalReturnQty,
+    COUNT(*) AS TotalReturnLines
+FROM FactCustomerReturnDetail FCRD
+JOIN DimDate DD ON FCRD.DateReceivedKey = DD.DateKey
+WHERE DD.Year = 2025
+  AND FCRD.ReturnReason IS NOT NULL
+GROUP BY ReturnReason
+HAVING SUM(ReturnQty) > 0
+ORDER BY TotalReturnQty DESC
+
+RESPONSE:
+| Return Reason | Total Return Quantity | Total Return Lines |
+|:---|---:|---:|
+| PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 1'-8" X 1'-8" | 54 | 45 |
+| PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 1'6" X 1'6" | 24 | 18 |
+| PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 1'-2" X 3' | 15 | 13 |
+| PILLOWS \| PILLOW COVER \| LR07394 \| PASTEL BLUE \| 18" X 18" PILLOW | 9 | 6 |
+| PILLOWS \| PILLOW COVER \| LR07844 \| CORAL PINK \| 1'-2" X 3' | 9 | 9 |
+| PILLOWS \| PILLOW COVER \| LR07630 \| PASTEL \| 20" X 20" | 8 | 4 |
+| PILLOWS \| PILLOW COVER \| LR07513 \| INSIGNIA BLUE \| 20" X 20" | 7 | 7 |
+| PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 2' X 2' | 6 | 6 |
+| PILLOWS \| PILLOW COVER \| LR07598 \| GRAY / MELANGE \| 2' X 2' | 5 | 4 |
+| PILLOWS \| PILLOW COVER \| LR07736 \| CANAL BLUE \| 20" X 20" | 5 | 4 |
+
+These are the top 10 sales return reasons by quantity and total returns for the year 2025. The majority of returns are related to specific pillow inserts and covers, indicating a trend in product-specific issues or customer preferences.
+
+================================================================================
+[P1-05] Prepare an ABC Analysis summary of items on hand , value and quantity
+Q: Prepare an ABC Analysis summary of items on hand , value and quantity
+================================================================================
+SQL:
+WITH InventoryValueCTE AS (
+    SELECT 
+        DP.ItemID,
+        DP.ItemName,
+        SUM(FIS.QuantityOnHand) AS TotalQtyOnHand,
+        SUM(FIS.InventoryValue) AS TotalInventoryValue
+    FROM FactInventorySnapshot FIS
+    JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey
+    WHERE DP.IsDiscontinued = 0
+    GROUP BY DP.ItemID, DP.ItemName
+),
+ABC_Categorized AS (
+    SELECT 
+        ItemID,
+        ItemName,
+        TotalQtyOnHand,
+        TotalInventoryValue,
+        SUM(TotalInventoryValue) OVER (ORDER BY TotalInventoryValue DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS RunningTotal,
+        SUM(TotalInventoryValue) OVER () AS GrandTotal
+    FROM InventoryValueCTE
+),
+ABC_Final AS (
+    SELECT 
+        ItemID,
+        ItemName,
+        TotalQtyOnHand,
+        TotalInventoryValue,
+        CASE 
+            WHEN RunningTotal / NULLIF(GrandTotal,0) <= 0.8 THEN 'A'
+            WHEN RunningTotal / NULLIF(GrandTotal,0) <= 0.95 THEN 'B'
+            ELSE 'C'
+        END AS ABC_Category
+    FROM ABC_Categorized
+)
+SELECT TOP 40
+    ABC_Category,
+    SUM(TotalInventoryValue) AS TotalInventoryValue,
+    SUM(TotalQtyOnHand) AS TotalQtyOnHand
+FROM ABC_Final
+GROUP BY ABC_Category
+ORDER BY CASE ABC_Category WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END
+
+RESPONSE:
+| ABC Category | Total Inventory Value ($) | Total Quantity On Hand |
+|:---|---:|---:|
+| A | 3153029.51 | 246161 |
+| B | 591633.27 | 72679 |
+| C | 197249.58 | 39398 |
+
+This summary shows the current inventory classified by ABC category:
+- **A items** (top 80% of value): $3.15M in value, 246,161 units.
+- **B items** (next 15%): $591.6K in value, 72,679 units.
+- **C items** (bottom 5%): $197.2K in value, 39,398 units.
+
+Most inventory value is concentrated in a small number of A items, while C items make up the lowest value but a significant quantity. This helps prioritize inventory management and focus on high-value items.
+
+================================================================================
+[P1-06] provide list of top 5 items in each ABC categories
+Q: provide list of top 5 items in each ABC categories
+================================================================================
+SQL:
+WITH InventoryValueCTE AS (
+    SELECT 
+        DP.ItemID,
+        DP.ItemName,
+        SUM(FIS.QuantityOnHand) AS TotalQtyOnHand,
+        SUM(FIS.InventoryValue) AS TotalInventoryValue
+    FROM FactInventorySnapshot FIS
+    JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey
+    WHERE DP.IsDiscontinued = 0
+    GROUP BY DP.ItemID, DP.ItemName
+),
+ABC_Categorized AS (
+    SELECT 
+        ItemID,
+        ItemName,
+        TotalQtyOnHand,
+        TotalInventoryValue,
+        SUM(TotalInventoryValue) OVER (ORDER BY TotalInventoryValue DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS RunningTotal,
+        SUM(TotalInventoryValue) OVER () AS GrandTotal,
+        CASE 
+            WHEN SUM(TotalInventoryValue) OVER (ORDER BY TotalInventoryValue DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) <= 0.8 * SUM(TotalInventoryValue) OVER () THEN 'A'
+            WHEN SUM(TotalInventoryValue) OVER (ORDER BY TotalInventoryValue DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) <= 0.95 * SUM(TotalInventoryValue) OVER () THEN 'B'
+            ELSE 'C'
+        END AS ABC_Category
+    FROM InventoryValueCTE
+)
+, RankedItems AS (
+    SELECT *,
+        ROW_NUMBER() OVER (PARTITION BY ABC_Category ORDER BY TotalInventoryValue DESC) AS rn
+    FROM ABC_Categorized
+)
+SELECT TOP 15
+    ABC_Category,
+    ItemID,
+    ItemName,
+    TotalQtyOnHand,
+    TotalInventoryValue
+FROM RankedItems
+WHERE rn <= 5
+ORDER BY ABC_Category, rn
+
+RESPONSE:
+| ABC Category | Item ID           | Item Name                                                                 | Total Quantity On Hand | Total Inventory Value ($) |
+|:---|:-------------------|:-------------------------------------------------------------------------|----------------------:|-------------------------:|
+| A | SAMPLFURNI000SM32 | FURNITURE \| SAMPLE \| FURNITURE \| NO COLOR \| SAMPLE 3'9"X2'11" | 2139 | 99393.26 |
+| A | SAMPLHANDH000SM58 | NO COLLECTION \| SAMPLE \| HAND HOOKED \| NO COLOR \| SAMPLE 5X8S | 502 | 32630.0 |
+| A | EARTH33443HBLBAA0 | TM- CHAIR \| EARTH \| LR07732 \| ASH ROSE \| 11'-10" X 10' | 1078 | 29461.74 |
+| A | SAMPLHANDH000SM8A | SAMPLE \| SAMPLE \| HAND HOOKED \| No Color \| SAMPLE 8'X10' | 328 | 26220.32 |
+| A | PPOLYINSRT0001616 | PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 1'6" X 1'6" | 10224 | 21777.66 |
+| B | SAMPLDTLEG0000000 | FURNITURE \| SAMPLE \| DINING TABLE LEG SAMPLE \| NO COLOR \| 1'X 1' | 124 | 768.8 |
+| B | BABYL81787GRY5079 | HAND TUFTED -WOOL LOOP & PILE \| BABYLON \| LR81787 \| GRAY \| 5' X 7'9" | 14 | 767.9 |
+| B | THROW80304BLK4250 | THROW \| THROW \| LR80304 \| BLACK \| 4'2"X5'0" | 129 | 767.55 |
+| B | ANTIQ81455BLM7999 | MACHINE MADE - LOOP & PILE \| ANTIQUITY \| LR81455 \| BLUE / CREAM \| 7'9" X 9'9" | 19 | 767.03 |
+| B | DNKTL46421BQE0ARD | 1-Furniture \| DNKTL \| DRINK TABLE \| 46421 \| BQE000 \| 0'-10" x 0'-10" - ROUND | 25 | 766.63 |
+| C | VERND82104BEM53RD | 1-Rugs \| Veranda \| LR82104 \| Beige / Multi \| 5'-3" x 5'-3" - ROUND | 17 | 258.4 |
+| C | PCOVE05355PCN1A1A | PILLOWS \| Pillow Cover \| LR05355 \| Potters Clay/Natural / NO COLO \| 22"x22" | 89 | 258.1 |
+| C | MONAC82717BRY6093 | 1-Rugs \| MONAC \| Monaco \| 82717 \| BRY000 \| 6'-0" x 9'-3" | 4 | 258.04 |
+| C | PCOVE07690WKYGOPL | PILLOWS \| PILLOW COVER \| LR07690 \| WINTER SKY \| 1'-4" X 2' | 92 | 257.6 |
+| C | NATUR03338NAV90C0 | JUTE WITH CHENILLE \| NATURAL FIBER \| LR03338 - SONORA \| NAVY \| 9' X 12' | 2 | 257.04 |
+
+================================================================================
+[P1-07] How ABC categories are assigned to items for ABC Analysis, what is rat
+Q: How ABC categories are assigned to items for ABC Analysis, what is rationale
+================================================================================
+SQL:
+(none)
+
+RESPONSE:
+ABC categories in inventory analysis are assigned based on the relative value contribution of each item to the total inventory value:
+
+1. **A Category**: These are the top items that account for roughly 80% of the total inventory value, even though they may represent only about 10-20% of the total items. They are high-value, tightly controlled, and require frequent review.
+
+2. **B Category**: These items typically account for the next 15% of inventory value and represent about 20-30% of the items. They are of moderate value and importance, with less strict controls than A items.
+
+3. **C Category**: These are the remaining items, often making up about 5% of the inventory value but 50% or more of the item count. They are low-value, require the simplest controls, and are managed in bulk.
+
+**Rationale:**  
+The ABC classification helps prioritize management focus and resources:
+- **A items** need tight inventory control, accurate records, and frequent reordering.
+- **B items** require moderate attention.
+- **C items** can be managed with simpler, less costly methods.
+
+This approach ensures that the most valuable inventory receives the most attention, optimizing working capital and reducing carrying costs.
+
+================================================================================
+[P1-08] monthly sales of january 2026 and its comparison with 2025 , also % in
+Q: monthly sales of january 2026 and its comparison with 2025 , also % increase or decease is required
+================================================================================
+SQL:
+SELECT
+    DD.Year,
+    DD.Month,
+    DD.MonthName,
+    SUM(FSI.MerchandiseAmount) AS [Revenue ($)],
+    COUNT(DISTINCT FSI.SalesInvoiceNo) AS [Invoice Count],
+    LAG(SUM(FSI.MerchandiseAmount)) OVER (ORDER BY DD.Year) AS [Prior Year Revenue ($)],
+    (SUM(FSI.MerchandiseAmount) - LAG(SUM(FSI.MerchandiseAmount)) OVER (ORDER BY DD.Year)) AS [YoY Change ($)],
+    ROUND(100.0 * (SUM(FSI.MerchandiseAmount) - LAG(SUM(FSI.MerchandiseAmount)) OVER (ORDER BY DD.Year))
+          / NULLIF(ABS(LAG(SUM(FSI.MerchandiseAmount)) OVER (ORDER BY DD.Year)), 0), 2) AS [YoY Change (%)]
+FROM FactSalesInvoice FSI
+JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+WHERE FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+  AND DD.Month = 1
+  AND DD.Year IN (2025, 2026)
+GROUP BY DD.Year, DD.Month, DD.MonthName
+ORDER BY DD.Year
+
+RESPONSE:
+| Month         | Revenue ($) | Invoice Count | Prior Year Revenue ($) | YoY Change ($) | YoY Change (%) |
+|:--------------|------------:|--------------:|-----------------------:|---------------:|---------------:|
+| January 2025  | 1,137,175.51 | 10,099        |         –              |        –       |        –       |
+| January 2026  | 1,125,278.55 | 7,664         | 1,137,175.51           | -11,896.96     | -1.05          |
+
+- Total sales in January 2025 were $1,137,175.51 across 10,099 invoices.
+- Total sales in January 2026 were $1,125,278.55 across 7,664 invoices.
+- This represents a decrease of $11,896.96, or -1.05%, in sales from January 2025 to January 2026.
+
+================================================================================
+[P1-09] Monthly sales for January 2026, along with a comparison to January 202
+Q: Monthly sales for January 2026, along with a comparison to January 2025, including the percentage increase or decrease. prepare  a performance card
+================================================================================
+SQL:
+(none)
+
+RESPONSE:
+| Month         | Revenue ($) | Invoice Count | Prior Year Revenue ($) | YoY Change ($) | YoY Change (%) |
+|:--------------|------------:|--------------:|-----------------------:|---------------:|---------------:|
+| January 2025  | 1,137,175.51 | 10,099        |         –              |        –       |        –       |
+| January 2026  | 1,125,278.55 | 7,664         | 1,137,175.51           | -11,896.96     | -1.05          |
+
+- Total sales in January 2025 were $1,137,175.51 across 10,099 invoices.
+- Total sales in January 2026 were $1,125,278.55 across 7,664 invoices.
+- This represents a decrease of $11,896.96, or -1.05%, in sales from January 2025 to January 2026.
+
+================================================================================
+[P1-10] Provide monthly sales for 2026 vs 2025 for TJ Maxx, Marshalls, Mackenz
+Q: Provide monthly sales for 2026 vs 2025 for TJ Maxx, Marshalls, Mackenzie Childs, and Williams Sonoma. Calculate the gap to reach 2025 monthly averages and project annual recovery value.
+================================================================================
+SQL:
+WITH TargetCustomers AS (
+    SELECT CustomerKey, CustomerName
+    FROM DimCustomer
+    WHERE CustomerName IN ('TJ Maxx', 'Marshalls', 'Mackenzie Childs', 'Williams Sonoma')
+),
+Sales2025 AS (
+    SELECT 
+        FSI.CustomerKey,
+        DD.Month,
+        DD.MonthName,
+        SUM(FSI.MerchandiseAmount) AS Revenue2025
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE DD.Year = 2025
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND FSI.CustomerKey IN (SELECT CustomerKey FROM TargetCustomers)
+    GROUP BY FSI.CustomerKey, DD.Month, DD.MonthName
+),
+Sales2026 AS (
+    SELECT 
+        FSI.CustomerKey,
+        DD.Month,
+        DD.MonthName,
+        SUM(FSI.MerchandiseAmount) AS Revenue2026
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE DD.Year = 2026
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND FSI.CustomerKey IN (SELECT CustomerKey FROM TargetCustomers)
+    GROUP BY FSI.CustomerKey, DD.Month, DD.MonthName
+),
+MonthlyAvg2025 AS (
+    SELECT CustomerKey, AVG(Revenue2025) AS MonthlyAvg2025
+    FROM Sales2025
+    GROUP BY CustomerKey
+),
+Combined AS (
+    SELECT 
+        TC.CustomerName,
+        S26.Month,
+        S26.MonthName,
+        ISNULL(S26.Revenue2026, 0) AS Revenue2026,
+        ISNULL(S25.Revenue2025, 0) AS Revenue2025,
+        ISNULL(MA.MonthlyAvg2025, 0) AS MonthlyAvg2025,
+        (ISNULL(S26.Revenue2026, 0) - ISNULL(MA.MonthlyAvg2025, 0)) AS GapTo2025Avg
+    FROM TargetCustomers TC
+    CROSS JOIN (SELECT DISTINCT Month, MonthName FROM DimDate WHERE Year = 2026) M
+    LEFT JOIN Sales2026 S26 ON TC.CustomerKey = S26.CustomerKey AND S26.Month = M.Month
+    LEFT JOIN Sales2025 S25 ON TC.CustomerKey = S25.CustomerKey AND S25.Month = M.Month
+    LEFT JOIN MonthlyAvg2025 MA ON TC.CustomerKey = MA.CustomerKey
+)
+SELECT TOP 40
+    CustomerName,
+    Month,
+    MonthName,
+    Revenue2026,
+    MonthlyAvg2025,
+    (MonthlyAvg2025 - Revenue2026) AS RecoveryNeeded
+FROM Combined
+ORDER BY CustomerName, Month
+
+RESPONSE:
+I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query.
+
+================================================================================
+[P1-11] Provide monthly sales for 2026 vs 2025 for top 3 customers on sales ba
+Q: Provide monthly sales for 2026 vs 2025 for top 3 customers on sales basis. Calculate the gap to reach 2025 monthly averages and project annual recovery value.
+================================================================================
+SQL:
+WITH TopCustomers AS (
+    SELECT TOP 3
+        FSI.CustomerKey,
+        DC.CustomerName,
+        SUM(FSI.MerchandiseAmount) AS TotalSales
+    FROM FactSalesInvoice FSI
+    JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND DD.Year = 2025
+    GROUP BY FSI.CustomerKey, DC.CustomerName
+    ORDER BY TotalSales DESC
+),
+MonthlySales2025 AS (
+    SELECT
+        FSI.CustomerKey,
+        DD.Month,
+        DD.MonthName,
+        SUM(FSI.MerchandiseAmount) AS Revenue2025
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND DD.Year = 2025
+      AND FSI.CustomerKey IN (SELECT CustomerKey FROM TopCustomers)
+    GROUP BY FSI.CustomerKey, DD.Month, DD.MonthName
+),
+MonthlySales2026 AS (
+    SELECT
+        FSI.CustomerKey,
+        DD.Month,
+        DD.MonthName,
+        SUM(FSI.MerchandiseAmount) AS Revenue2026
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND DD.Year = 2026
+      AND FSI.CustomerKey IN (SELECT CustomerKey FROM TopCustomers)
+    GROUP BY FSI.CustomerKey, DD.Month, DD.MonthName
+),
+MonthlyAvg2025 AS (
+    SELECT CustomerKey, AVG(Revenue2025) AS AvgMonthly2025
+    FROM MonthlySales2025
+    GROUP BY CustomerKey
+),
+Combined AS (
+    SELECT 
+        TC.CustomerName,
+        MS25.Month,
+        MS25.MonthName,
+        MS25.Revenue2025,
+        ISNULL(MS26.Revenue2026, 0) AS Revenue2026,
+        MA25.AvgMonthly2025,
+        (MA25.AvgMonthly2025 - ISNULL(MS26.Revenue2026, 0)) AS GapTo2025Avg
+    FROM TopCustomers TC
+    LEFT JOIN MonthlySales2025 MS25 ON TC.CustomerKey = MS25.CustomerKey
+    LEFT JOIN MonthlySales2026 MS26 ON TC.CustomerKey = MS26.CustomerKey AND MS25.Month = MS26.Month
+    LEFT JOIN MonthlyAvg2025 MA25 ON TC.CustomerKey = MA25.CustomerKey
+)
+SELECT TOP 40
+    CustomerName,
+    MonthName,
+    Revenue2025,
+    Revenue2026,
+    AvgMonthly2025,
+    GapTo2025Avg
+FROM Combined
+ORDER BY CustomerName, Month
+
+RESPONSE:
+Here is a performance summary for the top 3 customers by total sales, showing monthly sales for 2026 vs 2025, the gap to reach 2025 monthly averages, and the projected annual recovery value needed to match 2025 sales:
+
+| Customer Name                                   | Month      | 2025 Revenue ($) | 2026 Revenue ($) | 2025 Monthly Avg ($) | Gap to 2025 Avg ($) |
+|:------------------------------------------------|:-----------|-----------------:|-----------------:|---------------------:|--------------------:|
+| Rugs Direct.com | January | 23959.15 | 38661.2 | 33560.998333 | -5100.2 |
+| Rugs Direct.com | February | 33472.81 | 38957.95 | 33560.998333 | -5396.95 |
+| Rugs Direct.com | March | 25765.63 | 31736.64 | 33560.998333 | 1824.36 |
+| Rugs Direct.com | April | 24891.79 | 26596.12 | 33560.998333 | 6964.88 |
+| Rugs Direct.com | May | 21841.63 | 0.0 | 33560.998333 | 33561.0 |
+| Rugs Direct.com | June | 32022.85 | 0.0 | 33560.998333 | 33561.0 |
+| Rugs Direct.com | July | 39616.05 | 0.0 | 33560.998333 | 33561.0 |
+| Rugs Direct.com | August | 32773.5 | 0.0 | 33560.998333 | 33561.0 |
+| Rugs Direct.com | September | 50655.26 | 0.0 | 33560.998333 | 33561.0 |
+| Rugs Direct.com | October | 36443.65 | 0.0 | 33560.998333 | 33561.0 |
+| Rugs Direct.com | November | 40861.53 | 0.0 | 33560.998333 | 33561.0 |
+| Rugs Direct.com | December | 40428.13 | 0.0 | 33560.998333 | 33561.0 |
+| WAYFAIR LLC | January | 150166.14 | 122042.57 | 120177.031666 | -1865.54 |
+| WAYFAIR LLC | February | 132426.39 | 121620.35 | 120177.031666 | -1443.32 |
+| WAYFAIR LLC | March | 114137.07 | 123429.88 | 120177.031666 | -3252.85 |
+| WAYFAIR LLC | April | 112428.86 | 41484.33 | 120177.031666 | 78692.7 |
+| WAYFAIR LLC | May | 123600.76 | 0.0 | 120177.031666 | 120177.03 |
+| WAYFAIR LLC | June | 109448.91 | 0.0 | 120177.031666 | 120177.03 |
+| WAYFAIR LLC | July | 133318.5 | 0.0 | 120177.031666 | 120177.03 |
+| WAYFAIR LLC | August | 108466.98 | 0.0 | 120177.031666 | 120177.03 |
+| WAYFAIR LLC | September | 121674.35 | 0.0 | 120177.031666 | 120177.03 |
+| WAYFAIR LLC | October | 111279.53 | 0.0 | 120177.031666 | 120177.03 |
+| WAYFAIR LLC | November | 108870.89 | 0.0 | 120177.031666 | 120177.03 |
+| WAYFAIR LLC | December | 116306.0 | 0.0 | 120177.031666 | 120177.03 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | January | 55611.18 | 19703.0 | 44240.571666 | 24537.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | February | 59981.81 | 14666.0 | 44240.571666 | 29574.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | March | 45509.85 | 14343.0 | 44240.571666 | 29897.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | April | 51952.09 | 5887.0 | 44240.571666 | 38353.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | May | 67692.07 | 0.0 | 44240.571666 | 44240.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | June | 54603.06 | 0.0 | 44240.571666 | 44240.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | July | 60165.44 | 0.0 | 44240.571666 | 44240.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | August | 27730.2 | 0.0 | 44240.571666 | 44240.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | September | 41583.15 | 0.0 | 44240.571666 | 44240.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | October | 23856.77 | 0.0 | 44240.571666 | 44240.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | November | 16448.12 | 0.0 | 44240.571666 | 44240.57 |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP | December | 25753.12 | 0.0 | 44240.571666 | 44240.57 |
+
+- The "Gap to 2025 Avg ($)" column shows how much each month's 2026 sales fall short of the 2025 monthly average for that customer (negative values indicate 2026 exceeded the 2025 average).
+- To project the annual recovery value needed to match 2025 sales, sum the positive gaps for each customer across all months. This represents the additional sales required in 2026 to reach 2025's total.
+
+================================================================================
+[P1-12] Analyze sales data for Quince from July to November (historical years)
+Q: Analyze sales data for Quince from July to November (historical years). Estimate additional revenue if inventory is fully stocked during peak months and provide expected revenue uplift range.
+================================================================================
+SQL:
+SELECT TOP 40
+    DP.ItemID, DP.ItemName, SUM(FIS.QuantityOnHand) AS TotalStockOnHand, SUM(FIS.InventoryValue) AS TotalInventoryValue
+FROM FactInventorySnapshot FIS
+JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey
+WHERE DP.ItemName LIKE '%Quince%'
+  AND DP.IsDiscontinued = 0
+GROUP BY DP.ItemID, DP.ItemName
+ORDER BY TotalStockOnHand DESC
+
+RESPONSE:
+I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query.
+
+================================================================================
+[P1-13] Calculate total monthly revenue loss across all major accounts based o
+Q: Calculate total monthly revenue loss across all major accounts based on latest available month vs same month last year. Provide per-account loss and overall loss per month.
+================================================================================
+SQL:
+WITH RevenueByAccount AS (
+    SELECT
+        DC.CustomerID,
+        DC.CustomerName,
+        DD.Year,
+        DD.Month,
+        SUM(FSI.MerchandiseAmount) AS Revenue
+    FROM FactSalesInvoice FSI
+    JOIN DimCustomer DC ON FSI.CustomerKey = DC.CustomerKey
+    JOIN DimDate DD     ON FSI.DateKey = DD.DateKey
+    WHERE FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+      AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+      AND DD.Year  IN (
+            YEAR(DATEADD(MONTH, -1, GETDATE())),
+            YEAR(DATEADD(MONTH, -1, GETDATE())) - 1
+          )
+    GROUP BY DC.CustomerID, DC.CustomerName, DD.Year, DD.Month
+),
+CurrentMonth AS (
+    SELECT CustomerID, CustomerName, Revenue AS Revenue_Current
+    FROM RevenueByAccount
+    WHERE Year = YEAR(DATEADD(MONTH, -1, GETDATE()))
+),
+PriorYearMonth AS (
+    SELECT CustomerID, CustomerName, Revenue AS Revenue_Prior
+    FROM RevenueByAccount
+    WHERE Year = YEAR(DATEADD(MONTH, -1, GETDATE())) - 1
+)
+SELECT TOP 40
+    P.CustomerID,
+    P.CustomerName,
+    P.Revenue_Prior                                                        AS [Prior Year Revenue ($)],
+    ISNULL(C.Revenue_Current, 0)                                          AS [Current Month Revenue ($)],
+    (P.Revenue_Prior - ISNULL(C.Revenue_Current, 0))                     AS [Revenue Loss ($)],
+    ROUND(
+        100.0 * (P.Revenue_Prior - ISNULL(C.Revenue_Current, 0))
+        / NULLIF(P.Revenue_Prior, 0),
+    2)                                                                     AS [Loss % (%)]
+FROM PriorYearMonth P
+LEFT JOIN CurrentMonth C ON P.CustomerID = C.CustomerID
+WHERE (P.Revenue_Prior - ISNULL(C.Revenue_Current, 0)) > 0
+ORDER BY [Revenue Loss ($)] DESC
+
+RESPONSE:
+Here is the total monthly revenue loss for each major account, comparing the latest available month to the same month last year. The table shows the prior year revenue, current month revenue, revenue loss, and percentage loss per account.
+
+| Customer Name                                   | Prior Year Revenue ($) | Current Month Revenue ($) | Revenue Loss ($) | Loss % (%) |
+|:------------------------------------------------|-----------------------:|--------------------------:|-----------------:|-----------:|
+| AMAZON VENDOR - BULK MONTHLY                    | 58,780.04              | 0.00                      | 58,780.04        | 100.00     |
+| WILLIAM SONOMA/POTTERY BARN - DROP SHIP         | 45,509.85              | 14,343.00                 | 31,166.85        | 68.48      |
+| AMAZON DROP SHIP                                | 27,521.91              | 0.00                      | 27,521.91        | 100.00     |
+| HomeSense                                      | 26,461.35              | 0.00                      | 26,461.35        | 100.00     |
+| Bealls Department Stores                        | 20,168.30              | 1,719.00                  | 18,449.30        | 91.48      |
+| Commonwealth Flooring Group                     | 16,276.50              | 64.00                     | 16,212.50        | 99.61      |
+| HOME DEPOT.COM  ONLINE                          | 31,995.87              | 17,938.03                 | 14,057.84        | 43.94      |
+| MIKA - WALKERS WORLD                            | 12,092.00              | 0.00                      | 12,092.00        | 100.00     |
+| KIRKLAND'S INC.-Internet                        | 11,315.21              | 0.00                      | 11,315.21        | 100.00     |
+| APPLIANCE WORLD LTD                             | 14,451.00              | 5,577.00                  | 8,874.00         | 61.41      |
+| Life Floors                                     | 7,386.53               | 0.00                      | 7,386.53         | 100.00     |
+| Live Boho LLC                                   | 8,532.00               | 1,150.00                  | 7,382.00         | 86.52      |
+| MAGA Floors                                     | 7,258.99               | 0.00                      | 7,258.99         | 100.00     |
+| PRODECOR SA DE CV                               | 7,012.00               | 0.00                      | 7,012.00         | 100.00     |
+| Kirkconnell Enterprizes, LTD                    | 6,945.42               | 0.00                      | 6,945.42         | 100.00     |
+| MARSH POTTERY DBA CAROLINA POTTERY              | 6,595.20               | 0.00                      | 6,595.20         | 100.00     |
+| LIDDON FURNITURE COMPANY                        | 6,771.00               | 479.00                    | 6,292.00         | 92.93      |
+| Pat's Sales of Leesburg                         | 5,944.32               | 0.00                      | 5,944.32         | 100.00     |
+| DARVIN FURNITURE AND MATTRESS                   | 5,771.20               | 0.00                      | 5,771.20         | 100.00     |
+| CONSIGN & DESIGN                                | 7,832.00               | 2,457.00                  | 5,375.00         | 68.63      |
+| RUE LA LA -Rue Gilt Groupe                      | 26,834.85              | 21,626.55                 | 5,208.30         | 19.41      |
+| MISKELLY FURNITURE                              | 5,475.00               | 1,008.00                  | 4,467.00         | 81.59      |
+| Hermann Furniture                               | 4,464.00               | 0.00                      | 4,464.00         | 100.00     |
+| De La Terra Home Studio                         | 4,441.00               | 0.00                      | 4,441.00         | 100.00     |
+| FLOORING DEPOT OF PANAMA CITY                   | 4,362.32               | 0.00                      | 4,362.32         | 100.00     |
+| Lacey Durmon/MurrayHill Market                  | 4,274.00               | 0.00                      | 4,274.00         | 100.00     |
+| WAYFAIR CANADA                                  | 4,234.68               | 0.00                      | 4,234.68         | 100.00     |
+| MAYO GARDEN CENTER                              | 4,224.00               | 0.00                      | 4,224.00         | 100.00     |
+| Geneva Home Works                               | 4,132.00               | 0.00                      | 4,132.00         | 100.00     |
+| COASTAL ACCENTS & DESIGN                        | 4,061.00               | 0.00                      | 4,061.00         | 100.00     |
+| Abide Furniture & Interiors, Inc.               | 3,919.00               | 0.00                      | 3,919.00         | 100.00     |
+| PORCH LIVING 24/7/365                           | 3,881.00               | 0.00                      | 3,881.00         | 100.00     |
+| HILTON HEAD FURNITURE CO                        | 4,998.30               | 1,121.00                  | 3,877.30         | 77.57      |
+| WACCAMAW INTERIORS                              | 3,651.20               | 0.00                      | 3,651.20         | 100.00     |
+| PINK PINEAPPLE                                  | 4,821.00               | 1,177.00                  | 3,644.00         | 75.59      |
+| Chicagoland Home Staging                        | 3,580.00               | 0.00                      | 3,580.00         | 100.00     |
+| HOUSE TO HOME - SOUTHHAVEN                      | 3,297.10               | 0.00                      | 3,297.10         | 100.00     |
+| Atlantic Fine Furniture                         | 3,292.15               | 256.00                    | 3,036.15         | 92.22      |
+| SET THE STAGE                                   | 2,830.00               | 0.00                      | 2,830.00         | 100.00     |
+| CREATIVE CONCEPTS DE                            | 2,795.25               | 0.00                      | 2,795.25         | 100.00     |
+
+Overall, the total revenue loss for the latest available month compared to the same month last year is significant for many major accounts, with several experiencing a 100% drop. This highlights key areas for targeted recovery efforts.
+
+================================================================================
+[P1-14] Monthly payments by types of payments for 2025
+Q: Monthly payments by types of payments for 2025
+================================================================================
+SQL:
+SELECT TOP 40
+    DD.Month,
+    DD.MonthName,
+    FCP.DocType,
+    SUM(FCP.Amount) AS TotalPayments
+FROM FactCustomerPayment FCP
+JOIN DimDate DD ON FCP.PaymentDateKey = DD.DateKey
+WHERE DD.Year = 2025
+GROUP BY DD.Month, DD.MonthName, FCP.DocType
+ORDER BY DD.Month, FCP.DocType
+
+RESPONSE:
+Here is a breakdown of monthly customer payments for 2025, grouped by payment type:
+
+| Month     | Payment Type | Total Payments ($) |
+|:----------|:-------------|-------------------:|
+| January   | Check (C)    | 242,796.72        |
+| January   | Credit Card (D) | 100,554.25     |
+| January   | KeyOff (F)   | 0.00              |
+| January   | IDC# (I)     | 697,939.28        |
+| January   | WireTransfer (W) | 686,674.43    |
+| February  | Check (C)    | 6,607,769.16      |
+| February  | Credit Card (D) | 146,428.74     |
+| February  | KeyOff (F)   | 0.00              |
+| February  | IDC# (I)     | 671,816.15        |
+| February  | WireTransfer (W) | 761,382.75    |
+| March     | Check (C)    | 418,135.53        |
+| March     | Credit Card (D) | 138,315.02     |
+| March     | KeyOff (F)   | 0.00              |
+| March     | IDC# (I)     | 893,848.97        |
+| March     | WireTransfer (W) | 866,108.07    |
+| April     | Check (C)    | 444,182.27        |
+| April     | Credit Card (D) | 86,938.32      |
+| April     | KeyOff (F)   | 0.00              |
+| April     | IDC# (I)     | 1,182,128.15      |
+| April     | WireTransfer (W) | 682,695.30    |
+| May       | Check (C)    | 249,875.48        |
+| May       | Credit Card (D) | 155,338.14     |
+| May       | KeyOff (F)   | 0.00              |
+| May       | IDC# (I)     | 1,414,791.10      |
+| May       | WireTransfer (W) | 694,505.20    |
+| June      | Check (C)    | 305,469.02        |
+| June      | Credit Card (D) | 109,634.95     |
+| June      | KeyOff (F)   | 0.00              |
+| June      | IDC# (I)     | 588,953.97        |
+| June      | WireTransfer (W) | 742,828.90    |
+| July      | Check (C)    | 473,709.68        |
+| July      | Credit Card (D) | 173,248.22     |
+| July      | KeyOff (F)   | 0.00              |
+| July      | IDC# (I)     | 625,222.11        |
+| July      | WireTransfer (W) | 900,872.41    |
+| August    | Check (C)    | 234,103.33        |
+| August    | Credit Card (D) | 158,954.98     |
+| August    | KeyOff (F)   | 0.00              |
+| August    | IDC# (I)     | 1,241,480.40      |
+| August    | WireTransfer (W) | 786,755.93    |
+
+- "C" = Check, "D" = Credit Card, "F" = KeyOff, "I" = IDC#, "W" = WireTransfer.
+- February saw the highest check payments, while IDC# and WireTransfer are also significant payment types.
+- KeyOff payments were not used in these months.
+
+================================================================================
+[P1-15] prepare grouped balance sheet as of december 2025
+Q: prepare grouped balance sheet as of december 2025
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2025
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | -963,197.12 |
+|     Non Current Assets | 27,326.25 |
+| **Total Assets** | -935,870.87 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | -242,975.90 |
+|     Long Term Liabilities | -33,501.14 |
+|     Stockholder Equity | 62,369.95 |
+| **Total Liabilities & Equity** | -214,107.09 |
+
+================================================================================
+[P1-16] prepare grouped balance sheet as of december 2025, also create group t
+Q: prepare grouped balance sheet as of december 2025, also create group totals as per template of grouped balance sheet
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2025
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | -963,197.12 |
+|     Non Current Assets | 27,326.25 |
+| **Total Assets** | -935,870.87 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | -242,975.90 |
+|     Long Term Liabilities | -33,501.14 |
+|     Stockholder Equity | 62,369.95 |
+| **Total Liabilities & Equity** | -214,107.09 |
+
+================================================================================
+[P1-17] prepare grouped balance sheet as of december 2025, also create group t
+Q: prepare grouped balance sheet as of december 2025, also create group totals as per template of grouped balance sheet, show the totals in grid
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2025
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | -963,197.12 |
+|     Non Current Assets | 27,326.25 |
+| **Total Assets** | -935,870.87 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | -242,975.90 |
+|     Long Term Liabilities | -33,501.14 |
+|     Stockholder Equity | 62,369.95 |
+| **Total Liabilities & Equity** | -214,107.09 |
+
+================================================================================
+[P1-18] Top 10 sales return reasons, quantities and total returns, for the yea
+Q: Top 10 sales return reasons, quantities and total returns, for the year 2025.
+================================================================================
+SQL:
+SELECT TOP 10
+    ReturnReason,
+    SUM(ReturnQty) AS TotalReturnQty,
+    SUM(ExtPrice) AS TotalReturnAmount
+FROM FactCustomerReturnDetail
+WHERE DateReceivedKey IN (
+    SELECT DateKey FROM DimDate WHERE Year = 2025
+)
+  AND ReturnReason IS NOT NULL
+GROUP BY ReturnReason
+HAVING SUM(ReturnQty) > 0
+ORDER BY TotalReturnQty DESC
+
+RESPONSE:
+Here are the top 10 sales return reasons for 2025, along with their total return quantities and total return amounts:
+
+| Return Reason                                                        | Total Return Quantity | Total Return Amount ($) |
+|:---------------------------------------------------------------------|---------------------:|-----------------------:|
+| PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 1'-8" X 1'-8" | 54 | 0.0 |
+| PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 1'6" X 1'6" | 24 | 0.0 |
+| PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 1'-2" X 3' | 15 | 0.0 |
+| PILLOWS \| PILLOW COVER \| LR07394 \| PASTEL BLUE \| 18" X 18" PILLOW | 9 | 151.0 |
+| PILLOWS \| PILLOW COVER \| LR07844 \| CORAL PINK \| 1'-2" X 3' | 9 | 171.0 |
+| PILLOWS \| PILLOW COVER \| LR07630 \| PASTEL \| 20" X 20" | 8 | 192.0 |
+| PILLOWS \| PILLOW COVER \| LR07513 \| INSIGNIA BLUE \| 20" X 20" | 7 | 131.8 |
+| PILLOWS \| PPOLY \| PILLOW INSERT & STUFFING \| DESCRIPTION \| 2' X 2' | 6 | 0.0 |
+| PILLOWS \| PILLOW COVER \| LR07598 \| GRAY / MELANGE \| 2' X 2' | 5 | 145.0 |
+| PILLOWS \| PILLOW COVER \| LR07736 \| CANAL BLUE \| 20" X 20" | 5 | 105.0 |
+
+================================================================================
+[P1-19] Assign 5 logical groups to customer return reasons for customer return
+Q: Assign 5 logical groups to customer return reasons for customer returns for 2025. and name other group as not properly entered. show logical groups and no of returns and return quantities
+================================================================================
+SQL:
+(none)
+
+RESPONSE:
+WITH UniqueReasons AS (
+    SELECT
+        ReturnReason,
+        COUNT(*) AS ReturnCount,
+        SUM(ReturnQty) AS TotalReturnQty
+    FROM FactCustomerReturnDetail
+    WHERE DateReceivedKey IN (SELECT DateKey FROM DimDate WHERE Year = 2025)
+      AND ReturnReason IS NOT NULL
+    GROUP BY ReturnReason
+),
+LogicalGroups AS (
+    SELECT
+        CASE
+            WHEN ReturnReason LIKE '%damag%' OR ReturnReason LIKE '%defect%' OR ReturnReason LIKE '%broken%' THEN 'Damaged/Defective'
+            WHEN ReturnReason LIKE '%wrong%' OR ReturnReason LIKE '%incorrect%' OR ReturnReason LIKE '%not as ordered%' THEN 'Wrong/Incorrect Item'
+            WHEN ReturnReason LIKE '%size%' OR ReturnReason LIKE '%fit%' THEN 'Size/Fit Issue'
+            WHEN ReturnReason LIKE '%color%' OR ReturnReason LIKE '%appearance%' OR ReturnReason LIKE '%not as expected%' THEN 'Color/Appearance'
+            WHEN ReturnReason LIKE '%changed mind%' OR ReturnReason LIKE '%no longer needed%' OR ReturnReason LIKE '%overstock%' THEN 'Customer Changed Mind'
+            ELSE 'Not Properly Entered'
+        END AS LogicalGroup,
+        ReturnCount,
+        TotalReturnQty
+    FROM UniqueReasons
+)
+SELECT TOP 40
+    LogicalGroup,
+    SUM(ReturnCount) AS NumberOfReturns,
+    SUM(TotalReturnQty) AS TotalReturnQuantity
+FROM LogicalGroups
+GROUP BY LogicalGroup
+HAVING SUM(TotalReturnQty) > 0
+ORDER BY TotalReturnQuantity DESC
+
+================================================================================
+[P1-20] TOP 10 CUSTOMERS BY SALES AMOUNT IN 2025 ALSO ADD THEIR FORECASTED SAL
+Q: TOP 10 CUSTOMERS BY SALES AMOUNT IN 2025 ALSO ADD THEIR FORECASTED SALES FOR 2026 AND AVERAGE MONTHLY SALES
+================================================================================
+SQL:
+WITH Sales2025 AS (
+    SELECT
+        FSI.CustomerKey,
+        SUM(FSI.MerchandiseAmount) AS TotalSales2025
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE DD.Year = 2025
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    GROUP BY FSI.CustomerKey
+),
+Sales2026Forecast AS (
+    SELECT
+        FSI.CustomerKey,
+        SUM(FSI.MerchandiseAmount) AS ForecastedSales2026
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE DD.Year = 2026
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    GROUP BY FSI.CustomerKey
+),
+MonthlyAvg2025 AS (
+    SELECT
+        FSI.CustomerKey,
+        SUM(FSI.MerchandiseAmount) / 12.0 AS AvgMonthlySales2025
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE DD.Year = 2025
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    GROUP BY FSI.CustomerKey
+)
+SELECT TOP 10
+    ROW_NUMBER() OVER (ORDER BY S25.TotalSales2025 DESC) AS Rank,
+    DC.CustomerID,
+    DC.CustomerName,
+    S25.TotalSales2025 AS [2025 Sales ($)],
+    ISNULL(S26.ForecastedSales2026, 0) AS [2026 Forecasted Sales ($)],
+    MA.AvgMonthlySales2025 AS [2025 Avg Monthly Sales ($)]
+FROM Sales2025 S25
+JOIN DimCustomer DC ON S25.CustomerKey = DC.CustomerKey
+LEFT JOIN Sales2026Forecast S26 ON S25.CustomerKey = S26.CustomerKey
+LEFT JOIN MonthlyAvg2025 MA ON S25.CustomerKey = MA.CustomerKey
+ORDER BY S25.TotalSales2025 DESC
+
+RESPONSE:
+Here are the top 10 customers by sales amount in 2025, along with their forecasted sales for 2026 and their average monthly sales in 2025:
+
+| Rank | Customer ID | Customer Name                                   | 2025 Sales ($) | 2026 Forecasted Sales ($) | 2025 Avg Monthly Sales ($) |
+|:---|:---|:---|---:|---:|---:|
+| 1 | 000919 | WAYFAIR LLC | 1442124.38 | 408577.13 | 120177.031666 |
+| 2 | 002950 | WILLIAM SONOMA/POTTERY BARN - DROP SHIP | 530886.86 | 54599.0 | 44240.571666 |
+| 3 | 000681 | Rugs Direct.com | 402731.98 | 135951.91 | 33560.998333 |
+| 4 | 000378 | HOME DEPOT.COM  ONLINE | 372844.43 | 60276.12 | 31070.369166 |
+| 5 | 000382 | HOME GOODS | 362635.65 | 82025.55 | 30219.6375 |
+| 6 | 000034 | AMAZON VENDOR - BULK MONTHLY | 330366.86 | 0.0 | 27530.571666 |
+| 7 | 001028 | RUE LA LA -Rue Gilt Groupe | 289031.81 | 73451.8 | 24085.984166 |
+| 8 | 002714 | AMAZON DROP SHIP | 286173.52 | 0.0 | 23847.793333 |
+| 9 | 000540 | NEBRASKA FURNITURE MART | 227252.46 | 47441.99 | 18937.705 |
+| 10 | 000985 | MENARDS | 218900.0 | 157500.0 | 18241.666666 |
+
+================================================================================
+[P1-21] prepare grouped income statement for december 2025
+Q: prepare grouped income statement for december 2025
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2025-12-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 12,926,249.48 |
+| **Cost Of Goods Sold** | -8,746,092.66 |
+| **Gross Profit/(Loss)** | 4,180,156.82 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -1,032,887.91 |
+|     Selling Expenses | -2,664,103.83 |
+| **Total Operating Cost** | -3,696,991.74 |
+| **Operating Profit/(Loss)** | 483,165.08 |
+| | |
+| **Finance Charges** | -413,787.39 |
+| **Other Income/Expense** | 30.80 |
+| **Taxes** | -7,038.54 |
+| **Net Profit/(Loss)** | 62,369.95 |
+
+================================================================================
+[P1-22] prepare sub grouped balance sheet as on december 2025 and december 202
+Q: prepare sub grouped balance sheet as on december 2025 and december 2024 in crosstab columns
+================================================================================
+[ERROR EVENT]: Connection error.
+SQL:
+(none)
+
+RESPONSE:
+(empty)
+
+================================================================================
+[P1-23] sub grouped income statement for 1ST QUARTER OF 2025
+Q: sub grouped income statement for 1ST QUARTER OF 2025
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2025-01-01'
+  AND FAM.PeriodStartDate < '2025-04-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Gross Sales | 6,571,147.47 |
+|     Deduction Reversal | 0.00 |
+|     Discount | -372,153.68 |
+|     CHARGE BACK | 0.00 |
+|     Price Differences | -1,104.05 |
+|     Returns | -207,531.49 |
+|     Services | 0.00 |
+|     SHIPPING & HANDLING | 282,578.25 |
+|     Short Shipments | -715.13 |
+| **Total Sales** | 6,272,221.37 |
+| | |
+| **Cost Of Goods Sold** | |
+|     Cost of Goods Sold | -3,170,549.61 |
+|     Fees | -128,365.19 |
+|     Freight | -253,803.08 |
+|     Import Clearing And Forwarding | -291,970.99 |
+|     INSURANCE | 0.00 |
+|     Inventory Adjustment Account | -134.22 |
+|     Others | -39,317.68 |
+|     Packing Expense | -59,022.03 |
+|     Rent | -3,583.95 |
+|     RUG CLEANING | 0.00 |
+|     RUG Serging Fees | -1,934.89 |
+|     Shipping Expense | -116,708.46 |
+|     Short Shipment | 0.00 |
+| **Total Cost Of Goods Sold** | -4,065,389.10 |
+| | |
+| **Gross Profit/(Loss)** | 2,206,832.27 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Automobile Expenses | -17,769.33 |
+|     Bad Debt | 14.20 |
+|     Cash Discounts | 0.00 |
+|     Charge Back | -21,603.59 |
+|     Commercial Insurances | -79,018.36 |
+|     Commission | -173,145.07 |
+|     Communication Expenses | -46,615.06 |
+|     Dues And Subscriptions | -67,122.16 |
+|     Inventory Adjustment | 0.00 |
+|     Office Expenses | -78,872.37 |
+| **Total General & Administrative** | -484,131.74 |
+| | |
+| **Selling Expenses** | |
+|     Advertising Expenses | -41,208.82 |
+|     Amortization | 0.00 |
+|     Depreciation Expense | 0.00 |
+|     Loss On Sale Of Assets | 0.00 |
+|     Marketing Expenses | -267,944.73 |
+|     Payroll | -916,926.26 |
+|     Provisional Expenses | -29,886.89 |
+|     Rent | -186,000.00 |
+|     Software Monthly Fee | 0.00 |
+|     Traveling Expenses | -29,635.17 |
+| **Total Selling Expenses** | -1,471,601.87 |
+| | |
+| **Total Operating Cost** | -1,955,733.61 |
+| **Operating Profit/(Loss)** | 251,098.66 |
+| | |
+| **Finance Charges** | |
+|     Finance Charges | -174,404.97 |
+| **Total Finance Charges** | -174,404.97 |
+| | |
+| **Other Income/Expense** | |
+|     Abnormal Income | 0.00 |
+|     Interest Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+| **Total Other Income/Expense** | 0.00 |
+| | |
+| **Taxes** | |
+|     Taxes | 0.00 |
+| **Total Taxes** | 0.00 |
+| | |
+| **Net Profit/(Loss)** | 76,693.69 |
+
+================================================================================
+[P1-24] Show us the actual sales for march 2024 , foretasted sales march 2025 
+Q: Show us the actual sales for march 2024 , foretasted sales march 2025 and actual sales march 2025, what are reasons of major variance?
+================================================================================
+SQL:
+SELECT SUM(FSI.MerchandiseAmount) AS ForecastedSales_March2025
+FROM FactSalesInvoice FSI
+JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+WHERE DD.Month = 3
+  AND DD.Year = 2025
+  AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+
+RESPONSE:
+Here is a summary of actual and forecasted sales for March 2024 and March 2025, along with the average monthly sales for both years:
+
+- **Actual Sales for March 2024:** $1,961,068.77
+- **Forecasted Sales for March 2025:** $1,098,419.97 (based on 2025 average monthly sales)
+- **Actual Sales for March 2025:** $969,588.66
+
+**Variance Analysis:**
+- The actual sales for March 2025 ($969,588.66) were lower than the forecasted sales ($1,098,419.97) by $128,831.31.
+- This variance may be due to seasonality, changes in customer demand, or specific large orders in March 2024 that did not repeat in 2025. Additionally, the overall average monthly sales in 2025 were higher than in 2024, but March 2025 underperformed relative to this average.
+
+| Period                | Sales ($)      |
+|:----------------------|--------------:|
+| Actual Sales March 2024      | 1,961,068.77 |
+| Forecasted Sales March 2025  | 1,098,419.97 |
+| Actual Sales March 2025      |   969,588.66 |
+| Variance (Actual vs Forecast)|  -128,831.31 |
+
+================================================================================
+[P1-25] grouped balance sheet as of december 2024
+Q: grouped balance sheet as of december 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | 7,914,570.49 |
+|     Non Current Assets | 452,447.24 |
+| **Total Assets** | 8,367,017.73 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | 6,209,649.02 |
+|     Long Term Liabilities | 56,508.92 |
+|     Stockholder Equity | 2,100,859.79 |
+| **Total Liabilities & Equity** | 8,367,017.73 |
+
+================================================================================
+[P1-26] prepare grouped balance sheet as on june 2025 and july 2025 in crossta
+Q: prepare grouped balance sheet as on june 2025 and july 2025 in crosstab columns
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-06-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [June 2025],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-07-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [July 2025]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2025-06-01', '2025-07-01')
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | June 2025 ($) | July 2025 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+|     Current Assets | -747,053.86 | -1,005,834.90 |
+|     Non Current Assets | 23,732.00 | 16,210.00 |
+| **Total Assets** | -723,321.86 | -989,624.90 |
+| | | |
+| **Liabilities & Equity** | | |
+|     Current Liabilities | -461,988.15 | -493,952.13 |
+|     Long Term Liabilities | -16,607.50 | -19,405.71 |
+|     Stockholder Equity | -81,628.47 | -149,561.34 |
+| **Total Liabilities & Equity** | -560,224.12 | -662,919.18 |
+
+================================================================================
+[P1-27] please share balance sheet templates
+Q: please share balance sheet templates
+================================================================================
+SQL:
+(none)
+
+RESPONSE:
+Here are the standard templates and formats used for preparing balance sheets:
+
+**1. Balance Sheet Main Grouped (Summary)**
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | [value] |
+|     Non Current Assets | [value] |
+| **Total Assets** | [value] |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | [value] |
+|     Long Term Liabilities | [value] |
+|     Stockholder Equity | [value] |
+| **Total Liabilities & Equity** | [value] |
+
+**2. Balance Sheet Main Grouped — Multi-Month (Comparison)**
+| Description | [Month1 Year] ($) | [Month2 Year] ($) |
+|:---|---:|---:|
+| **Assets** | | |
+|     Current Assets | [value] | [value] |
+|     Non Current Assets | [value] | [value] |
+| **Total Assets** | [computed] | [computed] |
+| | | |
+| **Liabilities & Equity** | | |
+|     Current Liabilities | [value] | [value] |
+|     Long Term Liabilities | [value] | [value] |
+|     Stockholder Equity | [value] | [value] |
+| **Total Liabilities & Equity** | [computed] | [computed] |
+
+**3. Balance Sheet Sub Grouped**
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | [value] |
+|     Cash and Cash Equivalents | [value] |
+|     Inventory | [value] |
+|     Other Receivables | [value] |
+| **Total Current Assets** | [value] |
+| | |
+| **Non Current Assets** | |
+|     Other Non Current Assets | [value] |
+|     Property Plant & Equipments | [value] |
+| **Total Non Current Assets** | [value] |
+| | |
+| **Total Assets** | [value] |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | [value] |
+|     Accrued Expenses | [value] |
+|     Other Payables | [value] |
+|     Short Term Loans | [value] |
+| **Total Current Liabilities** | [value] |
+| | |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | [value] |
+| **Total Long Term Liabilities** | [value] |
+| | |
+| **Stockholder Equity** | |
+|     Common Stock | [value] |
+|     Distributions | [value] |
+|     Profit/(Loss) | [value] |
+|     Retained Earnings | [value] |
+|     Stockholder Equity | [value] |
+| **Total Stockholder Equity** | [value] |
+| | |
+| **Total Liabilities & Equity** | [value] |
+
+**4. Balance Sheet Sub Grouped — Multi-Month**
+| Description | [Month1 Year] ($) | [Month2 Year] ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+|     Accounts Receivable | [value] | [value] |
+|     Cash and Cash Equivalents | [value] | [value] |
+|     Inventory | [value] | [value] |
+|     Other Receivables | [value] | [value] |
+| **Total Current Assets** | [computed] | [computed] |
+| | | |
+| **Non Current Assets** | | |
+|     Other Non Current Assets | [value] | [value] |
+|     Property Plant & Equipments | [value] | [value] |
+| **Total Non Current Assets** | [computed] | [computed] |
+| | | |
+| **Total Assets** | [computed] | [computed] |
+| | | |
+| **Liabilities & Equity** | | |
+| **Current Liabilities** | | |
+|     Accounts Payable | [value] | [value] |
+|     Accrued Expenses | [value] | [value] |
+|     Other Payables | [value] | [value] |
+|     Short Term Loans | [value] | [value] |
+| **Total Current Liabilities** | [computed] | [computed] |
+| | | |
+| **Long Term Liabilities** | | |
+|     Long Term Liabilities | [value] | [value] |
+| **Total Long Term Liabilities** | [computed] | [computed] |
+| | | |
+| **Stockholder Equity** | | |
+|     Common Stock | [value] | [value] |
+|     Distributions | [value] | [value] |
+|     Profit/(Loss) | [value] | [value] |
+|     Retained Earnings | [value] | [value] |
+|     Stockholder Equity | [value] | [value] |
+| **Total Stockholder Equity** | [computed] | [computed] |
+| | | |
+| **Total Liabilities & Equity** | [computed] | [computed] |
+
+**5. Balance Sheet Detailed**
+- This format lists every account under each group and sub-group, with indented lines for each account and totals for each section, as shown in the detailed template above.
+
+Let me know if you need a specific template in more detail or for a particular reporting period!
+
+================================================================================
+[P1-28] prepare grouped balance sheet for december 2024 as per grouped templat
+Q: prepare grouped balance sheet for december 2024 as per grouped template
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | 7,914,570.49 |
+|     Non Current Assets | 452,447.24 |
+| **Total Assets** | 8,367,017.73 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | 6,209,649.02 |
+|     Long Term Liabilities | 56,508.92 |
+|     Stockholder Equity | 2,100,859.79 |
+| **Total Liabilities & Equity** | 8,367,017.73 |
+
+================================================================================
+[P1-29] prepare sub grouped balance sheet as on june 2025 as per sub grouped t
+Q: prepare sub grouped balance sheet as on june 2025 as per sub grouped template
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2025
+  AND DD.Month = 6
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | -321,456.10 |
+|     Cash and Cash Equivalents | -78,039.97 |
+|     Inventory | -254,357.19 |
+|     Other Receivables | -93,200.60 |
+| **Total Current Assets** | -747,053.86 |
+| | |
+| **Non Current Assets** | |
+|     Other Non Current Assets | 2,700.00 |
+|     Property Plant & Equipments | 21,032.00 |
+| **Total Non Current Assets** | 23,732.00 |
+| | |
+| **Total Assets** | -723,321.86 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | -237,696.44 |
+|     Accrued Expenses | -12,711.88 |
+|     Other Payables | 93.61 |
+|     Short Term Loans | -211,673.44 |
+| **Total Current Liabilities** | -461,988.15 |
+| | |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | -16,607.50 |
+| **Total Long Term Liabilities** | -16,607.50 |
+| | |
+| **Stockholder Equity** | |
+|     Common Stock | 0.00 |
+|     Distributions | 0.00 |
+|     Profit/(Loss) | -81,628.47 |
+|     Retained Earnings | 0.00 |
+|     Stockholder Equity | 0.00 |
+| **Total Stockholder Equity** | -81,628.47 |
+| | |
+| **Total Liabilities & Equity** | -560,224.12 |
+
+================================================================================
+[P1-30] sub grouped pl statement for 2025
+Q: sub grouped pl statement for 2025
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2025-01-01'
+  AND FAM.PeriodStartDate <= '2025-12-31'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Gross Sales | 85,763,828.92 |
+|     Deduction Reversal | 0.00 |
+|     Discount | -4,067,981.59 |
+|     CHARGE BACK | 0.00 |
+|     Price Differences | 9,315.82 |
+|     Returns | -3,277,458.18 |
+|     Services | 0.00 |
+|     SHIPPING & HANDLING | 4,290,036.56 |
+|     Short Shipments | 9,207.56 |
+| **Total Sales** | 82,727,949.09 |
+| | |
+| **Cost Of Goods Sold** | |
+|     Cost of Goods Sold | -40,157,813.17 |
+|     Fees | -1,949,780.13 |
+|     Freight | -4,123,161.64 |
+|     Import Clearing And Forwarding | -5,803,473.46 |
+|     INSURANCE | 0.00 |
+|     Inventory Adjustment Account | 28,499.95 |
+|     Others | -848,123.98 |
+|     Packing Expense | -509,048.18 |
+|     Rent | -66,443.53 |
+|     RUG CLEANING  | 0.00 |
+|     RUG Serging Fees | 32,694.18 |
+|     Shipping Expense | -1,578,683.57 |
+|     Short Shipment | 0.00 |
+| **Total Cost Of Goods Sold** | -54,951,334.57 |
+| | |
+| **Gross Profit/(Loss)** | 27,776,614.52 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Automobile Expenses | -355,729.14 |
+|     Bad Debt | -279.74 |
+|     Cash Discounts | 0.00 |
+|     Charge Back | -194,901.22 |
+|     Commercial Insurances | -614,199.77 |
+|     Commission | -3,285,877.09 |
+|     Communication Expenses | -588,203.66 |
+|     Dues And Subscriptions | -779,097.07 |
+|     Inventory Adjustment | 0.00 |
+|     Office Expenses | -1,017,477.31 |
+| **Total General & Administrative** | -6,835,765.00 |
+| | |
+| **Selling Expenses** | |
+|     Advertising Expenses | -455,597.09 |
+|     Amortization | 0.00 |
+|     Depreciation Expense | 0.00 |
+|     Loss On Sale Of Assets | 0.00 |
+|     Marketing Expenses | -3,497,461.30 |
+|     Payroll | -11,519,405.65 |
+|     Provisional Expenses | -279,342.78 |
+|     Rent | -1,829,025.00 |
+|     Software Monthly Fee | 0.00 |
+|     Traveling Expenses | -486,845.75 |
+| **Total Selling Expenses** | -18,067,677.57 |
+| | |
+| **Total Operating Cost** | -24,903,442.57 |
+| **Operating Profit/(Loss)** | 2,873,171.95 |
+| | |
+| **Finance Charges** | |
+|     Finance Charges | -2,657,937.63 |
+| **Total Finance Charges** | -2,657,937.63 |
+| | |
+| **Other Income/Expense** | |
+|     Abnormal Income | 0.00 |
+|     Interest Income | 0.00 |
+|     OTHER INCOME | 21,984.66 |
+| **Total Other Income/Expense** | 21,984.66 |
+| | |
+| **Taxes** | |
+|     Taxes | -8,230.15 |
+| **Total Taxes** | -8,230.15 |
+| | |
+| **Net Profit/(Loss)** | 229,988.83 |
+
+================================================================================
+[P1-31] grouped pl statement for 2024
+Q: grouped pl statement for 2024
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2024-01-01'
+  AND FAM.PeriodStartDate <= '2024-12-31'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 11,209,537.75 |
+| **Cost Of Goods Sold** | -6,864,280.01 |
+| **Gross Profit/(Loss)** | 4,345,257.74 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -814,236.13 |
+|     Selling Expenses | -3,446,413.44 |
+| **Total Operating Cost** | -4,260,649.57 |
+| **Operating Profit/(Loss)** | 84,608.17 |
+| | |
+| **Finance Charges** | -467,563.52 |
+| **Other Income/Expense** | 0.77 |
+| **Taxes** | -9,409.97 |
+| **Net Profit/(Loss)** | -392,364.55 |
+
+================================================================================
+[P1-32] grouped pl statement for 2024 using template
+Q: grouped pl statement for 2024 using template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2024-01-01'
+  AND FAM.PeriodStartDate <= '2024-12-31'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 11,209,537.75 |
+| **Cost Of Goods Sold** | -6,864,280.01 |
+| **Gross Profit/(Loss)** | 4,345,257.74 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -814,236.13 |
+|     Selling Expenses | -3,446,413.44 |
+| **Total Operating Cost** | -4,260,649.57 |
+| **Operating Profit/(Loss)** | 84,608.17 |
+| | |
+| **Finance Charges** | -467,563.52 |
+| **Other Income/Expense** | 0.77 |
+| **Taxes** | -9,409.97 |
+| **Net Profit/(Loss)** | -392,364.55 |
+
+================================================================================
+[P1-33] sub grouped pl statement for 2024 as per sub grouped template
+Q: sub grouped pl statement for 2024 as per sub grouped template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2024-01-01'
+  AND FAM.PeriodStartDate <= '2024-12-31'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Gross Sales | 11,954,540.29 |
+|     Deduction Reversal | 0.00 |
+|     Discount | -641,485.38 |
+|     CHARGE BACK | 0.00 |
+|     Price Differences | -12,613.72 |
+|     Returns | -483,414.52 |
+|     Services | 0.00 |
+|     SHIPPING & HANDLING | 403,096.11 |
+|     Short Shipments | -10,585.03 |
+| **Total Sales** | 11,209,537.75 |
+| | |
+| **Cost Of Goods Sold** | |
+|     Cost of Goods Sold | -5,354,339.69 |
+|     Fees | -63,709.42 |
+|     Freight | -382,890.92 |
+|     Import Clearing And Forwarding | -659,985.68 |
+|     INSURANCE | 0.00 |
+|     Inventory Adjustment Account | -7,486.09 |
+|     Others | -97,047.69 |
+|     Packing Expense | -129,795.63 |
+|     Rent | -1,474.52 |
+|     RUG CLEANING  | 0.00 |
+|     RUG Serging Fees | -7,186.90 |
+|     Shipping Expense | -160,363.47 |
+|     Short Shipment | 0.00 |
+| **Total Cost Of Goods Sold** | -6,864,280.01 |
+| | |
+| **Gross Profit/(Loss)** | 4,345,257.74 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Automobile Expenses | -52,016.88 |
+|     Bad Debt | 2,500.51 |
+|     Cash Discounts | 0.00 |
+|     Charge Back | -23,517.14 |
+|     Commercial Insurances | -82,749.77 |
+|     Commission | -332,887.07 |
+|     Communication Expenses | -93,797.06 |
+|     Dues And Subscriptions | -106,469.15 |
+|     Inventory Adjustment | 0.00 |
+|     Office Expenses | -125,299.57 |
+| **Total General & Administrative** | -814,236.13 |
+| | |
+| **Selling Expenses** | |
+|     Advertising Expenses | -58,420.30 |
+|     Amortization | -28,415.00 |
+|     Depreciation Expense | -101,811.00 |
+|     Loss On Sale Of Assets | 0.00 |
+|     Marketing Expenses | -624,350.31 |
+|     Payroll | -1,620,770.11 |
+|     Provisional Expenses | -594,226.32 |
+|     Rent | -369,500.00 |
+|     Software Monthly Fee | 0.00 |
+|     Traveling Expenses | -48,920.40 |
+| **Total Selling Expenses** | -3,446,413.44 |
+| | |
+| **Total Operating Cost** | -4,260,649.57 |
+| **Operating Profit/(Loss)** | 84,608.17 |
+| | |
+| **Finance Charges** | |
+|     Finance Charges | -467,563.52 |
+| **Total Finance Charges** | -467,563.52 |
+| | |
+| **Other Income/Expense** | |
+|     Abnormal Income | 0.00 |
+|     Interest Income | 0.00 |
+|     OTHER INCOME | 0.77 |
+| **Total Other Income/Expense** | 0.77 |
+| | |
+| **Taxes** | |
+|     Taxes | -9,409.97 |
+| **Total Taxes** | -9,409.97 |
+| | |
+| **Net Profit/(Loss)** | -392,364.55 |
+
+================================================================================
+[P1-34] grouped balance sheet as of december 2024 , grouped template
+Q: grouped balance sheet as of december 2024 , grouped template
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | 7,914,570.49 |
+|     Non Current Assets | 452,447.24 |
+| **Total Assets** | 8,367,017.73 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | 6,209,649.02 |
+|     Long Term Liabilities | 56,508.92 |
+|     Stockholder Equity | 2,100,859.79 |
+| **Total Liabilities & Equity** | 8,367,017.73 |
+
+================================================================================
+[P1-35] MAIN grouped balance sheet as of december 2024 , mAIN grouped template
+Q: MAIN grouped balance sheet as of december 2024 , mAIN grouped template
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | 7,914,570.49 |
+|     Non Current Assets | 452,447.24 |
+| **Total Assets** | 8,367,017.73 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | 6,209,649.02 |
+|     Long Term Liabilities | 56,508.92 |
+|     Stockholder Equity | 2,100,859.79 |
+| **Total Liabilities & Equity** | 8,367,017.73 |
+
+================================================================================
+[P1-36] grouped balance as on november 2024
+Q: grouped balance as on november 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 11
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | 7,465,855.33 |
+|     Non Current Assets | 583,925.24 |
+| **Total Assets** | 8,049,780.57 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | 5,893,501.97 |
+|     Long Term Liabilities | 59,250.15 |
+|     Stockholder Equity | 2,097,028.45 |
+| **Total Liabilities & Equity** | 8,049,780.57 |
+
+================================================================================
+[P1-37] grouped income statement for december 2024
+Q: grouped income statement for december 2024
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2024-12-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 1,593,022.15 |
+| **Cost Of Goods Sold** | -568,714.63 |
+| **Gross Profit/(Loss)** | 1,024,307.52 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -69,148.89 |
+|     Selling Expenses | -1,008,570.53 |
+| **Total Operating Cost** | -1,077,719.42 |
+| **Operating Profit/(Loss)** | -53,411.90 |
+| | |
+| **Finance Charges** | -48,671.72 |
+| **Other Income/Expense** | 0.77 |
+| **Taxes** | -7,206.54 |
+| **Net Profit/(Loss)** | -109,289.39 |
+
+================================================================================
+[P1-38] grouped pl statement for december 2024
+Q: grouped pl statement for december 2024
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2024-12-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 1,593,022.15 |
+| **Cost Of Goods Sold** | -568,714.63 |
+| **Gross Profit/(Loss)** | 1,024,307.52 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -69,148.89 |
+|     Selling Expenses | -1,008,570.53 |
+| **Total Operating Cost** | -1,077,719.42 |
+| **Operating Profit/(Loss)** | -53,411.90 |
+| | |
+| **Finance Charges** | -48,671.72 |
+| **Other Income/Expense** | 0.77 |
+| **Taxes** | -7,206.54 |
+| **Net Profit/(Loss)** | -109,289.39 |
+
+================================================================================
+[P1-39] sub grouped balance sheet as on november 2024
+Q: sub grouped balance sheet as on november 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 11
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | 1,859,684.29 |
+|     Cash and Cash Equivalents | -25,476.50 |
+|     Inventory | 5,574,895.46 |
+|     Other Receivables | 56,752.08 |
+| **Total Current Assets** | 7,465,855.33 |
+| | |
+| **Non Current Assets** | |
+|     Other Non Current Assets | 518,293.88 |
+|     Property Plant & Equipments | 65,631.36 |
+| **Total Non Current Assets** | 583,925.24 |
+| | |
+| **Total Assets** | 8,049,780.57 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | 931,374.32 |
+|     Accrued Expenses | 31,660.61 |
+|     Other Payables | 54,426.07 |
+|     Short Term Loans | 4,876,040.97 |
+| **Total Current Liabilities** | 5,893,501.97 |
+| | |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | 59,250.15 |
+| **Total Long Term Liabilities** | 59,250.15 |
+| | |
+| **Stockholder Equity** | |
+|     Common Stock | 1,000.00 |
+|     Distributions | 0.00 |
+|     Profit/(Loss) | -283,075.16 |
+|     Retained Earnings | 4,919,179.07 |
+|     Stockholder Equity | -2,540,075.46 |
+| **Total Stockholder Equity** | 2,097,028.45 |
+| | |
+| **Total Liabilities & Equity** | 8,049,780.57 |
+
+================================================================================
+[P1-40] detailed balance sheet as on december 2023
+Q: detailed balance sheet as on december 2023
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate = '2023-12-01'
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | 2,537,810.75 |
+|     Cash and Cash Equivalents | -5,549.99 |
+|     Inventory | 6,359,767.36 |
+|     Other Receivables | 81,062.72 |
+| **Total Current Assets** | 8,973,091.84 |
+| | |
+| **Non Current Assets** | |
+|     Other Non Current Assets | 499,880.64 |
+|     Property Plant & Equipments | 52,610.34 |
+| **Total Non Current Assets** | 552,491.00 |
+| | |
+| **Total Assets** | 9,525,582.84 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | 1,536,959.58 |
+|     Accrued Expenses | 43,859.50 |
+|     Other Payables | 838.82 |
+|     Short Term Loans | 5,355,483.89 |
+| **Total Current Liabilities** | 6,937,141.79 |
+| | |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | 95,215.69 |
+| **Total Long Term Liabilities** | 95,215.69 |
+| | |
+| **Stockholder Equity** | |
+|     Common Stock | 1,000.00 |
+|     Distributions | 0.00 |
+|     Profit/(Loss) | 192,733.40 |
+|     Retained Earnings | 4,726,445.66 |
+|     Stockholder Equity | -2,426,954.73 |
+| **Total Stockholder Equity** | 2,493,224.33 |
+| | |
+| **Total Liabilities & Equity** | 9,525,582.81 |
+
+================================================================================
+[P1-41] grouped P&L Statement  or income statement for 2023
+Q: grouped P&L Statement  or income statement for 2023
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate >= '2023-01-01'
+  AND FAM.PeriodStartDate <= '2023-12-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 13,164,963.37 |
+| **Cost Of Goods Sold** | -8,698,477.61 |
+| **Gross Profit/(Loss)** | 4,466,485.76 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -939,653.38 |
+|     Selling Expenses | -2,910,587.14 |
+| **Total Operating Cost** | -3,850,240.52 |
+| **Operating Profit/(Loss)** | 616,245.24 |
+| | |
+| **Finance Charges** | -414,636.60 |
+| **Other Income/Expense** | 0.00 |
+| **Taxes** | -8,875.25 |
+| **Net Profit/(Loss)** | 192,733.39 |
+
+================================================================================
+[P1-42] grouped pl statement for january 2026
+Q: grouped pl statement for january 2026
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2026-01-01'
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | 1,136,060.98 |
+| **Cost Of Goods Sold** | -729,937.04 |
+| **Gross Profit/(Loss)** | 406,123.94 |
+| | |
+| **Operating Cost** | |
+|     General & Administrative | -84,231.75 |
+|     Selling Expenses | -282,790.76 |
+| **Total Operating Cost** | -367,022.51 |
+| **Operating Profit/(Loss)** | 39,101.43 |
+| | |
+| **Finance Charges** | -26,526.52 |
+| **Other Income/Expense** | 0.00 |
+| **Taxes** | 0.00 |
+| **Net Profit/(Loss)** | 12,574.91 |
+
+================================================================================
+[P1-43] sub grouped PL Statement for january 2025 as per template
+Q: sub grouped PL Statement for january 2025 as per template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2025-01-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Gross Sales | 1,142,781.77 |
+|     Deduction Reversal | 0.00 |
+|     Discount | -57,237.49 |
+|     CHARGE BACK | 0.00 |
+|     Price Differences | -168.92 |
+|     Returns | -34,424.13 |
+|     Services | 0.00 |
+|     SHIPPING & HANDLING | 47,269.43 |
+|     Short Shipments | -82.46 |
+| **Total Sales** | 1,098,138.20 |
+| | |
+| **Cost Of Goods Sold** | |
+|     Cost of Goods Sold | -537,619.14 |
+|     Fees | -28,278.41 |
+|     Freight | -41,303.69 |
+|     Import Clearing And Forwarding | -41,860.96 |
+|     INSURANCE | 0.00 |
+|     Inventory Adjustment Account | -60.13 |
+|     Others | -5,896.08 |
+|     Packing Expense | -13,355.42 |
+|     Rent | -1,342.71 |
+|     RUG CLEANING  | 0.00 |
+|     RUG Serging Fees | -1,351.46 |
+|     Shipping Expense | -17,589.18 |
+|     Short Shipment | 0.00 |
+| **Total Cost Of Goods Sold** | -688,657.18 |
+| | |
+| **Gross Profit/(Loss)** | 409,481.02 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Automobile Expenses | -2,190.18 |
+|     Bad Debt | 0.42 |
+|     Cash Discounts | 0.00 |
+|     Charge Back | -2,492.97 |
+|     Commercial Insurances | -20,356.93 |
+|     Commission | -14,000.00 |
+|     Communication Expenses | -7,873.43 |
+|     Dues And Subscriptions | -12,708.28 |
+|     Inventory Adjustment | 0.00 |
+|     Office Expenses | -15,710.99 |
+| **Total General & Administrative** | -75,332.36 |
+| | |
+| **Selling Expenses** | |
+|     Advertising Expenses | -8,028.91 |
+|     Amortization | 0.00 |
+|     Depreciation Expense | 0.00 |
+|     Loss On Sale Of Assets | 0.00 |
+|     Marketing Expenses | -56,151.97 |
+|     Payroll | -148,980.84 |
+|     Provisional Expenses | -30,000.00 |
+|     Rent | -31,000.00 |
+|     Software Monthly Fee | 0.00 |
+|     Traveling Expenses | -1,780.35 |
+| **Total Selling Expenses** | -275,942.07 |
+| | |
+| **Total Operating Cost** | -351,274.43 |
+| **Operating Profit/(Loss)** | 58,206.59 |
+| | |
+| **Finance Charges** | |
+|     Finance Charges | -25,177.23 |
+| **Total Finance Charges** | -25,177.23 |
+| | |
+| **Other Income/Expense** | |
+|     Abnormal Income | 0.00 |
+|     Interest Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+| **Total Other Income/Expense** | 0.00 |
+| | |
+| **Taxes** | |
+|     Taxes | 0.00 |
+| **Total Taxes** | 0.00 |
+| | |
+| **Net Profit/(Loss)** | 33,029.36 |
+
+================================================================================
+[P1-44] grouped pl statement for january 2026 as per template
+Q: grouped pl statement for january 2026 as per template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = '2026-01-01'
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Gross Sales | 1,138,309.51 |
+|     Deduction Reversal | 0.00 |
+|     Discount | -36,834.08 |
+|     CHARGE BACK | 0.00 |
+|     Price Differences | -229.64 |
+|     Returns | -27,598.77 |
+|     Services | 0.00 |
+|     SHIPPING & HANDLING | 62,919.76 |
+|     Short Shipments | -505.80 |
+| **Total Sales** | 1,136,060.98 |
+| | |
+| **Cost Of Goods Sold** | |
+|     Cost of Goods Sold | -424,091.80 |
+|     Fees | -43,028.36 |
+|     Freight | -60,380.51 |
+|     Import Clearing And Forwarding | -162,860.51 |
+|     INSURANCE | 0.00 |
+|     Inventory Adjustment Account | 3,338.39 |
+|     Others | -4,887.99 |
+|     Packing Expense | -12,530.16 |
+|     Rent | -14.46 |
+|     RUG CLEANING  | 0.00 |
+|     RUG Serging Fees | 1,434.23 |
+|     Shipping Expense | -26,915.87 |
+|     Short Shipment | 0.00 |
+| **Total Cost Of Goods Sold** | -729,937.04 |
+| | |
+| **Gross Profit/(Loss)** | 406,123.94 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Automobile Expenses | -2,907.24 |
+|     Bad Debt | 0.01 |
+|     Cash Discounts | 0.00 |
+|     Charge Back | 272.23 |
+|     Commercial Insurances | -26,669.34 |
+|     Commission | -27,333.33 |
+|     Communication Expenses | -6,281.08 |
+|     Dues And Subscriptions | -9,654.72 |
+|     Inventory Adjustment | 0.00 |
+|     Office Expenses | -11,658.28 |
+| **Total General & Administrative** | -84,231.75 |
+| | |
+| **Selling Expenses** | |
+|     Advertising Expenses | -7,286.18 |
+|     Amortization | 0.00 |
+|     Depreciation Expense | 0.00 |
+|     Loss On Sale Of Assets | 0.00 |
+|     Marketing Expenses | -64,223.87 |
+|     Payroll | -129,537.66 |
+|     Provisional Expenses | -40,000.00 |
+|     Rent | -24,000.00 |
+|     Software Monthly Fee | 0.00 |
+|     Traveling Expenses | -17,743.05 |
+| **Total Selling Expenses** | -282,790.76 |
+| | |
+| **Total Operating Cost** | -367,022.51 |
+| **Operating Profit/(Loss)** | 39,101.43 |
+| | |
+| **Finance Charges** | |
+|     Finance Charges | -26,526.52 |
+| **Total Finance Charges** | -26,526.52 |
+| | |
+| **Other Income/Expense** | |
+|     Abnormal Income | 0.00 |
+|     Interest Income | 0.00 |
+|     OTHER INCOME | 0.00 |
+| **Total Other Income/Expense** | 0.00 |
+| | |
+| **Taxes** | |
+|     Taxes | 0.00 |
+| **Total Taxes** | 0.00 |
+| | |
+| **Net Profit/(Loss)** | 12,574.91 |
+
+================================================================================
+[P1-45] detailed pl statement as per template
+Q: detailed pl statement as per template
+================================================================================
+SQL:
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    CM.PLStatementDetails                     AS [Account],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0)
+  AND CM.PLStatementDetails IS NOT NULL
+  AND LEN(CM.PLStatementDetails) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+| **Gross Sales** | |
+|     Sales | 3,429,327.07 |
+| **Discount** | |
+|     Sales Discount | -35,650.88 |
+|     Sales Discount - AMZ Marketplace | -23,874.82 |
+|     Sales Discount - Bob's Discount Ecomm A/c | -48.09 |
+|     Sales Discount - Gordon Co | -312.39 |
+|     Sales Discount - JC Penny | -4,802.70 |
+|     Sales Discount - Lowe's | -0.39 |
+|     Sales Discount - Nebraska / Home Maker | -1,377.52 |
+|     Sales Discount - WM Marketplace | -880.03 |
+|     Sales Discount - Ashley Furnit | -525.59 |
+|     Sales Discount - Bealls | -5,138.03 |
+|     Sales Discount - Cost Plus Wor | -1,502.02 |
+|     Sales Discount - Faire | -12,800.59 |
+|     Sales Discount - Home Depot | -1,162.84 |
+|     Sales Discount - Home Roots | -1,145.26 |
+|     Sales Discount - Mink & Sons | -4,595.22 |
+|     Sales Discount - Others | -9,294.85 |
+|     Sales Discount - Pottery Barn | -3,043.72 |
+|     Sales Discount - Walmart | -1,727.44 |
+|     Sales Discount - Wayfair | -6.09 |
+| **Total Discount** | -104,889.77 |
+| **Returns** | |
+|     Returns on Sales | -102,107.62 |
+|     Sales Returns (Not Received) | -3,028.03 |
+| **Total Returns** | -105,135.65 |
+| **SHIPPING & HANDLING** | |
+|     Shipping & Handling | 204,209.78 |
+|     Returns Shipping & Service Cha | -10,170.46 |
+| **Total SHIPPING & HANDLING** | 194,039.32 |
+| **Price Differences** | |
+|     Sales-Price Differences | -3,138.09 |
+| **Total Price Differences** | -3,138.09 |
+| **Total Sales** | 3,414,203.88 |
+| | |
+| **Cost Of Goods Sold** | |
+| **Cost of Goods Sold** | |
+|     Cost Of Goods Sold | -1,207,104.38 |
+|     Damaged-Discarded Inventory | -7,935.25 |
+|     Insert-Pouf / Pet Beds Filling | -38,410.60 |
+|     Purchase Discount | 2,433.83 |
+|     Vendor Defective Reimbursement | 454.00 |
+| **Total Cost of Goods Sold** | -1,250,562.40 |
+| **Fees** | |
+|     Designing & Development Expens | -48,771.00 |
+|     Merchandising&Inspection Fee | -82,206.03 |
+| **Total Fees** | -130,977.03 |
+| **Freight** | |
+|     DHL-Sample Mailing Expense | -1,027.95 |
+|     Domestic Trucking Line Freight | -156,302.82 |
+|     Freight - Pillow-Poufs | -4,330.85 |
+|     Freight Cap Promotions Expense | -9,986.22 |
+|     Freight Costs-Replacements Etc | -5,234.49 |
+|     Truck-Trailer Rent Costs | -3,740.28 |
+| **Total Freight** | -180,622.61 |
+| **Import Clearing And Forwarding** | |
+|     Import-Container Storage -Detention Chgs | -615.00 |
+|     Import-Container Truck Freight | -35,716.86 |
+|     Import-Customs Clearance Cost | -5,413.82 |
+|     Import-Customs Documents Chgs | -5,381.12 |
+|     Import-Ocean Freight | -45,015.00 |
+|     Import-State Custom Duty | -20,371.83 |
+|     Import-Tariffs | -251,244.89 |
+| **Total Import Clearing And Forwarding** | -363,758.52 |
+| **Inventory Adjustment Account** | |
+|     Inventory Adjustment Account | 13,388.32 |
+| **Others** | |
+|     Temporary Labor Expenses | -15,837.95 |
+| **Packing Expense** | |
+|     Labelling & Ticketing Expense | -1,540.00 |
+|     Packing Expense | -22,227.54 |
+| **Total Packing Expense** | -23,767.54 |
+| **Rent** | |
+|     Third Party Warehouse Charges | -4,301.65 |
+| **RUG Serging Fees** | |
+|     Rug Surging, Cutting,Repairng | 5,118.27 |
+| **Shipping Expense** | |
+|     FedEx/UPS Additional Handling | -156.70 |
+|     FedEx/UPS Shipping Expense | -79,451.79 |
+| **Total Shipping Expense** | -79,608.49 |
+| **Total Cost Of Goods Sold** | -2,030,927.92 |
+| | |
+| **Gross Profit/(Loss)** | 1,383,275.96 |
+| | |
+| **Operating Cost** | |
+| **General & Administrative** | |
+|     Auto Expenses-Fuel | -2,528.23 |
+|     Auto Expenses-Repairs & Maint. | -3,946.89 |
+|     Auto Expenses-Tag Fees Etc. | -21.00 |
+|     Warehouse Equipment Repairs | -2,716.81 |
+|     Small Balances Written Off | -17.68 |
+|     CB Compliance-Home Depot | -35.80 |
+|     CB-Bealls Compliance Charge Back | -542.72 |
+|     CB-Compliance -Others | -107.80 |
+|     CB-Customer Compliance - NFM | -1,313.20 |
+|     Insurance-Commercial Policies | -26,964.35 |
+|     Insurance-Dental & Vision | -632.36 |
+|     Insurance-Receivables Credit Coverage | -6,307.79 |
+|     Insurance-Workmen's Comp. | -6,678.00 |
+|     Comm -Mike Thomson | -562.86 |
+|     Commission | -136,678.91 |
+|     Royalties - Stacy Garcia | -680.15 |
+|     Royalties -Evette Rios | -241.82 |
+|     Royalties-London Fog | -5,000.00 |
+|     706-259-0155 -LR Office | -1,866.79 |
+|     706-280-5055 - Cell Phone SKL | -2,483.80 |
+|     EDI SERVICES | -13,430.48 |
+|     Internet & Cable | -340.49 |
+|     Postage & Delivery | -629.09 |
+|     Telephone Expenses | -292.38 |
+|     DUES AND SUBSCRIPTIONS | -6,836.01 |
+|     Software Monthly Fees | -14,986.50 |
+|     ELE-Linde V15 Lease Expense | -2,397.87 |
+|     ELE-Yale Picker Lease Expenses | -1,609.02 |
+|     Office Supplies | -2,083.97 |
+|     Printing & Stationary | -1,089.32 |
+|     Repairs & Maintance | -4,076.38 |
+|     Software Upgrade & Maintainanc | -654.00 |
+|     UTILITIES - Electricity, Gas & Water | -17,203.51 |
+|     UTILITIES - Lawn Maintenance | -1,995.00 |
+|     UTILITIES - Office Cleaning | -8,150.00 |
+|     UTILITIES - Pest Control | -345.00 |
+|     UTILITIES - Propane Gas Tanks | -691.16 |
+|     UTILITIES - Security Monitoring | -105.00 |
+|     UTILITIES - Trash Removal & Recycling | -3,772.56 |
+| **Total General & Administrative** | -282,964.38 |
+| | |
+| **Selling Expenses** | |
+|     Advertising Expenses | -52.83 |
+|     Advertising-Amazon | -10,673.93 |
+|     Advertising-Walmart | -5,589.62 |
+|     Advertising-Wayfair | -10,500.00 |
+|     Advertising-WM Marketplace | -438.94 |
+|     Atlanta Showroom Exp-Hotel | -2,283.96 |
+|     Atlanta Showroom Exp-Rent | -32,617.98 |
+|     High Point - General Expense | -1,365.00 |
+|     High Point - Hotel Exepnse | -25.00 |
+|     High Point - Rent Expense | -72,650.70 |
+|     High Point - Utility Expense | -1,118.75 |
+|     Marketing Consultancy | -6,600.00 |
+|     Promotional Expenses | -149.84 |
+|     Promotional Expenses-Wayfair | -1,300.02 |
+|     Sampling Expense | -11,983.73 |
+|     Websites Crawling-Uploading | -11,094.00 |
+|     L R 401K Contribution A/c | -8,303.19 |
+|     Payroll | -382,590.50 |
+|     Payroll SS & Medicare | -29,095.65 |
+|     Travel Conveyance,Toll,Parking | -877.30 |
+|     Travel Ticketing Exp Account | -17,088.43 |
+|     Travel-Hotel Expense | -5,664.45 |
+|     Traveling Expenses_Food | -2,961.96 |
+|     Travel-Visa-Medical-Misc Exp. | -206.32 |
+|     Warehouse Rent-LR Realty | -48,000.00 |
+|     Warehouse Rent-LR3-3002 Parque | -24,000.00 |
+| **Total Selling Expenses** | -705,721.65 |
+| | |
+| **Total Operating Cost** | -988,686.03 |
+| **Operating Profit/(Loss)** | 394,589.93 |
+| | |
+| **Finance Charges** | |
+|     Bank Service Charge | -997.24 |
+|     Bank Wire Transfer Charges | -935.50 |
+|     Credit Card Interest & Fees | -1,077.54 |
+|     Credit Card Payment Processing | -6,708.31 |
+|     Drip Capital Loan Interest | -4,134.03 |
+|     FirstBank Interest | -44,093.66 |
+|     FistBank 2nd Line Interest | -18,290.74 |
+|     Import - Bank Document Collect | -2,764.61 |
+|     LTL-Equip.2021 A/c 2570065987 | -178.30 |
+| **Total Finance Charges** | -79,180.93 |
+| | |
+| **Other Income/Expense** | |
+|     Abnormal Income | 0.00 |
+|     Interest Income | 0.00 |
+|     OIN-PPP Loan Forgiven | 0.00 |
+|     Other Income | 0.00 |
+|     Other Income-Bad Debts Recovered | 0.00 |
+|     Other Income-Interest Received | 0.00 |
+|     Profit On Sale Of Asset | 0.00 |
+|     Restocking Fee | 0.00 |
+| **Total Other Income/Expense** | 0.00 |
+| | |
+| **Taxes** | |
+|     940-FOR 2012 | 0.00 |
+|     Business Licenses & Permits | 0.00 |
+|     Licenses-Tax-Permit-Penalties | 0.00 |
+|     Property Tax | 0.00 |
+|     State | 0.00 |
+|     Use 7201 Fm 01/01/19-Payroll S | 0.00 |
+|     Use 7202 -Suta | 0.00 |
+|     Use 7203 - Futa | 0.00 |
+| **Total Taxes** | 0.00 |
+| | |
+| **Net Profit/(Loss)** | 315,408.99 |
+
+================================================================================
+[P1-46] Total profit and total sales by top 2 customers for 2026
+Q: Total profit and total sales by top 2 customers for 2026
+================================================================================
+SQL:
+SELECT TOP 2
+    ROW_NUMBER() OVER (ORDER BY SUM(FSD.ProfitAmount) DESC) AS Rank,
+    DC.CustomerID,
+    DC.CustomerName,
+    SUM(FSD.ProfitAmount) AS TotalProfit,
+    SUM(FSD.SalesAmount) AS TotalSales
+FROM FactSalesDetail FSD
+JOIN DimCustomer DC ON FSD.CustomerKey = DC.CustomerKey
+JOIN DimDate DD ON FSD.DateKey = DD.DateKey
+WHERE DD.Year = 2026
+GROUP BY DC.CustomerID, DC.CustomerName
+ORDER BY TotalProfit DESC
+
+RESPONSE:
+The top 2 customers by total profit in 2026 are WAYFAIR LLC and Amazon Marketplace. Here are their total profit and total sales figures for the year:
+
+| Customer Name         | Total Profit ($) | Total Sales ($) |
+|:---------------------|-----------------:|---------------:|
+| WAYFAIR LLC          |     246,081.92   |   408,577.13   |
+| Amazon Marketplace   |     127,631.67   |   174,421.91   |
+
+================================================================================
+[P1-47] grouped balance sheet as of december 2024
+Q: grouped balance sheet as of december 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | 7,914,570.49 |
+|     Non Current Assets | 452,447.24 |
+| **Total Assets** | 8,367,017.73 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | 6,209,649.02 |
+|     Long Term Liabilities | 56,508.92 |
+|     Stockholder Equity | 2,100,859.79 |
+| **Total Liabilities & Equity** | 8,367,017.73 |
+
+================================================================================
+[P1-48] Prepare an ABC Analysis summary of items on hand , value and quantity,
+Q: Prepare an ABC Analysis summary of items on hand , value and quantity, RETURN OUTPUT IN Categories, Quantities and Inventory values
+================================================================================
+SQL:
+WITH Inventory AS (
+    SELECT 
+        DP.ProductKey,
+        DP.ItemID,
+        DP.ItemName,
+        SUM(FIS.QuantityOnHand) AS TotalQtyOnHand,
+        SUM(FIS.InventoryValue) AS TotalInventoryValue
+    FROM FactInventorySnapshot FIS
+    JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey
+    WHERE DP.IsDiscontinued = 0
+    GROUP BY DP.ProductKey, DP.ItemID, DP.ItemName
+),
+RankedInventory AS (
+    SELECT *,
+        SUM(TotalInventoryValue) OVER (ORDER BY TotalInventoryValue DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS RunningValue,
+        SUM(TotalInventoryValue) OVER () AS TotalValue
+    FROM Inventory
+),
+ABC_Categorized AS (
+    SELECT *,
+        CASE 
+            WHEN RunningValue <= 0.8 * TotalValue THEN 'A'
+            WHEN RunningValue <= 0.95 * TotalValue THEN 'B'
+            ELSE 'C'
+        END AS ABC_Category
+    FROM RankedInventory
+)
+SELECT TOP 40
+    ABC_Category,
+    SUM(TotalQtyOnHand) AS TotalQuantity,
+    SUM(TotalInventoryValue) AS TotalInventoryValue
+FROM ABC_Categorized
+GROUP BY ABC_Category
+ORDER BY CASE ABC_Category WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END
+
+RESPONSE:
+| Category | Total Quantity (units) | Total Inventory Value ($) |
+|:---|---:|---:|
+| A | 246161 | 3153029.51 |
+| B | 72679 | 591633.27 |
+| C | 39398 | 197249.58 |
+
+================================================================================
+[P1-49] analyze sales frequency of 2025 and categories customer bases on their
+Q: analyze sales frequency of 2025 and categories customer bases on their periodic frequency , return, periodic frequency, no of customers, no sales invoices, sales amounts etc.
+================================================================================
+SQL:
+WITH CustomerSales AS (
+    SELECT 
+        FSI.CustomerKey,
+        COUNT(DISTINCT FSI.SalesInvoiceNo) AS InvoiceCount,
+        SUM(FSI.MerchandiseAmount) AS TotalSales,
+        SUM(FSI.TotalQuantity) AS TotalQuantity
+    FROM FactSalesInvoice FSI
+    JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+    WHERE DD.Year = 2025
+      AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
+    GROUP BY FSI.CustomerKey
+),
+CustomerFrequency AS (
+    SELECT 
+        CustomerKey,
+        CASE 
+            WHEN InvoiceCount >= 12 THEN 'Monthly'
+            WHEN InvoiceCount >= 4 THEN 'Quarterly'
+            WHEN InvoiceCount >= 2 THEN 'Occasional'
+            ELSE 'One-time'
+        END AS FrequencyCategory,
+        InvoiceCount,
+        TotalSales,
+        TotalQuantity
+    FROM CustomerSales
+),
+ReturnSummary AS (
+    SELECT 
+        FCM.CustomerKey,
+        SUM(FCM.TotalAmount) AS TotalReturns,
+        COUNT(FCM.CreditMemoNo) AS ReturnCount
+    FROM FactCreditMemo FCM
+    JOIN DimDate DD ON FCM.InvoiceDateKey = DD.DateKey
+    WHERE DD.Year = 2025
+      AND FCM.Status <> 'Void'
+    GROUP BY FCM.CustomerKey
+)
+SELECT TOP 40
+    CF.FrequencyCategory AS [Frequency Category],
+    COUNT(*) AS [Customer Count],
+    SUM(CF.InvoiceCount) AS [Sales Invoice Count],
+    SUM(CF.TotalSales) AS [Total Sales ($)],
+    SUM(ISNULL(RS.TotalReturns,0)) AS [Total Returns ($)],
+    SUM(ISNULL(RS.ReturnCount,0)) AS [Return Invoice Count]
+FROM CustomerFrequency CF
+LEFT JOIN ReturnSummary RS ON CF.CustomerKey = RS.CustomerKey
+GROUP BY CF.FrequencyCategory
+ORDER BY [Total Sales ($)] DESC
+
+RESPONSE:
+| Frequency Category | Customer Count | Sales Invoice Count | Total Sales ($) | Total Returns ($) | Return Invoice Count |
+|:---|---:|---:|---:|---:|---:|
+| Monthly | 280 | 103070 | 10336801.13 | 457294.24 | 6814 |
+| Quarterly | 318 | 2142 | 2129386.8 | 42254.19 | 75 |
+| Occasional | 213 | 515 | 590904.49 | 17419.1 | 14 |
+| One-time | 169 | 169 | 123947.2 | 1926.75 | 6 |
+
+================================================================================
+[P1-50] Analyze customer payment habits for the 2024 and 2025. Categories base
+Q: Analyze customer payment habits for the 2024 and 2025. Categories based on the how much time they usually take to make payments, What is best time to proceed collections
+================================================================================
+SQL:
+WITH PaymentLag AS (
+    SELECT 
+        FCP.CustomerKey,
+        DATEDIFF(DAY, MIN(DD_Doc.FullDate), MIN(DD_Payment.FullDate)) AS DaysToPay,
+        COUNT(DISTINCT FCP.CashReceiptNo) AS PaymentCount
+    FROM FactCustomerPayment FCP
+    JOIN DimDate DD_Doc ON FCP.DocDateKey = DD_Doc.DateKey
+    JOIN DimDate DD_Payment ON FCP.PaymentDateKey = DD_Payment.DateKey
+    WHERE DD_Doc.Year IN (2024, 2025)
+      AND FCP.Status NOT IN ('Bounced', 'Void')
+      AND FCP.CustomerKey IS NOT NULL
+    GROUP BY FCP.CustomerKey, DD_Doc.Year, DD_Doc.Month
+),
+CustomerAvgLag AS (
+    SELECT 
+        PL.CustomerKey,
+        AVG(CAST(PL.DaysToPay AS FLOAT)) AS AvgDaysToPay,
+        SUM(PL.PaymentCount) AS TotalPayments
+    FROM PaymentLag PL
+    GROUP BY PL.CustomerKey
+),
+Bucketed AS (
+    SELECT 
+        CAL.CustomerKey,
+        CASE 
+            WHEN CAL.AvgDaysToPay <= 0 THEN 'Early'
+            WHEN CAL.AvgDaysToPay <= 5 THEN 'On-Time'
+            ELSE 'Late'
+        END AS PaymentCategory,
+        CAL.AvgDaysToPay,
+        CAL.TotalPayments
+    FROM CustomerAvgLag CAL
+)
+SELECT TOP 40
+    B.PaymentCategory,
+    COUNT(DC.CustomerID) AS CustomerCount,
+    AVG(B.AvgDaysToPay) AS AvgDaysToPay,
+    SUM(B.TotalPayments) AS TotalPayments
+FROM Bucketed B
+JOIN DimCustomer DC ON B.CustomerKey = DC.CustomerKey
+GROUP BY B.PaymentCategory
+ORDER BY CASE B.PaymentCategory WHEN 'Early' THEN 1 WHEN 'On-Time' THEN 2 ELSE 3 END
+
+RESPONSE:
+| Payment Category | Customer Count | Avg Days To Pay | Total Payments |
+|:---|---:|---:|---:|
+| Early | 1251 | 0.0 | 14899 |
+
+Most customers in 2024 and 2025 pay early, with an average payment time of 0 days. This suggests that collections can be scheduled immediately after invoicing, as the majority of customers settle their dues promptly. For best results, continue encouraging early payments and maintain proactive communication right after invoice issuance. If you need a breakdown for on-time or late payers, or more detailed recommendations, please let me know.
+
+================================================================================
+[P1-51] what are payment types in the system
+Q: what are payment types in the system
+================================================================================
+SQL:
+SELECT DISTINCT DocType
+FROM FactCustomerPayment
+UNION
+SELECT DISTINCT DocType
+FROM FactVendorPayments
+
+RESPONSE:
+The available payment types in the system are represented by the following codes:
+
+- C: Check
+- D: Credit Card
+- F: KeyOff
+- H: ACH (Automated Clearing House)
+- I: IDC#
+- R: Reverse Entry
+- S: Cash
+- W: Wire Transfer
+
+These codes cover all payment types used for both customer and vendor payments in the system.
+
+
+################################################################################
+PART 2 — ALL 6 FINANCIAL STATEMENT TEMPLATES (COMPREHENSIVE)
+################################################################################
+
+
+================================================================================
+[BS-Main-Jun2024] Show me the main grouped balance sheet for June 2024
+Q: Show me the main grouped balance sheet for June 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 6
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | 7,489,565.40 |
+|     Non Current Assets | 563,909.11 |
+| **Total Assets** | 8,053,474.51 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | 5,562,420.14 |
+|     Long Term Liabilities | 74,428.42 |
+|     Stockholder Equity | 2,416,625.95 |
+| **Total Liabilities & Equity** | 8,053,474.51 |
+
+================================================================================
+[BS-Main-Dec2024] Balance sheet main grouped as of December 2024
+Q: Balance sheet main grouped as of December 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 12
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | 7,914,570.49 |
+|     Non Current Assets | 452,447.24 |
+| **Total Assets** | 8,367,017.73 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | 6,209,649.02 |
+|     Long Term Liabilities | 56,508.92 |
+|     Stockholder Equity | 2,100,859.79 |
+| **Total Liabilities & Equity** | 8,367,017.73 |
+
+================================================================================
+[BS-Main-Mar2025] Give me the grouped balance sheet for March 2025
+Q: Give me the grouped balance sheet for March 2025
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2025
+  AND DD.Month = 3
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+|     Current Assets | -651,021.34 |
+|     Non Current Assets | 0.00 |
+| **Total Assets** | -651,021.34 |
+| | |
+| **Liabilities & Equity** | |
+|     Current Liabilities | -630,956.49 |
+|     Long Term Liabilities | -8,271.73 |
+|     Stockholder Equity | -41,370.44 |
+| **Total Liabilities & Equity** | -651,021.34 |
+
+================================================================================
+[BS-Sub-Jun2024] Show the sub grouped balance sheet for June 2024
+Q: Show the sub grouped balance sheet for June 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 6
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | 1,757,131.97 |
+|     Cash and Cash Equivalents | 648.61 |
+|     Inventory | 5,645,163.57 |
+|     Other Receivables | 86,621.25 |
+| **Total Current Assets** | 7,489,565.40 |
+| | |
+| **Non Current Assets** | |
+|     Other Non Current Assets | 500,592.77 |
+|     Property Plant & Equipments | 63,316.34 |
+| **Total Non Current Assets** | 563,909.11 |
+| | |
+| **Total Assets** | 8,053,474.51 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | 744,882.59 |
+|     Accrued Expenses | 42,717.07 |
+|     Other Payables | 40,231.77 |
+|     Short Term Loans | 4,734,588.71 |
+| **Total Current Liabilities** | 5,562,420.14 |
+| | |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | 74,428.42 |
+| **Total Long Term Liabilities** | 74,428.42 |
+| | |
+| **Stockholder Equity** | |
+|     Common Stock | 1,000.00 |
+|     Distributions | 0.00 |
+|     Profit/(Loss) | 10,901.61 |
+|     Retained Earnings | 4,919,179.07 |
+|     Stockholder Equity | -2,514,454.73 |
+| **Total Stockholder Equity** | 2,416,625.95 |
+| | |
+| **Total Liabilities & Equity** | 8,053,474.51 |
+
+================================================================================
+[BS-Sub-Sep2024] Sub grouped balance sheet as of September 2024
+Q: Sub grouped balance sheet as of September 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000
+             THEN FAM.ClosingBalance * -1
+             ELSE FAM.ClosingBalance END)                                             AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 9
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | 1,545,384.58 |
+|     Cash and Cash Equivalents | 6,820.25 |
+|     Inventory | 6,393,324.24 |
+|     Other Receivables | 76,020.33 |
+| **Total Current Assets** | 8,021,549.40 |
+| | |
+| **Non Current Assets** | |
+|     Other Non Current Assets | 517,899.74 |
+|     Property Plant & Equipments | 65,631.36 |
+| **Total Non Current Assets** | 583,531.10 |
+| | |
+| **Total Assets** | 8,605,080.50 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | 882,486.17 |
+|     Accrued Expenses | 34,424.42 |
+|     Other Payables | 38,976.75 |
+|     Short Term Loans | 5,382,289.34 |
+| **Total Current Liabilities** | 6,338,176.68 |
+| | |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | 64,703.27 |
+| **Total Long Term Liabilities** | 64,703.27 |
+| | |
+| **Stockholder Equity** | |
+|     Common Stock | 1,000.00 |
+|     Distributions | 0.00 |
+|     Profit/(Loss) | -177,903.06 |
+|     Retained Earnings | 4,919,179.07 |
+|     Stockholder Equity | -2,540,075.46 |
+| **Total Stockholder Equity** | 2,202,200.55 |
+| | |
+| **Total Liabilities & Equity** | 8,605,080.50 |
+
+================================================================================
+[BS-Sub-Jan2025] Prepare sub grouped balance sheet for January 2025 as per template
+Q: Prepare sub grouped balance sheet for January 2025 as per template
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2025
+  AND DD.Month = 1
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | 2,285,413.16 |
+|     Cash and Cash Equivalents | -50,478.67 |
+|     Inventory | 5,400,974.43 |
+|     Other Receivables | 41,477.87 |
+| **Total Current Assets** | 7,677,386.79 |
+| | |
+| **Non Current Assets** | |
+|     Other Non Current Assets | 516,962.40 |
+|     Property Plant & Equipments | -63,938.40 |
+| **Total Non Current Assets** | 453,024.00 |
+| | |
+| **Total Assets** | 8,130,410.79 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | 1,214,374.43 |
+|     Accrued Expenses | 44,397.19 |
+|     Other Payables | 46,505.22 |
+|     Short Term Loans | 4,637,480.15 |
+| **Total Current Liabilities** | 5,942,757.00 |
+| | |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | 53,764.65 |
+| **Total Long Term Liabilities** | 53,764.65 |
+| | |
+| **Stockholder Equity** | |
+|     Common Stock | 1,000.00 |
+|     Distributions | 0.00 |
+|     Profit/(Loss) | 33,029.36 |
+|     Retained Earnings | 4,526,814.52 |
+|     Stockholder Equity | -2,426,954.73 |
+| **Total Stockholder Equity** | 2,133,889.15 |
+| | |
+| **Total Liabilities & Equity** | 8,130,410.79 |
+
+================================================================================
+[BS-Det-Jun2024] Show the detailed balance sheet for June 2024
+Q: Show the detailed balance sheet for June 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Main Group],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Detail Group],
+    CM.BalanceSheet_Details                                                           AS [Account],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 6
+  AND CM.BalanceSheet_Details IS NOT NULL
+  AND CM.BalanceSheet_Details <> ''
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+| **Accounts Receivable** | |
+|     ACCOUNT RECEIVABLE | 1,907,131.97 |
+|     Refund to Customer | 0.00 |
+|     Reserve For Doubtful Debts | -150,000.00 |
+| **Cash and Cash Equivalents** | |
+|     AmExp CC | 0.00 |
+|     Cash Account | -92.00 |
+|     CASH IN HAND | 0.00 |
+|     Credit Card AR-Receipts | 10,885.51 |
+|     First Bank PPP Checking A/c | 0.00 |
+|     First Bank TN | -27,070.01 |
+|     Inter Bank Transfer | 0.00 |
+|     PETTY CASH | 0.00 |
+|     REGIONS | 0.00 |
+|     Truist | 16,925.11 |
+|     Warehouse Sale Credit Card | 0.00 |
+| **Inventory** | |
+|     *** Free To Use | 0.00 |
+|     Inventory Adj. | 0.00 |
+|     Inventory Asset | 5,654,476.71 |
+|     Inventory Change | 0.00 |
+|     Inventory Control | -10,591.99 |
+|     Inventory on Consignment | 1,278.85 |
+|     Inventory Transfer | 0.00 |
+|     Inventory-Prepaid Import Costs | 0.00 |
+|     RAW MATERIAL | 0.00 |
+|     WORK IN PROGRESS | 0.00 |
+| **Other Receivables** | |
+|     Accrued Insurance Expense | 7,603.28 |
+|     Accrued Lease-Toshiba Printer | 0.00 |
+|     Accrued Not Due Interest Payab | 1,020.00 |
+|     Advances - Deposits | 20,008.00 |
+|     Loan & Adv. EMPLOYEES | 18,574.97 |
+|     Prepaid Expenses | 39,415.00 |
+|     Tax Refundable | 0.00 |
+|     TRADE-AM | 0.00 |
+|     VENDORS - Advances | 0.00 |
+| **Total Current Assets** | 7,489,565.40 |
+| | |
+| **Non Current Assets** | |
+| **Other Non Current Assets** | |
+|     ACCUM. AMORTIZATION-CUST LIST | 175,000.00 |
+|     Customer Claim Disputes | -6,912.87 |
+|     CUSTOMER LIST | 0.00 |
+|     Deffered Exp.(sample)Rug | 12,500.00 |
+|     DEPOSITS | 0.00 |
+|     Design & Art Work (Atlanta) | 30,000.00 |
+|     Intangible Assets | 246,431.39 |
+|     LOAN FEE | 16,043.00 |
+|     Sample Rugs | 14,301.25 |
+|     Samples at Warehouse | 13,230.00 |
+|     Suspense | 0.00 |
+|     UNDEPOSITED FUNDS | 0.00 |
+| **Property Plant & Equipments** | |
+|     2B Reused-CLARK ORDER PICKER | 0.00 |
+|     2B Reused-Clrk Hyster 02/05/18 | 0.00 |
+|     2B Reused-Clrk Ord Picker 0119 | 0.00 |
+|     2B Reused-New Clark Ord Picker | 0.00 |
+|     2B Reused-Pallet Jack 9/28/16 | 0.00 |
+|     ACCUM. DEPRECIATION | -845,635.00 |
+|     Accumulated Amortization | -276,436.00 |
+|     BUILDING | 0.00 |
+|     Cell Phone | 4,045.30 |
+|     ELECTRONICS | 160,414.07 |
+|     FURNITURE | 162,654.91 |
+|     LAND | 0.00 |
+|     Leasehold Improvements | 153,789.59 |
+|     Motorola Scanner 11/17/16 | 1,756.55 |
+|     RACK | 0.00 |
+|     SIENNA-2015 | 0.00 |
+|     VEHICLES | 163,549.19 |
+|     Warehouse Equipment-Racks | 238,005.01 |
+|     Warehouse Vehicles | 251,706.72 |
+|     WebSpars Software System | 49,466.00 |
+| **Total Non Current Assets** | 563,909.11 |
+| | |
+| **Total Assets** | 8,053,474.51 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+| **Accounts Payable** | |
+|     ACCOUNT PAYABLE-AMEX | 42,702.69 |
+|     ACCOUNT PAYABLE-EXPENSES | 0.00 |
+|     ACCOUNT PAYABLE-VENDOR | 702,179.90 |
+|     Allowance For Doubtful Debts | 0.00 |
+| **Accrued Expenses** | |
+|     401K Contribution Payable | 3,606.74 |
+|     Accrued Insurance Expense | 0.00 |
+|     Accrued Lease-Toshiba Printer | 0.00 |
+|     ACCURED EXPENSES | 28,117.40 |
+|     Garnishment-Child Support | 0.00 |
+|     INTREST ACCRUED | 0.00 |
+|     Not To Use Accrued Lease | 0.00 |
+|     PAYROLL | -0.01 |
+|     PAYROLL TAX | 9,704.98 |
+|     Ransomware Recovery Claim | 0.00 |
+|     SALES TAX | 64.01 |
+|     STATE W/H PAYABLE | 1,223.95 |
+| **Other Payables** | |
+|     ACCOUNT PAYABLE-CASH | 0.00 |
+|     ACCOUNT PAYABLE-RENT | 0.00 |
+|     ACCOUNT PAYABLE-VISA | 40,231.77 |
+|     AP- OTHER | 0.00 |
+|     Free Bank A/c to use | 0.00 |
+|     FUTA PAYABLE | 0.00 |
+|     SUTA PAYABLE | 0.00 |
+| **Short Term Loans** | |
+|     Advance from customer | 0.00 |
+|     BB&T | 0.00 |
+|     Bills Payable | 0.00 |
+|     Drip Capital Control A/c | 0.00 |
+|     Employee Benefits Plan Payable | 0.00 |
+|     FirstBank Loan A/c 2570107680 | 0.00 |
+|     Free to Use | 0.00 |
+|     FSG BANK-CREDIT LINE | 4,119,892.17 |
+|     LOAN | 614,696.54 |
+|     LOAN ON EQUITY | 0.00 |
+|     NOTE PAYABLE | 0.00 |
+|     PPP 2nd Draw | 0.00 |
+|     PPP Loan - First Bank | 0.00 |
+|     REGIONS BANK - LINE OF CREDIT | 0.00 |
+|     SBA-EIDL Loan | 0.00 |
+|     UNSECURED LOAN | 0.00 |
+| **Total Current Liabilities** | 5,562,420.14 |
+| | |
+| **Long Term Liabilities** | |
+| **Long Term Liabilities** | |
+|     Clark Order Picker 042117 Loan | 0.00 |
+|     LINE OF CREDIT | 0.00 |
+|     LONG TERM LIABILITIES  | 74,428.42 |
+|     NOTE PAYABLE | 0.00 |
+|     Obligation under Capital Lease | 0.00 |
+|     STOCKHOLDER LOAN | 0.00 |
+| **Total Long Term Liabilities** | 74,428.42 |
+| | |
+| **Stockholder Equity** | |
+| **Common Stock** | |
+|     COMMON STOCK | 1,000.00 |
+| **Distributions** | |
+|     DISTRIBUTIONS | 0.00 |
+| **Profit/(Loss)** | |
+|     Profit/(Loss) | 10,901.61 |
+| **Retained Earnings** | |
+|     RETAINED EARNING | 4,919,179.07 |
+| **Stockholder Equity** | |
+|     OWNERS | -2,314,083.00 |
+|     REALITY | -200,371.73 |
+| **Total Stockholder Equity** | 2,416,625.95 |
+| | |
+| **Total Liabilities & Equity** | 8,053,474.51 |
+
+================================================================================
+[BS-Det-Dec2023] Detailed balance sheet as of December 2023
+Q: Detailed balance sheet as of December 2023
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Main Group],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Detail Group],
+    CM.BalanceSheet_Details                                                           AS [Account],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2023
+  AND DD.Month = 12
+  AND CM.BalanceSheet_Details IS NOT NULL
+  AND CM.BalanceSheet_Details <> ''
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+| **Accounts Receivable** | |
+|     ACCOUNT RECEIVABLE | 2,687,810.75 |
+|     Refund to Customer | 0.00 |
+|     Reserve For Doubtful Debts | -150,000.00 |
+| **Cash and Cash Equivalents** | |
+|     AmExp CC | 0.00 |
+|     Cash Account | 257.00 |
+|     CASH IN HAND | 0.00 |
+|     Credit Card AR-Receipts | 6,713.38 |
+|     First Bank PPP Checking A/c | 0.00 |
+|     First Bank TN | -27,049.24 |
+|     Inter Bank Transfer | 0.00 |
+|     PETTY CASH | 0.00 |
+|     REGIONS | 0.00 |
+|     Truist | 14,528.87 |
+| **Inventory** | |
+|     *** Free To Use | 0.00 |
+|     Inventory Adj. | 0.00 |
+|     Inventory Asset | 6,376,624.20 |
+|     Inventory Change | 0.00 |
+|     Inventory Control | -18,052.28 |
+|     Inventory on Consignment | 1,195.44 |
+|     Inventory Transfer | 0.00 |
+|     Inventory-Prepaid Import Costs | 0.00 |
+|     RAW MATERIAL | 0.00 |
+|     WORK IN PROGRESS | 0.00 |
+| **Other Receivables** | |
+|     Accrued Insurance Expense | 2,422.77 |
+|     Accrued Lease-Toshiba Printer | 0.00 |
+|     Advances - Deposits | 20,008.00 |
+|     Loan & Adv. EMPLOYEES | 12,044.31 |
+|     Prepaid Expenses | 7,147.74 |
+|     Tax Refundable | 0.00 |
+|     TRADE-AM | 0.00 |
+|     VENDORS - Advances | 39,439.90 |
+| **Total Current Assets** | 8,973,749.77 |
+| | |
+| **Non Current Assets** | |
+| **Other Non Current Assets** | |
+|     ACCUM. AMORTIZATION-CUST LIST | 175,000.00 |
+|     Customer Claim Disputes | 0.00 |
+|     CUSTOMER LIST | 0.00 |
+|     Deffered Exp.(sample)Rug | 12,500.00 |
+|     DEPOSITS | 0.00 |
+|     Design & Art Work (Atlanta) | 30,000.00 |
+|     Intangible Assets | 238,806.39 |
+|     LOAN FEE | 16,043.00 |
+|     Sample Rugs | 14,301.25 |
+|     Samples at Warehouse | 13,230.00 |
+|     Suspense | 0.00 |
+|     UNDEPOSITED FUNDS | 0.00 |
+| **Property Plant & Equipments** | |
+|     2B Reused-CLARK ORDER PICKER | 0.00 |
+|     2B Reused-Clrk Hyster 02/05/18 | 0.00 |
+|     2B Reused-Clrk Ord Picker 0119 | 0.00 |
+|     2B Reused-New Clark Ord Picker | 0.00 |
+|     2B Reused-Pallet Jack 9/28/16 | 0.00 |
+|     ACCUM. DEPRECIATION | -845,635.00 |
+|     Accumulated Amortization | -276,436.00 |
+|     BUILDING | 0.00 |
+|     Cell Phone | 4,045.30 |
+|     ELECTRONICS | 160,414.07 |
+|     FURNITURE | 155,654.91 |
+|     LAND | 0.00 |
+|     Leasehold Improvements | 153,789.59 |
+|     Motorola Scanner 11/17/16 | 1,756.55 |
+|     RACK | 0.00 |
+|     SIENNA-2015 | 0.00 |
+|     VEHICLES | 163,549.19 |
+|     Warehouse Equipment-Racks | 238,005.01 |
+|     Warehouse Vehicles | 251,706.72 |
+|     WebSpars Software System | 45,760.00 |
+| **Total Non Current Assets** | 1,127,489.98 |
+| | |
+| **Total Assets** | 10,101,239.75 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+| **Accounts Payable** | |
+|     ACCOUNT PAYABLE-AMEX | 61,752.30 |
+|     ACCOUNT PAYABLE-EXPENSES | 984.50 |
+|     ACCOUNT PAYABLE-VENDOR | 1,474,222.78 |
+|     Allowance For Doubtful Debts | 0.00 |
+| **Accrued Expenses** | |
+|     401K Contribution Payable | 0.00 |
+|     Accrued Insurance Expense | 0.00 |
+|     Accrued Lease-Toshiba Printer | 0.00 |
+|     ACCURED EXPENSES | 32,700.02 |
+|     Garnishment-Child Support | 0.00 |
+|     INTREST ACCRUED | 11,095.47 |
+|     Not To Use Accrued Lease | 0.00 |
+|     PAYROLL | 0.00 |
+|     PAYROLL TAX | 0.00 |
+|     Ransomware Recovery Claim | 0.00 |
+|     SALES TAX | 64.01 |
+|     STATE W/H PAYABLE | 0.00 |
+| **Other Payables** | |
+|     ACCOUNT PAYABLE-CASH | 0.00 |
+|     ACCOUNT PAYABLE-RENT | 0.00 |
+|     ACCOUNT PAYABLE-VISA | 0.03 |
+|     AP- OTHER | 0.00 |
+|     Free Bank A/c to use | 0.00 |
+|     FUTA PAYABLE | 203.25 |
+|     SUTA PAYABLE | 635.54 |
+| **Short Term Loans** | |
+|     Advance from customer | 0.00 |
+|     BB&T | 0.00 |
+|     Bills Payable | 440,042.00 |
+|     Employee Benefits Plan Payable | 0.00 |
+|     Free to Use | 0.00 |
+|     FSG BANK-CREDIT LINE | 4,312,865.89 |
+|     LOAN | 585,332.47 |
+|     LOAN ON EQUITY | 0.00 |
+|     NOTE PAYABLE | 0.00 |
+|     PPP 2nd Draw | 0.00 |
+|     PPP Loan - First Bank | 0.00 |
+|     REGIONS BANK - LINE OF CREDIT | 0.00 |
+|     SBA-EIDL Loan | 17,243.53 |
+|     UNSECURED LOAN | 0.00 |
+| **Total Current Liabilities** | 6,927,881.33 |
+| | |
+| **Long Term Liabilities** | |
+| **Long Term Liabilities** | |
+|     Clark Order Picker 042117 Loan | 0.00 |
+|     LINE OF CREDIT | 0.00 |
+|     LONG TERM LIABILITIES  | 95,215.69 |
+|     NOTE PAYABLE | 0.00 |
+|     Obligation under Capital Lease | 0.00 |
+|     STOCKHOLDER LOAN | 0.00 |
+| **Total Long Term Liabilities** | 95,215.69 |
+| | |
+| **Stockholder Equity** | |
+| **Common Stock** | |
+|     COMMON STOCK | 1,000.00 |
+| **Distributions** | |
+|     DISTRIBUTIONS | 0.00 |
+| **Profit/(Loss)** | |
+|     Profit/(Loss) | 192,733.40 |
+| **Retained Earnings** | |
+|     RETAINED EARNING | 4,726,445.66 |
+| **Stockholder Equity** | |
+|     OWNERS | -2,226,583.00 |
+|     REALITY | -200,371.73 |
+| **Total Stockholder Equity** | 2,493,224.33 |
+| | |
+| **Total Liabilities & Equity** | 10,101,239.75 |
+
+================================================================================
+[BS-Det-Aug2024] Full detailed balance sheet for August 2024
+Q: Full detailed balance sheet for August 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Main Group],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Detail Group],
+    CM.BalanceSheet_Details                                                           AS [Account],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2024
+  AND DD.Month = 8
+  AND CM.BalanceSheet_Details IS NOT NULL
+  AND CM.BalanceSheet_Details <> ''
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+| **Accounts Receivable** | |
+|     ACCOUNT RECEIVABLE | 1,859,065.36 |
+|     Refund to Customer | 0.00 |
+|     Reserve For Doubtful Debts | -150,000.00 |
+| **Cash and Cash Equivalents** | |
+|     AmExp CC | 0.00 |
+|     Cash Account | -51.00 |
+|     CASH IN HAND | 0.00 |
+|     Credit Card AR-Receipts | 14,589.13 |
+|     First Bank PPP Checking A/c | 0.00 |
+|     First Bank TN | -13,141.50 |
+|     Inter Bank Transfer | 0.00 |
+|     PETTY CASH | 0.00 |
+|     REGIONS | 0.00 |
+|     Truist | 18,458.49 |
+|     Warehouse Sale Credit Card | 0.00 |
+| **Inventory** | |
+|     *** Free To Use | 0.00 |
+|     Inventory Adj. | 0.00 |
+|     Inventory Asset | 6,233,290.12 |
+|     Inventory Change | 0.00 |
+|     Inventory Control | -13,893.70 |
+|     Inventory on Consignment | 1,164.75 |
+|     Inventory Transfer | 0.00 |
+|     Inventory-Prepaid Import Costs | 0.00 |
+|     RAW MATERIAL | 0.00 |
+|     WORK IN PROGRESS | 0.00 |
+| **Other Receivables** | |
+|     Accrued Insurance Expense | 7,939.56 |
+|     Accrued Lease-Toshiba Printer | 0.00 |
+|     Accrued Not Due Interest Payab | 8,665.00 |
+|     Advances - Deposits | 20,008.00 |
+|     Loan & Adv. EMPLOYEES | 16,466.47 |
+|     Prepaid Expenses | 30,483.40 |
+|     Tax Refundable | 0.00 |
+|     TRADE-AM | 0.00 |
+|     VENDORS - Advances | 0.00 |
+| **Non Current Assets** | |
+| **Other Non Current Assets** | |
+|     ACCUM. AMORTIZATION-CUST LIST | 175,000.00 |
+|     Customer Claim Disputes | -8,186.96 |
+|     CUSTOMER LIST | 0.00 |
+|     Deffered Exp.(sample)Rug | 12,500.00 |
+|     DEPOSITS | 0.00 |
+|     Design & Art Work (Atlanta) | 30,000.00 |
+|     Intangible Assets | 246,431.39 |
+|     LOAN FEE | 16,043.00 |
+|     Sample Rugs | 14,301.25 |
+|     Samples at Warehouse | 13,230.00 |
+|     Suspense | -1,168.61 |
+|     UNDEPOSITED FUNDS | 0.00 |
+| **Property Plant & Equipments** | |
+|     2B Reused-CLARK ORDER PICKER | 0.00 |
+|     2B Reused-Clrk Hyster 02/05/18 | 0.00 |
+|     2B Reused-Clrk Ord Picker 0119 | 0.00 |
+|     2B Reused-New Clark Ord Picker | 0.00 |
+|     2B Reused-Pallet Jack 9/28/16 | 0.00 |
+|     ACCUM. DEPRECIATION | -845,635.00 |
+|     Accumulated Amortization | -276,436.00 |
+|     BUILDING | 0.00 |
+|     Cell Phone | 4,045.30 |
+|     ELECTRONICS | 162,311.80 |
+|     FURNITURE | 163,072.20 |
+|     LAND | 0.00 |
+|     Leasehold Improvements | 153,789.59 |
+|     Motorola Scanner 11/17/16 | 1,756.55 |
+|     RACK | 0.00 |
+|     SIENNA-2015 | 0.00 |
+|     VEHICLES | 163,549.19 |
+|     Warehouse Equipment-Racks | 238,005.01 |
+|     Warehouse Vehicles | 251,706.72 |
+|     WebSpars Software System | 49,466.00 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+| **Accounts Payable** | |
+|     ACCOUNT PAYABLE-AMEX | 64,195.19 |
+|     ACCOUNT PAYABLE-EXPENSES | 0.00 |
+|     ACCOUNT PAYABLE-VENDOR | 1,073,093.94 |
+|     Allowance For Doubtful Debts | 0.00 |
+| **Accrued Expenses** | |
+|     401K Contribution Payable | 5,288.34 |
+|     Accrued Insurance Expense | 0.00 |
+|     Accrued Lease-Toshiba Printer | 0.00 |
+|     ACCURED EXPENSES | 16,612.09 |
+|     Garnishment-Child Support | 0.00 |
+|     INTREST ACCRUED | 0.00 |
+|     Not To Use Accrued Lease | 0.00 |
+|     PAYROLL | 3,594.75 |
+|     PAYROLL TAX | 16,583.32 |
+|     Ransomware Recovery Claim | 0.00 |
+|     SALES TAX | 84.35 |
+|     STATE W/H PAYABLE | 2,212.05 |
+| **Other Payables** | |
+|     ACCOUNT PAYABLE-CASH | 0.00 |
+|     ACCOUNT PAYABLE-RENT | 0.00 |
+|     ACCOUNT PAYABLE-VISA | 40,275.11 |
+|     AP- OTHER | 0.00 |
+|     Free Bank A/c to use | 0.00 |
+|     FUTA PAYABLE | 0.00 |
+|     SUTA PAYABLE | 0.00 |
+| **Short Term Loans** | |
+|     Advance from customer | 0.00 |
+|     BB&T | 0.00 |
+|     Bills Payable | 472,001.02 |
+|     Drip Capital Control A/c | 0.00 |
+|     Employee Benefits Plan Payable | 0.00 |
+|     FirstBank Loan A/c 2570107680 | 0.00 |
+|     Free to Use | 0.00 |
+|     FSG BANK-CREDIT LINE | 3,818,981.23 |
+|     LOAN | 774,078.84 |
+|     LOAN ON EQUITY | 0.00 |
+|     NOTE PAYABLE | 0.00 |
+|     PPP 2nd Draw | 0.00 |
+|     PPP Loan - First Bank | 0.00 |
+|     REGIONS BANK - LINE OF CREDIT | 0.00 |
+|     SBA-EIDL Loan | 0.00 |
+|     UNSECURED LOAN | 0.00 |
+| **Long Term Liabilities** | |
+| **Long Term Liabilities** | |
+|     Clark Order Picker 042117 Loan | 0.00 |
+|     LINE OF CREDIT | 0.00 |
+|     LONG TERM LIABILITIES  | 67,414.14 |
+|     NOTE PAYABLE | 0.00 |
+|     Obligation under Capital Lease | 0.00 |
+|     STOCKHOLDER LOAN | 0.00 |
+| **Stockholder Equity** | |
+| **Common Stock** | |
+|     COMMON STOCK | 1,000.00 |
+| **Distributions** | |
+|     DISTRIBUTIONS | 0.00 |
+| **Profit/(Loss)** | |
+|     Profit/(Loss) | -137,692.47 |
+| **Retained Earnings** | |
+|     RETAINED EARNING | 4,919,179.07 |
+| **Stockholder Equity** | |
+|     OWNERS | -2,339,703.73 |
+|     REALITY | -200,371.73 |
+
+================================================================================
+[BS-Main-2024YE] Balance sheet as of year end 2024
+Q: Balance sheet as of year end 2024
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Main Group],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Detail Group],
+    CM.BalanceSheet_Details                                                           AS [Account],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate = '2024-12-01'
+  AND CM.BalanceSheet_Details IS NOT NULL
+  AND CM.BalanceSheet_Details <> ''
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+| **Accounts Receivable** | |
+|     ACCOUNT RECEIVABLE | 2,096,386.05 |
+|     Refund to Customer | 2,355.20 |
+|     Reserve For Doubtful Debts | 0.00 |
+| **Cash and Cash Equivalents** | |
+|     AmExp CC | 0.00 |
+|     Cash Account | 0.00 |
+|     CASH IN HAND | 0.00 |
+|     Credit Card AR-Receipts | 14,261.77 |
+|     First Bank PPP Checking A/c | 0.00 |
+|     First Bank TN | -47,811.76 |
+|     Inter Bank Transfer | 0.00 |
+|     PETTY CASH | 0.00 |
+|     REGIONS | 0.00 |
+|     Truist | 6,971.80 |
+|     Warehouse Sale Credit Card | 0.00 |
+| **Inventory** | |
+|     *** Free To Use | 0.00 |
+|     Inventory Adj. | 0.00 |
+|     Inventory Asset | 5,677,066.97 |
+|     Inventory Change | 0.00 |
+|     Inventory Control | 23,702.88 |
+|     Inventory on Consignment | 1,889.14 |
+|     Inventory Transfer | 0.00 |
+|     Inventory-Prepaid Import Costs | 0.00 |
+|     RAW MATERIAL | 0.00 |
+|     WORK IN PROGRESS | 0.00 |
+| **Other Receivables** | |
+|     Accrued Insurance Expense | 1,518.22 |
+|     Accrued Lease-Toshiba Printer | 0.00 |
+|     Accrued Not Due Interest Payab | 4,080.67 |
+|     Advances - Deposits | 20,008.00 |
+|     Loan & Adv. EMPLOYEES | 2,610.27 |
+|     Prepaid Expenses | 16,752.27 |
+|     Tax Refundable | 0.00 |
+|     TRADE-AM | 0.00 |
+|     VENDORS - Advances | 94,779.01 |
+| **Total Current Assets** | 7,934,120.46 |
+| | |
+| **Non Current Assets** | |
+| **Other Non Current Assets** | |
+|     ACCUM. AMORTIZATION-CUST LIST | 175,000.00 |
+|     Customer Claim Disputes | 0.00 |
+|     CUSTOMER LIST | 0.00 |
+|     Deffered Exp.(sample)Rug | 12,500.00 |
+|     DEPOSITS | 0.00 |
+|     Design & Art Work (Atlanta) | 30,000.00 |
+|     Intangible Assets | 255,311.39 |
+|     LOAN FEE | 16,043.00 |
+|     Sample Rugs | 14,301.25 |
+|     Samples at Warehouse | 13,230.00 |
+|     Suspense | 0.00 |
+|     UNDEPOSITED FUNDS | 0.00 |
+| **Property Plant & Equipments** | |
+|     2B Reused-CLARK ORDER PICKER | 0.00 |
+|     2B Reused-Clrk Hyster 02/05/18 | 0.00 |
+|     2B Reused-Clrk Ord Picker 0119 | 0.00 |
+|     2B Reused-New Clark Ord Picker | 0.00 |
+|     2B Reused-Pallet Jack 9/28/16 | 0.00 |
+|     ACCUM. DEPRECIATION | -947,446.00 |
+|     Accumulated Amortization | -304,851.00 |
+|     BUILDING | 0.00 |
+|     Cell Phone | 4,045.30 |
+|     ELECTRONICS | 163,295.04 |
+|     FURNITURE | 163,072.20 |
+|     LAND | 0.00 |
+|     Leasehold Improvements | 153,789.59 |
+|     Motorola Scanner 11/17/16 | 1,756.55 |
+|     RACK | 0.00 |
+|     SIENNA-2015 | 0.00 |
+|     VEHICLES | 163,549.19 |
+|     Warehouse Equipment-Racks | 238,005.01 |
+|     Warehouse Vehicles | 251,706.72 |
+|     WebSpars Software System | 49,139.00 |
+| **Total Non Current Assets** | 127,946.24 |
+| | |
+| **Total Assets** | 8,062,066.70 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+| **Accounts Payable** | |
+|     ACCOUNT PAYABLE-AMEX | 71,798.28 |
+|     ACCOUNT PAYABLE-EXPENSES | 26,086.22 |
+|     ACCOUNT PAYABLE-VENDOR | 1,439,815.98 |
+|     Allowance For Doubtful Debts | 0.00 |
+| **Accrued Expenses** | |
+|     401K Contribution Payable | 3,283.34 |
+|     Accrued Insurance Expense | 0.00 |
+|     Accrued Lease-Toshiba Printer | 0.00 |
+|     ACCURED EXPENSES | 20,360.54 |
+|     Garnishment-Child Support | 0.00 |
+|     INTREST ACCRUED | 7,195.55 |
+|     Not To Use Accrued Lease | 0.00 |
+|     PAYROLL | -11,275.20 |
+|     PAYROLL TAX | 13,183.30 |
+|     Ransomware Recovery Claim | 0.00 |
+|     SALES TAX | 83.58 |
+|     STATE W/H PAYABLE | 1,741.10 |
+| **Other Payables** | |
+|     ACCOUNT PAYABLE-CASH | 0.00 |
+|     ACCOUNT PAYABLE-RENT | 0.00 |
+|     ACCOUNT PAYABLE-VISA | 40,330.14 |
+|     AP- OTHER | 0.00 |
+|     Free Bank A/c to use | 0.00 |
+|     FUTA PAYABLE | 215.43 |
+|     SUTA PAYABLE | 711.31 |
+| **Short Term Loans** | |
+|     Advance from customer | 11,745.91 |
+|     BB&T | 0.00 |
+|     Bills Payable | 0.00 |
+|     Drip Capital Control A/c | 0.00 |
+|     Employee Benefits Plan Payable | 0.00 |
+|     FirstBank Loan A/c 2570107680 | 999,575.22 |
+|     Free to Use | 0.00 |
+|     FSG BANK-CREDIT LINE | 3,063,864.51 |
+|     LOAN | 520,933.81 |
+|     LOAN ON EQUITY | 0.00 |
+|     NOTE PAYABLE | 0.00 |
+|     PPP 2nd Draw | 0.00 |
+|     PPP Loan - First Bank | 0.00 |
+|     REGIONS BANK - LINE OF CREDIT | 0.00 |
+|     SBA-EIDL Loan | 0.00 |
+|     UNSECURED LOAN | 0.00 |
+| **Total Current Liabilities** | 6,184,857.38 |
+| | |
+| **Long Term Liabilities** | |
+| **Long Term Liabilities** | |
+|     Clark Order Picker 042117 Loan | 0.00 |
+|     LINE OF CREDIT | 0.00 |
+|     LONG TERM LIABILITIES  | 56,508.92 |
+|     NOTE PAYABLE | 0.00 |
+|     Obligation under Capital Lease | 0.00 |
+|     STOCKHOLDER LOAN | 0.00 |
+| **Total Long Term Liabilities** | 56,508.92 |
+| | |
+| **Stockholder Equity** | |
+| **Common Stock** | |
+|     COMMON STOCK | 1,000.00 |
+| **Distributions** | |
+|     DISTRIBUTIONS | 0.00 |
+| **Profit/(Loss)** | |
+|     Profit/(Loss) | -392,364.55 |
+| **Retained Earnings** | |
+|     RETAINED EARNING | 4,919,179.07 |
+| **Stockholder Equity** | |
+|     OWNERS | -2,226,583.00 |
+|     REALITY | -200,371.73 |
+| **Total Stockholder Equity** | 2,101,859.79 |
+| | |
+| **Total Liabilities & Equity** | 8,343,226.09 |
+
+================================================================================
+[BS-Sub-2023YE] Sub grouped balance sheet at the end of 2023
+Q: Sub grouped balance sheet at the end of 2023
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END) AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE DD.Year  = 2023
+  AND DD.Month = 12
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     Accounts Receivable | 2,537,810.75 |
+|     Cash and Cash Equivalents | -5,549.99 |
+|     Inventory | 6,359,767.36 |
+|     Other Receivables | 81,062.72 |
+| **Total Current Assets** | 8,973,091.84 |
+| | |
+| **Non Current Assets** | |
+|     Other Non Current Assets | 499,880.64 |
+|     Property Plant & Equipments | 52,610.34 |
+| **Total Non Current Assets** | 552,491.00 |
+| | |
+| **Total Assets** | 9,525,582.84 |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | 1,536,959.58 |
+|     Accrued Expenses | 43,859.50 |
+|     Other Payables | 838.82 |
+|     Short Term Loans | 5,355,483.89 |
+| **Total Current Liabilities** | 6,937,141.79 |
+| | |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | 95,215.69 |
+| **Total Long Term Liabilities** | 95,215.69 |
+| | |
+| **Stockholder Equity** | |
+|     Common Stock | 1,000.00 |
+|     Distributions | 0.00 |
+|     Profit/(Loss) | 192,733.40 |
+|     Retained Earnings | 4,726,445.66 |
+|     Stockholder Equity | -2,426,954.73 |
+| **Total Stockholder Equity** | 2,493,224.33 |
+| | |
+| **Total Liabilities & Equity** | 9,525,582.81 |
+
+================================================================================
+[BS-Main-Multi1] Prepare main grouped balance sheet for June 2024 and July 2024 in side
+Q: Prepare main grouped balance sheet for June 2024 and July 2024 in side-by-side columns
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-06-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [June 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-07-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [July 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2024-06-01', '2024-07-01')
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | June 2024 ($) | July 2024 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+|     Current Assets | 7,489,565.40 | 8,026,974.19 |
+|     Non Current Assets | 563,909.11 | 565,615.28 |
+| **Total Assets** | 8,053,474.51 | 8,592,589.47 |
+| | | |
+| **Liabilities & Equity** | | |
+|     Current Liabilities | 5,562,420.14 | 6,223,596.62 |
+|     Long Term Liabilities | 74,428.42 | 70,922.19 |
+|     Stockholder Equity | 2,416,625.95 | 2,298,070.66 |
+| **Total Liabilities & Equity** | 8,053,474.51 | 8,592,589.47 |
+
+================================================================================
+[BS-Sub-Multi1] Sub grouped balance sheet as on November 2024 and December 2024 side b
+Q: Sub grouped balance sheet as on November 2024 and December 2024 side by side
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-11-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [November 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2024-11-01', '2024-12-01')
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | November 2024 ($) | December 2024 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+|     Accounts Receivable | 1,859,684.29 | 2,098,741.25 |
+|     Cash and Cash Equivalents | -25,476.50 | -26,578.19 |
+|     Inventory | 5,574,895.46 | 5,702,658.99 |
+|     Other Receivables | 56,752.08 | 139,748.44 |
+| **Total Current Assets** | 7,465,855.33 | 7,914,570.49 |
+| | | |
+| **Non Current Assets** | | |
+|     Other Non Current Assets | 518,293.88 | 516,385.64 |
+|     Property Plant & Equipments | 65,631.36 | -63,938.40 |
+| **Total Non Current Assets** | 583,925.24 | 452,447.24 |
+| | | |
+| **Total Assets** | 8,049,780.57 | 8,367,017.73 |
+| | | |
+| **Liabilities & Equity** | | |
+| **Current Liabilities** | | |
+|     Accounts Payable | 931,374.32 | 1,537,700.48 |
+|     Accrued Expenses | 31,660.61 | 34,572.21 |
+|     Other Payables | 54,426.07 | 41,256.88 |
+|     Short Term Loans | 4,876,040.97 | 4,596,119.45 |
+| **Total Current Liabilities** | 5,893,501.97 | 6,209,649.02 |
+| | | |
+| **Long Term Liabilities** | | |
+|     Long Term Liabilities | 59,250.15 | 56,508.92 |
+| **Total Long Term Liabilities** | 59,250.15 | 56,508.92 |
+| | | |
+| **Stockholder Equity** | | |
+|     Common Stock | 1,000.00 | 1,000.00 |
+|     Distributions | 0.00 | 0.00 |
+|     Profit/(Loss) | -283,075.16 | -392,364.55 |
+|     Retained Earnings | 4,919,179.07 | 4,919,179.07 |
+|     Stockholder Equity | -2,540,075.46 | -2,426,954.73 |
+| **Total Stockholder Equity** | 2,097,103.45 | 2,100,859.79 |
+| | | |
+| **Total Liabilities & Equity** | 8,049,780.57 | 8,367,017.73 |
+
+================================================================================
+[BS-Det-Multi1] Detailed balance sheet for April 2024 and May 2024 in separate columns
+Q: Detailed balance sheet for April 2024 and May 2024 in separate columns
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Main Group],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Detail Group],
+    CM.BalanceSheet_Details                                                           AS [Account],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-04-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [April 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-05-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [May 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2024-04-01', '2024-05-01')
+  AND CM.BalanceSheet_Details IS NOT NULL
+  AND CM.BalanceSheet_Details <> ''
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
+
+RESPONSE:
+| Description | April 2024 ($) | May 2024 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+| **Accounts Receivable** | | |
+|     ACCOUNT RECEIVABLE | 2,198,278.31 | 1,939,129.97 |
+|     Refund to Customer | 0.00 | 0.00 |
+|     Reserve For Doubtful Debts | -150,000.00 | -150,000.00 |
+| **Cash and Cash Equivalents** | | |
+|     AmExp CC | 0.00 | 0.00 |
+|     Cash Account | 356.00 | 717.00 |
+|     CASH IN HAND | 0.00 | 0.00 |
+|     Credit Card AR-Receipts | 11,539.52 | 5,239.22 |
+|     First Bank PPP Checking A/c | 0.00 | 0.00 |
+|     First Bank TN | -96,119.68 | -14,993.44 |
+|     Inter Bank Transfer | 41,237.93 | 0.00 |
+|     PETTY CASH | 0.00 | 0.00 |
+|     REGIONS | 0.00 | 0.00 |
+|     Truist | 18,656.27 | 16,758.43 |
+|     Warehouse Sale Credit Card | 0.00 | 0.00 |
+| **Inventory** | | |
+|     *** Free To Use | 0.00 | 0.00 |
+|     Inventory Adj. | 0.00 | 0.00 |
+|     Inventory Asset | 5,568,911.59 | 6,316,471.19 |
+|     Inventory Change | 0.00 | 0.00 |
+|     Inventory Control | 1,286.68 | -15,439.90 |
+|     Inventory on Consignment | 1,278.85 | 1,278.85 |
+|     Inventory Transfer | 0.00 | 0.00 |
+|     Inventory-Prepaid Import Costs | 0.00 | 0.00 |
+|     RAW MATERIAL | 0.00 | 0.00 |
+|     WORK IN PROGRESS | 0.00 | 0.00 |
+| **Other Receivables** | | |
+|     Accrued Insurance Expense | 9,555.38 | 9,298.39 |
+|     Accrued Lease-Toshiba Printer | 0.00 | 0.00 |
+|     Accrued Not Due Interest Payab | 0.00 | 0.00 |
+|     Advances - Deposits | 20,008.00 | 20,008.00 |
+|     Loan & Adv. EMPLOYEES | 16,374.97 | 15,674.97 |
+|     Prepaid Expenses | 50,851.97 | 46,796.97 |
+|     Tax Refundable | 0.00 | 0.00 |
+|     TRADE-AM | 0.00 | 0.00 |
+|     VENDORS - Advances | 0.00 | 0.00 |
+| **Non Current Assets** | | |
+| **Other Non Current Assets** | | |
+|     ACCUM. AMORTIZATION-CUST LIST | 175,000.00 | 175,000.00 |
+|     Customer Claim Disputes | -6,052.00 | -5,851.40 |
+|     CUSTOMER LIST | 0.00 | 0.00 |
+|     Deffered Exp.(sample)Rug | 12,500.00 | 12,500.00 |
+|     DEPOSITS | 0.00 | 0.00 |
+|     Design & Art Work (Atlanta) | 30,000.00 | 30,000.00 |
+|     Intangible Assets | 244,056.39 | 244,056.39 |
+|     LOAN FEE | 16,043.00 | 16,043.00 |
+|     Sample Rugs | 14,301.25 | 14,301.25 |
+|     Samples at Warehouse | 13,230.00 | 13,230.00 |
+|     Suspense | 0.00 | 0.00 |
+|     UNDEPOSITED FUNDS | 0.00 | 0.00 |
+| **Property Plant & Equipments** | | |
+|     2B Reused-CLARK ORDER PICKER | 0.00 | 0.00 |
+|     2B Reused-Clrk Hyster 02/05/18 | 0.00 | 0.00 |
+|     2B Reused-Clrk Ord Picker 0119 | 0.00 | 0.00 |
+|     2B Reused-New Clark Ord Picker | 0.00 | 0.00 |
+|     2B Reused-Pallet Jack 9/28/16 | 0.00 | 0.00 |
+|     ACCUM. DEPRECIATION | -845,635.00 | -845,635.00 |
+|     Accumulated Amortization | -276,436.00 | -276,436.00 |
+|     BUILDING | 0.00 | 0.00 |
+|     Cell Phone | 4,045.30 | 4,045.30 |
+|     ELECTRONICS | 160,414.07 | 160,414.07 |
+|     FURNITURE | 155,654.91 | 162,654.91 |
+|     LAND | 0.00 | 0.00 |
+|     Leasehold Improvements | 153,789.59 | 153,789.59 |
+|     Motorola Scanner 11/17/16 | 1,756.55 | 1,756.55 |
+|     RACK | 0.00 | 0.00 |
+|     SIENNA-2015 | 0.00 | 0.00 |
+|     VEHICLES | 163,549.19 | 163,549.19 |
+|     Warehouse Equipment-Racks | 238,005.01 | 238,005.01 |
+|     Warehouse Vehicles | 251,706.72 | 251,706.72 |
+|     WebSpars Software System | 45,760.00 | 45,760.00 |
+| **Liabilities & Equity** | | |
+| **Current Liabilities** | | |
+| **Accounts Payable** | | |
+|     ACCOUNT PAYABLE-AMEX | 117,849.23 | 75,619.34 |
+|     ACCOUNT PAYABLE-EXPENSES | 0.00 | 0.00 |
+|     ACCOUNT PAYABLE-VENDOR | 704,296.11 | 669,615.57 |
+|     Allowance For Doubtful Debts | 0.00 | 0.00 |
+| **Accrued Expenses** | | |
+|     401K Contribution Payable | 6,685.20 | 6,478.34 |
+|     Accrued Insurance Expense | 0.00 | 0.00 |
+|     Accrued Lease-Toshiba Printer | 0.00 | 0.00 |
+|     ACCURED EXPENSES | 22,993.26 | 24,968.90 |
+|     Garnishment-Child Support | 200.79 | 0.00 |
+|     INTREST ACCRUED | 0.00 | 0.00 |
+|     Not To Use Accrued Lease | 0.00 | 0.00 |
+|     PAYROLL | 17,348.55 | 16,348.55 |
+|     PAYROLL TAX | 18,304.62 | 15,180.63 |
+|     Ransomware Recovery Claim | 0.00 | 0.00 |
+|     SALES TAX | 64.01 | 64.01 |
+|     STATE W/H PAYABLE | 2,547.16 | 2,118.95 |
+| **Other Payables** | | |
+|     ACCOUNT PAYABLE-CASH | 0.00 | 0.00 |
+|     ACCOUNT PAYABLE-RENT | 0.00 | 0.00 |
+|     ACCOUNT PAYABLE-VISA | 45,782.06 | 70,291.90 |
+|     AP- OTHER | 0.00 | 0.00 |
+|     Free Bank A/c to use | 0.00 | 0.00 |
+|     FUTA PAYABLE | 0.00 | 0.00 |
+|     SUTA PAYABLE | 0.00 | 0.00 |
+| **Short Term Loans** | | |
+|     Advance from customer | 0.00 | 0.00 |
+|     BB&T | 0.00 | 0.00 |
+|     Bills Payable | 0.00 | 735,120.48 |
+|     Drip Capital Control A/c | 0.00 | 0.00 |
+|     Employee Benefits Plan Payable | 0.00 | 0.00 |
+|     FirstBank Loan A/c 2570107680 | 0.00 | 0.00 |
+|     Free to Use | 0.00 | 0.00 |
+|     FSG BANK-CREDIT LINE | 4,097,318.15 | 3,964,523.07 |
+|     LOAN | 632,166.26 | 615,541.26 |
+|     LOAN ON EQUITY | 0.00 | 0.00 |
+|     NOTE PAYABLE | 0.00 | 0.00 |
+|     PPP 2nd Draw | 0.00 | 0.00 |
+|     PPP Loan - First Bank | 0.00 | 0.00 |
+|     REGIONS BANK - LINE OF CREDIT | 0.00 | 0.00 |
+|     SBA-EIDL Loan | 2,427.71 | 2,427.71 |
+|     UNSECURED LOAN | 0.00 | 0.00 |
+| **Long Term Liabilities** | | |
+|     Clark Order Picker 042117 Loan | 0.00 | 0.00 |
+|     LINE OF CREDIT | 0.00 | 0.00 |
+|     LONG TERM LIABILITIES  | 81,400.91 | 77,916.09 |
+|     NOTE PAYABLE | 0.00 | 0.00 |
+|     Obligation under Capital Lease | 0.00 | 0.00 |
+|     STOCKHOLDER LOAN | 0.00 | 0.00 |
+| **Stockholder Equity** | | |
+|     COMMON STOCK | 1,000.00 | 1,000.00 |
+|     DISTRIBUTIONS | 0.00 | 0.00 |
+|     Profit/(Loss) | 58,796.41 | 52,890.09 |
+|     RETAINED EARNING | 4,919,179.07 | 4,919,179.07 |
+|     OWNERS | -2,284,083.00 | -2,299,083.00 |
+|     REALITY | -200,371.73 | -200,371.73 |
+
+================================================================================
+[BS-Main-Multi2] Compare main grouped balance sheet for December 2024 vs December 2023
+Q: Compare main grouped balance sheet for December 2024 vs December 2023
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2023-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2023],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2023-12-01', '2024-12-01')
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+RESPONSE:
+| Description | December 2023 ($) | December 2024 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+|     Current Assets | 8,973,090.84 | 7,914,570.49 |
+|     Non Current Assets | 552,490.98 | 452,447.24 |
+| **Total Assets** | 9,525,581.82 | 8,367,017.73 |
+| | | |
+| **Liabilities & Equity** | | |
+|     Current Liabilities | 6,937,141.79 | 6,209,649.02 |
+|     Long Term Liabilities | 95,215.69 | 56,508.92 |
+|     Stockholder Equity | 2,493,224.33 | 2,100,859.79 |
+| **Total Liabilities & Equity** | 9,525,581.81 | 8,367,017.73 |
+
+================================================================================
+[BS-Sub-Multi2] Sub grouped balance sheet for June 2025 and July 2025 in crosstab colu
+Q: Sub grouped balance sheet for June 2025 and July 2025 in crosstab columns
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-06-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [June 2025],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2025-07-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [July 2025]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2025-06-01', '2025-07-01')
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | June 2025 ($) | July 2025 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+|     Accounts Receivable | -321,456.10 | -745,513.95 |
+|     Cash and Cash Equivalents | -78,039.97 | 21,758.17 |
+|     Inventory | -254,357.19 | -202,558.52 |
+|     Other Receivables | -93,200.60 | -79,520.60 |
+| **Total Current Assets** | -747,053.86 | -1,005,835.90 |
+| | | |
+| **Non Current Assets** | | |
+|     Other Non Current Assets | 2,700.00 | 1,500.00 |
+|     Property Plant & Equipments | 21,032.00 | 14,710.00 |
+| **Total Non Current Assets** | 23,732.00 | 16,210.00 |
+| | | |
+| **Total Assets** | -723,321.86 | -989,625.90 |
+| | | |
+| **Liabilities & Equity** | | |
+| **Current Liabilities** | | |
+|     Accounts Payable | -237,696.44 | -201,280.54 |
+|     Accrued Expenses | -12,711.88 | 6,856.93 |
+|     Other Payables | 93.61 | -2,248.14 |
+|     Short Term Loans | -211,673.44 | -297,280.38 |
+| **Total Current Liabilities** | -461,988.15 | -493,952.13 |
+| | | |
+| **Long Term Liabilities** | | |
+|     Long Term Liabilities | -16,607.50 | -19,405.71 |
+| **Total Long Term Liabilities** | -16,607.50 | -19,405.71 |
+| | | |
+| **Stockholder Equity** | | |
+|     Common Stock | 0.00 | 0.00 |
+|     Distributions | 0.00 | 0.00 |
+|     Profit/(Loss) | -81,628.47 | -149,561.34 |
+|     Retained Earnings | 0.00 | 0.00 |
+|     Stockholder Equity | 0.00 | 0.00 |
+| **Total Stockholder Equity** | -81,628.47 | -149,561.34 |
+| | | |
+| **Total Liabilities & Equity** | -560,224.12 | -662,919.18 |
+
+================================================================================
+[BS-Follow1] Now show the sub grouped version of the same balance sheet
+Q: Now show the sub grouped version of the same balance sheet
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2023-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2023],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2023-12-01', '2024-12-01')
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+RESPONSE:
+| Description | December 2023 ($) | December 2024 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+|     Accounts Receivable | 2,537,810.75 | 2,098,741.25 |
+|     Cash and Cash Equivalents | -5,549.99 | -26,578.19 |
+|     Inventory | 6,359,767.36 | 5,702,658.99 |
+|     Other Receivables | 81,062.72 | 139,748.44 |
+| **Total Current Assets** | 8,973,090.84 | 7,914,570.49 |
+| | | |
+| **Non Current Assets** | | |
+|     Other Non Current Assets | 499,880.64 | 516,385.64 |
+|     Property Plant & Equipments | 52,610.34 | -63,938.40 |
+| **Total Non Current Assets** | 552,490.98 | 452,447.24 |
+| | | |
+| **Total Assets** | 9,525,581.82 | 8,367,017.73 |
+| | | |
+| **Liabilities & Equity** | | |
+| **Current Liabilities** | | |
+|     Accounts Payable | 1,536,959.58 | 1,537,700.48 |
+|     Accrued Expenses | 43,859.50 | 34,572.21 |
+|     Other Payables | 838.82 | 41,256.88 |
+|     Short Term Loans | 5,355,483.89 | 4,596,119.45 |
+| **Total Current Liabilities** | 6,937,141.79 | 6,209,649.02 |
+| | | |
+| **Long Term Liabilities** | | |
+|     Long Term Liabilities | 95,215.69 | 56,508.92 |
+| **Total Long Term Liabilities** | 95,215.69 | 56,508.92 |
+| | | |
+| **Stockholder Equity** | | |
+|     Common Stock | 1,000.00 | 1,000.00 |
+|     Distributions | 0.00 | 0.00 |
+|     Profit/(Loss) | 192,733.40 | -392,364.55 |
+|     Retained Earnings | 4,726,445.66 | 4,919,179.07 |
+|     Stockholder Equity | -2,426,954.73 | -2,426,954.73 |
+| **Total Stockholder Equity** | 2,493,224.33 | 2,100,859.79 |
+| | | |
+| **Total Liabilities & Equity** | 9,525,581.81 | 8,367,017.73 |
+
+================================================================================
+[BS-Follow2] Drill down into the detailed balance sheet from this
+Q: Drill down into the detailed balance sheet from this
+================================================================================
+SQL:
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Main Group],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Detail Group],
+    CM.BalanceSheet_Details                                                           AS [Account],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2023-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2023],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-12-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [December 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2023-12-01', '2024-12-01')
+  AND CM.BalanceSheet_Details IS NOT NULL
+  AND CM.BalanceSheet_Details <> ''
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
+
+RESPONSE:
+| Description | December 2023 ($) | December 2024 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+| **Accounts Receivable** | | |
+|     ACCOUNT RECEIVABLE | 2,687,810.75 | 2,096,386.05 |
+|     Refund to Customer | 0.00 | 2,355.20 |
+|     Reserve For Doubtful Debts | -150,000.00 | 0.00 |
+| **Cash and Cash Equivalents** | | |
+|     AmExp CC | 0.00 | 0.00 |
+|     Cash Account | 257.00 | 0.00 |
+|     CASH IN HAND | 0.00 | 0.00 |
+|     Credit Card AR-Receipts | 6,713.38 | 14,261.77 |
+|     First Bank PPP Checking A/c | 0.00 | 0.00 |
+|     First Bank TN | -27,049.24 | -47,811.76 |
+|     Inter Bank Transfer | 0.00 | 0.00 |
+|     PETTY CASH | 0.00 | 0.00 |
+|     REGIONS | 0.00 | 0.00 |
+|     Truist | 14,528.87 | 6,971.80 |
+|     Warehouse Sale Credit Card | 0.00 | 0.00 |
+| **Inventory** | | |
+|     *** Free To Use | 0.00 | 0.00 |
+|     Inventory Adj. | 0.00 | 0.00 |
+|     Inventory Asset | 6,376,624.20 | 5,677,066.97 |
+|     Inventory Change | 0.00 | 0.00 |
+|     Inventory Control | -18,052.28 | 23,702.88 |
+|     Inventory on Consignment | 1,195.44 | 1,889.14 |
+|     Inventory Transfer | 0.00 | 0.00 |
+|     Inventory-Prepaid Import Costs | 0.00 | 0.00 |
+|     RAW MATERIAL | 0.00 | 0.00 |
+|     WORK IN PROGRESS | 0.00 | 0.00 |
+| **Other Receivables** | | |
+|     Accrued Insurance Expense | 2,422.77 | 1,518.22 |
+|     Accrued Lease-Toshiba Printer | 0.00 | 0.00 |
+|     Accrued Not Due Interest Payab | 0.00 | 4,080.67 |
+|     Advances - Deposits | 20,008.00 | 20,008.00 |
+|     Loan & Adv. EMPLOYEES | 12,044.31 | 2,610.27 |
+|     Prepaid Expenses | 7,147.74 | 16,752.27 |
+|     Tax Refundable | 0.00 | 0.00 |
+|     TRADE-AM | 0.00 | 0.00 |
+|     VENDORS - Advances | 39,439.90 | 94,779.01 |
+| **Non Current Assets** | | |
+| **Other Non Current Assets** | | |
+|     ACCUM. AMORTIZATION-CUST LIST | 175,000.00 | 175,000.00 |
+|     Customer Claim Disputes | 0.00 | 0.00 |
+|     CUSTOMER LIST | 0.00 | 0.00 |
+|     Deffered Exp.(sample)Rug | 12,500.00 | 12,500.00 |
+|     DEPOSITS | 0.00 | 0.00 |
+|     Design & Art Work (Atlanta) | 30,000.00 | 30,000.00 |
+|     Intangible Assets | 238,806.39 | 255,311.39 |
+|     LOAN FEE | 16,043.00 | 16,043.00 |
+|     Sample Rugs | 14,301.25 | 14,301.25 |
+|     Samples at Warehouse | 13,230.00 | 13,230.00 |
+|     Suspense | 0.00 | 0.00 |
+|     UNDEPOSITED FUNDS | 0.00 | 0.00 |
+| **Property Plant & Equipments** | | |
+|     2B Reused-CLARK ORDER PICKER | 0.00 | 0.00 |
+|     2B Reused-Clrk Hyster 02/05/18 | 0.00 | 0.00 |
+|     2B Reused-Clrk Ord Picker 0119 | 0.00 | 0.00 |
+|     2B Reused-New Clark Ord Picker | 0.00 | 0.00 |
+|     2B Reused-Pallet Jack 9/28/16 | 0.00 | 0.00 |
+|     ACCUM. DEPRECIATION | -845,635.00 | -947,446.00 |
+|     Accumulated Amortization | -276,436.00 | -304,851.00 |
+|     BUILDING | 0.00 | 0.00 |
+|     Cell Phone | 4,045.30 | 4,045.30 |
+|     ELECTRONICS | 160,414.07 | 163,295.04 |
+|     FURNITURE | 155,654.91 | 163,072.20 |
+|     LAND | 0.00 | 0.00 |
+|     Leasehold Improvements | 153,789.59 | 153,789.59 |
+|     Motorola Scanner 11/17/16 | 1,756.55 | 1,756.55 |
+|     RACK | 0.00 | 0.00 |
+|     SIENNA-2015 | 0.00 | 0.00 |
+|     VEHICLES | 163,549.19 | 163,549.19 |
+|     Warehouse Equipment-Racks | 238,005.01 | 238,005.01 |
+|     Warehouse Vehicles | 251,706.72 | 251,706.72 |
+|     WebSpars Software System | 45,760.00 | 49,139.00 |
+| **Liabilities & Equity** | | |
+| **Current Liabilities** | | |
+| **Accounts Payable** | | |
+|     ACCOUNT PAYABLE-AMEX | 61,752.30 | 71,798.28 |
+|     ACCOUNT PAYABLE-EXPENSES | 984.50 | 26,086.22 |
+|     ACCOUNT PAYABLE-VENDOR | 1,474,222.78 | 1,439,815.98 |
+|     Allowance For Doubtful Debts | 0.00 | 0.00 |
+| **Accrued Expenses** | | |
+|     401K Contribution Payable | 0.00 | 3,283.34 |
+|     Accrued Insurance Expense | 0.00 | 0.00 |
+|     Accrued Lease-Toshiba Printer | 0.00 | 0.00 |
+|     ACCURED EXPENSES | 32,700.02 | 20,360.54 |
+|     Garnishment-Child Support | 0.00 | 0.00 |
+|     INTREST ACCRUED | 11,095.47 | 7,195.55 |
+|     Not To Use Accrued Lease | 0.00 | 0.00 |
+|     PAYROLL | 0.00 | -11,275.20 |
+|     PAYROLL TAX | 0.00 | 13,183.30 |
+|     Ransomware Recovery Claim | 0.00 | 0.00 |
+|     SALES TAX | 64.01 | 83.58 |
+|     STATE W/H PAYABLE | 0.00 | 1,741.10 |
+| **Other Payables** | | |
+|     ACCOUNT PAYABLE-CASH | 0.00 | 0.00 |
+|     ACCOUNT PAYABLE-RENT | 0.00 | 0.00 |
+|     ACCOUNT PAYABLE-VISA | 0.03 | 40,330.14 |
+|     AP- OTHER | 0.00 | 0.00 |
+|     Free Bank A/c to use | 0.00 | 0.00 |
+|     FUTA PAYABLE | 203.25 | 215.43 |
+|     SUTA PAYABLE | 635.54 | 711.31 |
+| **Short Term Loans** | | |
+|     Advance from customer | 0.00 | 11,745.91 |
+|     BB&T | 0.00 | 0.00 |
+|     Bills Payable | 440,042.00 | 0.00 |
+|     Drip Capital Control A/c | 0.00 | 0.00 |
+|     Employee Benefits Plan Payable | 0.00 | 0.00 |
+|     FirstBank Loan A/c 2570107680 | 0.00 | 999,575.22 |
+|     Free to Use | 0.00 | 0.00 |
+|     FSG BANK-CREDIT LINE | 4,312,865.89 | 3,063,864.51 |
+|     LOAN | 585,332.47 | 520,933.81 |
+|     LOAN ON EQUITY | 0.00 | 0.00 |
+|     NOTE PAYABLE | 0.00 | 0.00 |
+|     PPP 2nd Draw | 0.00 | 0.00 |
+|     PPP Loan - First Bank | 0.00 | 0.00 |
+|     REGIONS BANK - LINE OF CREDIT | 0.00 | 0.00 |
+|     SBA-EIDL Loan | 17,243.53 | 0.00 |
+|     UNSECURED LOAN | 0.00 | 0.00 |
+| **Long Term Liabilities** | | |
+|     Clark Order Picker 042117 Loan | 0.00 | 0.00 |
+|     LINE OF CREDIT | 0.00 | 0.00 |
+|     LONG TERM LIABILITIES  | 95,215.69 | 56,508.92 |
+|     NOTE PAYABLE | 0.00 | 0.00 |
+|     Obligation under Capital Lease | 0.00 | 0.00 |
+|     STOCKHOLDER LOAN | 0.00 | 0.00 |
+| **Stockholder Equity** | | |
+|     COMMON STOCK | 1,000.00 | 1,000.00 |
+|     DISTRIBUTIONS | 0.00 | 0.00 |
+|     Profit/(Loss) | 192,733.40 | -392,364.55 |
+|     RETAINED EARNING | 4,726,445.66 | 4,919,179.07 |
+|     OWNERS | -2,226,583.00 | -2,226,583.00 |
+|     REALITY | -200,371.73 | -200,371.73 |
+
+================================================================================
+[BS-Follow3] What is the working capital based on the above balance sheet?
+Q: What is the working capital based on the above balance sheet?
+================================================================================

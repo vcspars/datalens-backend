@@ -36,20 +36,24 @@ _ROLE_SCOPE: dict[str, str] = {
     "executive": "",  # no restriction
     "sales": (
         "ALLOWED topics for this user: sales figures, customer analytics, inventory levels, pricing, and backorder status. "
-        "RESTRICTED topics: profitability, profit margins, unit costs, vendor analytics, vendor payments, vendor returns, and any cost/financial data. "
+        "RESTRICTED topics: profitability, profit margins, unit costs, vendor analytics, vendor payments, vendor returns, any cost/financial data, "
+        "balance sheets, P&L statements, income statements, profit and loss, financial statements, closing balances, equity, liabilities, assets summary, "
+        "gross profit, net profit, operating profit, cost of goods sold (COGS), finance charges, and any other financial reporting. "
         "If the resolved question touches a restricted topic, set access_denied=true and write denial_reason using this exact format: "
         "'You don't have rights to access [describe the restricted topic briefly] information. As per your current role, you are assigned access to: "
         "sales figures, customer analytics, inventory levels, pricing, and backorder status only.' "
-        "Replace [describe the restricted topic briefly] with a plain description of what the user asked (e.g. 'profitability', 'vendor payment', 'margin'). "
+        "Replace [describe the restricted topic briefly] with a plain description of what the user asked (e.g. 'balance sheet', 'P&L statement', 'income statement', 'profitability'). "
         "Do NOT mention table names or the word 'role'."
     ),
     "operations": (
         "ALLOWED topics for this user: inventory monitoring (stock levels, warehouse quantities) and backorder information. "
-        "RESTRICTED topics: sales data, customer data, revenue, pricing, profitability, margins, vendor data, purchase orders, payments, and credit memos. "
+        "RESTRICTED topics: sales data, customer data, revenue, pricing, profitability, margins, vendor data, purchase orders, payments, credit memos, "
+        "balance sheets, P&L statements, income statements, profit and loss, financial statements, closing balances, equity, liabilities, assets summary, "
+        "gross profit, net profit, operating profit, cost of goods sold (COGS), finance charges, and any other financial reporting. "
         "If the resolved question touches a restricted topic, set access_denied=true and write denial_reason using this exact format: "
         "'You don't have rights to access [describe the restricted topic briefly] information. As per your current role, you are assigned access to: "
         "inventory monitoring and backorder information only.' "
-        "Replace [describe the restricted topic briefly] with a plain description of what the user asked (e.g. 'sales', 'customer', 'pricing'). "
+        "Replace [describe the restricted topic briefly] with a plain description of what the user asked (e.g. 'balance sheet', 'P&L statement', 'income statement', 'sales'). "
         "Do NOT mention table names or the word 'role'."
     ),
 }
@@ -243,6 +247,13 @@ Output the JSON object only (resolved_question, intent, is_followup, access_deni
         data_keywords = (
             "how many", "what are", "which", "list", "show", "total", "count", "sum",
             "sales", "customer", "order", "product", "table", "tables", "database",
+        )
+        # Financial statement terms that are restricted for non-executive roles
+        financial_keywords = (
+            "balance sheet", "p&l", "profit and loss", "income statement",
+            "financial statement", "gross profit", "net profit", "operating profit",
+            "cost of goods sold", "cogs", "finance charges", "closing balance",
+            "equity", "liabilities", "assets summary",
         )
         if any(w in question_lower for w in advisory_keywords):
             intent = "simple"

@@ -135,16 +135,17 @@ Purpose: (This table contains the Customer's master data used for sales and rece
   City                (City of the respective Customer.)
   State               (State of the respective Customer.)
   Country             (Country of the respective Customer.)
-  Region              (Geographic region of the respective Customer.)
+  RegionKey           (Geographic region reference key from DimRegion Table. It refers to the sales or geographic region to which this customer belongs.)
   Province            (Province of the respective Customer (if applicable).)
   Phone               (Primary phone number of the respective Customer.)
   Email               (Primary email address of the respective Customer.)
-  PriceCategory       (Assigned pricing tier of the respective Customer.)
-  PaymentTermKey      (FK to DimPaymentTerms. The customer's default payment terms. Join: JOIN DimPaymentTerms DPT ON DC.PaymentTermKey = DPT.PaymentTermKey. NOTE: may be NULL for some customers.)
+  PriceCategoryKey    (Price category reference key from DimPriceCategory Table. It refers to the assigned pricing tier applicable to this customer.)
+  PaymentTermKey      (Payment term reference key from DimPaymentTerms Table. It refers to the default payment terms applicable to this customer.)
   SalesDiscount       (Default discount percentage.)
   TaxRate             (Default tax rate applied to the customer.)
-  CreditLimit         (Maximum credit allowed.)
-  Status              (Account status. (Active/ InActive))
+  CreditLimit         (Maximum credit amount allowed for this customer account.)
+  CurrentBalance      (Current Balance of the Customer.)
+  Status              (Current account status of the customer. Possible values: Active (0), Sales Hold (1), Credit Hold (2).)
   IsDropShipOnly      (Drop-ship only flag.)
   IsSpecialPricing    (Flag indicating if special pricing rules apply.)
   CreatedDate         (Record creation timestamp.)
@@ -168,11 +169,14 @@ Purpose: (This table contains the master data of the items (products) for invent
   Category            (Product category.)
   Collection          (Collection or series.)
   Design              (Pattern or design.)
+  DesignDescription   (Design description.)
   Color               (Primary color.)
-  Size                (Dimensions.)
+  ColorDescription    (Color Description.)
+  Size                (Product Size.)
+  SizeDescription     (Size Description.)
   Brand               (Brand name.)
   Country             (Country of origin.)
-  Vendor              (Default vendor of the respective item. Stores the VendorID value from DimVendors — NOT the vendor name. Always join to DimVendors using: DimProduct.Vendor = DimVendors.VendorID.)
+  Vendor              (Default vendor of the respective item (product).)
   MaterialType        (Composition material (e.g., Wool, Silk).)
   Shape               (Shape of the product (e.g., Rectangular, Round).)
   Weight              (Product weight.)
@@ -180,6 +184,7 @@ Purpose: (This table contains the master data of the items (products) for invent
   Volume              (Volume.)
   IsDiscontinued      (Flag indicating if product is no longer for sale.)
   Status              (Lifecycle status.)
+  SetItem             (Y = Yes, N = No.)
   CreatedDate         (Creation timestamp.)
   ModifiedDate        (Last update timestamp.)
   Construction        (Construction.)
@@ -196,7 +201,7 @@ Purpose: (This table contains the master data of Vendors for procurement analyti
   Category            (Business category of the respective vendor.)
   Class               (Priority or quality class.)
   Region              (Geographic region.)
-  Status              (Current relationship status (Active, Hold, etc.).)
+  Status              (Status of the vendor. Possible values: Active (0), Purchase Hold (1), Payment Hold (2).)
   City                (Vendor city.)
   State               (Vendor state.)
   Country             (Vendor country.)
@@ -206,7 +211,7 @@ Purpose: (This table contains the master data of Vendors for procurement analyti
   CreditLimit         (Vendor credit limit.)
   FurnitureVendor     (Furniture supplier flag.)
   DesignerRate        (Special percentage rate for designers.)
-  InTransitDays       (Estimated delivery time from vendor.)
+  InTransitDays       (Estimated number of days for goods to arrive from this vendor after shipment, used for delivery planning and inventory management.)
 
 Table: DimWarehouse
 Purpose: (This table contains the list of the Warehouse, its location, its manager, its type, status and other information required for analysis.)
@@ -227,7 +232,7 @@ Purpose: (This table contains the list of the Warehouse, its location, its manag
   TaxID               (Tax identifier.)
   TimeZoneHours       (UTC offset.)
   IsActive            (Operational flag.)
-  WHSStatus           (Warehouse status.)
+  WHSStatus           (Descriptive warehouse status indicating the current operational state of this warehouse. Possible values: Active (1), Inactive (any other value).)
   CreatedDate         (Creation timestamp.)
   ModifiedDate        (Last update timestamp.)
 
@@ -236,6 +241,7 @@ Purpose: (This table contains the Shipping and billing information of the respec
   AddressesKey        (Surrogate key. It's the primary key of this table.)
   SalesInvoiceNo      (A Unique Sales Invoice Number used in SPARS.)
   State               (Destination state.)
+  Zip                 (Zip.)
   City                (Destination city.)
   Country             (Destination country.)
   ShipToAddress       (Ship To Address.)
@@ -284,6 +290,7 @@ Purpose: (This table contains the master information of the Bill Of Ladings.)
   State               (State.)
   Zip                 (Zip Code.)
   VehicleNo           (Vehicle Number.)
+  Carrier             (Carrier Number.)
   Route               (Route.)
   ShipVia             (Ship Via.)
   ScacCode            (SCAC Code.)
@@ -291,6 +298,9 @@ Purpose: (This table contains the master information of the Bill Of Ladings.)
   DeliveryDateKey     (Date Reference Key from DimDate Table.)
   TotalAmount         (Total Amount of the relevant Bill of Lading document.)
   Freight             (Freight amount of the relevant Bill of Lading document.)
+  TotalCharges        (Total Charges.)
+  FreightPrepaid      (Freight Prepaid.)
+  CODCharges          (COD Charges.)
   CODAmount           (COD amount of the relevant Bill of Lading document.)
   CODChargesPrepaid   (COD ChargesPrepaid.)
   CarrierProNo        (Carrier Pro No.)
@@ -301,7 +311,7 @@ Table: DimBillOfLadingDetail
 Purpose: (This table contains the detail information of the Bill Of Lading. This is used a detail table against the master information of the bill of lading stored in the DimBillofLading table.)
   BillOfLadingDetailKey  (Bill of lading detail Key. It's the primary key of this table.)
   BillOfLadingNo         (A Unique identifier used in SPARS as Bill of Lading Number.)
-  PackingSlipNo          (A Unique identifier used in SPARS Packing Slip Number.)
+  PackingSlipNo          (A Unique identifier used in SPARS Packing Slip Number Reference (table FactPackingSlips column packingslipNo).)
   BaleNo                 (Bale Number.)
   Weight                 (Weight.)
   Charges                (Charges.)
@@ -321,7 +331,7 @@ Purpose: (This Table contains the information of the Items (products) with OAK T
   ProductKey             (Product Reference Key from the DimProduct Table.)
   RugID                  (Rug ID.)
   StockNo                (Stock Number.)
-  VendorKey              (Vendor Reference Key.)
+  VendorKey              (Vendor Reference Key from DimVendors.)
   LocationID             (A Unique Identification number of the Location.)
   Category               (Category.)
   Collection             (Collection.)
@@ -331,7 +341,7 @@ Purpose: (This Table contains the information of the Items (products) with OAK T
   SizeDescription        (Size Description.)
   DesignType             (Design Type.)
   PurchasePrice          (Purchase Price.)
-  LastSalesPrice         (Last Sales Price.)
+  LastSalePrice          (Last Sales Price.)
   UnitPrice              (Unit Price.)
   SQFTPrice              (SQFT Price.)
   STDCost                (STD Cost.)
@@ -351,8 +361,6 @@ Purpose: (This table contains the Prices of the Items (Products).)
   Pricecategory       (Price Category.)
   UnitPrice           (Unit Price of the respective item (product).)
   SQFTPrice           (SQFT Price of the respective item (product).)
-  StartDate           (Start Date of the date range when this price is valid.)
-  ENDDate             (End Date of the date range when this price is valid.)
 
 Table: DimRegion
 Purpose: (This table contains the definitions of the Regions.)
@@ -404,6 +412,7 @@ Purpose: (This table contains the information of the Chart of Account.)
   Main                       (Main.)
   AccDescr                   (Acc Description.)
   TypeID                     (Type.)
+  Category                   (Category.)
   BalanceSheet_MainGroups    (Balance Sheet Main Groups.)
   BalanceSheet_SubGroups     (Balance Sheet Sub Groups.)
   BalanceSheet_Details       (Balance Sheet Details.)
@@ -423,11 +432,11 @@ Purpose: (This table contains the master (header level) information of the Sales
   PackingSlipNo       (It's a unique identification number of the Packing Slip associated with respective Sales Invoice record.)
   DateKey             (It's a Invoice date Key of the DimDate Table.)
   OrderDateKey        (It's a sales order date Key of the DimDate Table.)
-  CustomerKey         (Customer reference.)
+  CustomerKey         (Customer reference from DimCustomer Table.)
   AddressesKey        (It's a unique address key from DimInvoiceAddresses Table. Shipping destination.)
   WarehouseKey        (It's a unique address key from DimWarehouse Table. Fulfillment Warehouse.)
-  SalesmanKey         (Sales representative reference. NOTE: Sparsely populated — most invoice records have NULL here. Do NOT use this column for aggregated sales rep revenue or performance attribution. Use FactSalesCommission or FactCommissionRates instead, which carry proper SalesRepKey linkage.)
-  PaymentTermKey      (Payment term reference from DimPaymentTerms. NOTE: Sparsely populated — most invoice records have NULL here. For payment terms analysis, read DimCustomer.PaymentTerm directly (stores the term value, no join needed), or use FactSalesOrders.PaymentTermKey JOIN DimPaymentTerms.)
+  PaymentTermKey      (It's a unique address key from DimPaymentTerms Table. Payment terms.)
+  PriceCategoryKey    (It's a unique address key from DimPriceCategory Table. Price Category.)
   SalesType           (Sales classification. It could have values: SO0 or CS0. SO0 = Sales Invoice, CS0 = Consignment Invoice.)
   InvoiceType         (Document type. It could have values: S or O. S = Sales Invoice, O = One Step Invoice.)
   Status              (Invoice status. (i-e; Close, Open, Partially Shipped, Void).)
@@ -440,14 +449,13 @@ Purpose: (This table contains the master (header level) information of the Sales
   MerchandiseAmount   (Merchandise value.)
   ServicesAmount      (Service revenue.)
   AppliedAmount       (Applied payments.)
-  AdjustmentAmount    (Adjustments.)
   DiscountAmount      (Discount Amount (If any).)
   TotalWeight         (Total shipment weight.)
 
 Table: FactSalesDetail
 Purpose: (This table contains the detail level (line-level) information of the Sales Invoices.)
   SalesKey            (Surrogate key. It's the primary key of this table.)
-  SalesInvoiceNo      (It's a unique identification number of the Sales Invoice.)
+  SalesInvoiceNo      (It's a unique identification number of the Sales Invoice Reference from (table FactSalesInvoice Column SalesInvoiceNo).)
   InvoiceLineNumber   (It's a unique identification number of the Line of a Sale Invoice.)
   DateKey             (Invoice line date reference of the DimDate Table.)
   OrderDateKey        (Order date reference of the DimDate Table.)
@@ -456,8 +464,6 @@ Purpose: (This table contains the detail level (line-level) information of the S
   WarehouseKey        (Warehouse reference of the DimWarehouse Table.)
   ItemType            (Sale Item category. It could have values: O or P. O means OAK Item, P means Program Item.)
   Quantity            (Sale Item Quantity sold.)
-  ShippedQuantity     (Sale item Quantity physically sent to customer.)
-  ReturnQuantity      (Sales Item Quantity returned after sale.)
   UnitPrice           (Sale Item Unit price, Price charged per unit.)
   UnitCost            (Sale Item cost per unit (at time of sale).)
   DiscountAmount      (Sale Item Discount subtracted from specific line.)
@@ -472,9 +478,9 @@ Purpose: (This table contains the master (header level) information of the Purch
   PurchaseOrderNo     (It's a unique identification number of the Purchase Order.)
   VendorKey           (Vendor reference from DimVendors Table.)
   DateKey             (Issue date reference from DimDate Table. It refers to Purchase Order Date.)
-  DueDateKey          (Date Reference Key from DimDate Table. It refers to Due Date of the Purchase Order till when this purchase order must be fulfilled.)
+  OrderDateKey        (Order Date reference from DimDate Table.)
+  DueDateKey          (Date Reference Key from DimDate Table. It refers to Due Date of the Purchase Order till when this purchase order Payment must be fulfilled.)
   CancelDateKey       (Date Reference Key from DimDate Table. It refers to the Cancel Date of the Purchase Order (If any).)
-  CompletionDateKey   (Date Reference Key from DimDate Table. It refers to the Completion Date of the Purchase Order.)
   ETADateKey          (Date Reference Key from DimDate Table. It refers to the Estimated Time of Arrival (ETA Date) of the Purchase Order.)
   WarehouseKey        (It's a Reference Key from DimWarehouse Table. It refers to the Purchase Receiving warehouse.)
   CustomerKey         (Customer reference key from DimCustomer Table. It refers to the Customer Information for whom this purchase order is placed.)
@@ -525,7 +531,7 @@ Purpose: (This table contains the Inventory position snapshots of the Items (Pro
 
 Table: FactVendorInvoice
 Purpose: (This table contains the master (header level) information of the Vendor (Payable) Invoices. It stores all invoices received from Vendors.)
-  PayableInvoiceKey     (Surrogate key. It's the primary key of this table.)
+  VendorInvoiceKey      (Surrogate key. It's the primary key of this table.)
   PayableInvoiceNo      (A unique identification number of the Payable (Vendor) Invoice used in SPARS.)
   VendorKey             (Vendor reference key. Resolved from DimVendors.)
   InvoiceType           (Code classifying the invoice type. Possible values: P = Purchase Invoice, T = Transfer Invoice.)
@@ -542,35 +548,34 @@ Purpose: (This table contains the master (header level) information of the Vendo
 
 Table: FactVendorPayments
 Purpose: (This table contains the master (header level) information of the Vendor Payments. It stores all payments made to Vendors for procurement and accounts payable analytics.)
-  VendorPaymentKey    (Surrogate key. It's the primary key of this table.)
+  PaymentKey          (Surrogate key. It's the primary key of this table.)
   PaymentNo           (A unique identification number of the Vendor Payment used in SPARS.)
   VendorKey           (Vendor reference key from DimVendors Table. It refers to the vendor to whom this payment was made.)
   DocDateKey          (Date reference key from DimDate Table. It refers to the document date of the payment record.)
   PaymentDateKey      (Date reference key from DimDate Table. It refers to the actual date when the payment was made to the vendor.)
   PaymentAccount      (Bank or cash account that was debited for this payment.)
   DiscountAccount     (GL account where any early payment discount taken is recorded.)
-  DocType             (Document type code classifying the nature of the payment document.)
+  DocType             (DocType = W ('WireTransfer'), DocType = C ('Check'), DocType = I ('IDC#'), DocType = S ('Cash'), DocType = R ('ReverseEntry'), DocType = H ('ACH'), DocType = D ('CreditCard').)
   Amount              (Total payment amount sent to the vendor.)
   AppliedAmount       (The payment amount that has been applied to outstanding vendor invoices.)
   AppliedDiscount     (Discount amount deducted from the payment at the time of settlement.)
-  Status              (Current status of the payment record.)
-  PaymentType         (Method or type of payment used (e.g., Check, Wire Transfer).)
+  Status              (Status = B ('Bounced'), Status = C ('Close'), Status = N ('New'), Status = O ('Open'), Status = V ('Void').)
+  PaymentType         (PaymentType = P ('Regular Payment'), PaymentType = O ('One Step Payment'), PaymentType = A ('Advance Payment'), PaymentType = N ('Non AP Payment').)
   PeriodID            (Accounting period identifier associated with this vendor payment.)
-  VoidDateKey         (Date reference key from DimDate Table. It refers to the date when this payment was voided.)
+  VoidDateKey         (Date reference key from DimDate Table. It refers to the document date of the void record.)
 
 Table: FactCustomerReturn
 Purpose: (This table contains the master (header level) information of the Customer Returns. It stores all return transactions initiated by customers, supporting returns management.)
   ReturnHeaderKey          (Surrogate key. It's the primary key of this table.)
   CustomerReturnNo         (A unique identification number of the Customer Return used in SPARS.)
-  SalesInvoiceNo           (The original Sales Invoice number against which this return was raised.)
+  SalesInvoiceNo           (The original Sales Invoice number against which this return was raised. Reference (table FactSalesInvoice column SalesInvoiceNo).)
   CreditMemoNo             (The Credit Memo number issued to the customer as a result of this return.)
   CustomerKey              (Customer reference key from DimCustomer Table. It refers to the customer who initiated this return.)
   DateReceivedKey          (Date reference key from DimDate Table. It refers to the date when the returned items were physically received.)
   CreditDateKey            (Date reference key from DimDate Table. It refers to the date when the credit was issued to the customer for this return.)
   InvoiceDateKey           (Date reference key from DimDate Table. It refers to the date of the original sales invoice associated with this return.)
   ReceiptType              (Type of receipt used to classify how the return was received.)
-  Status                   (Current status of the customer return record.)
-  ReceivingBin             (Warehouse bin location where the returned items are stored upon receipt.)
+  ReturnStatus             (Status = 0 ('Closed'), Status = 1 ('Received'), Status = 3 ('New'), Status = 4 ('Confirmed').)
   TotalQty                 (Total quantity of items returned by the customer.)
   TotalAmount              (Total value or credit amount associated with this return.)
   ShippingHandlingAmount   (Shipping and handling charges related to processing this return.)
@@ -599,9 +604,11 @@ Purpose: (This table contains the master (header level) information of the Credi
   CreditMemoKey            (Surrogate key. It's the primary key of this table.)
   CreditMemoNo             (A unique identification number of the Credit Memo used in SPARS.)
   CustomerKey              (Customer reference key from DimCustomer Table. It refers to the customer to whom this credit memo was issued.)
-  SalesOrderNO             (The Sales Order number associated with this credit memo.)
-  InvoiceNo                (The original Sales Invoice number against which this credit memo was raised.)
-  CustomerReturnNo         (The Customer Return number linked to this credit memo, if this credit was generated as a result of a return.)
+  DateKey                  (Date reference key from DimDate Table. It refers to the date when this record was added in SPARS.)
+  SalesOrderNO             (The Sales Order number associated with this credit memo. Reference (FactSalesOrders column SalesOrderNo).)
+  InvoiceNo                (The original Sales Invoice number against which this credit memo was raised. Reference (Table FactSalesInvoice Column SalesInvoiceNo).)
+  CustomerReturnNo         (The Customer Return number linked to this credit memo, if this credit was generated as a result of a return. Reference (Table FactCustomerReturn column CustomerReturnNo).)
+  ConsignmentInvoiceNo     (The original Consignment Invoice number against which this credit memo was raised. Reference (Table FactConsignments Column ConsignmentNo).)
   WarehouseKey             (Warehouse reference key from DimWarehouse Table. It refers to the warehouse associated with this credit memo.)
   CreditDateKey            (Date reference key from DimDate Table. It refers to the date when this credit memo record was added in SPARS.)
   InvoiceDateKey           (Date reference key from DimDate Table. It refers to the invoice date of this credit memo document.)
@@ -629,14 +636,13 @@ Purpose: (This table contains the detail (line level) information of the Credit 
   SalesInvoiceNo      (A unique identification number of the Credit Memo used in SPARS. Links this detail line back to its parent credit memo header in FactCreditMemo.)
   InvoiceLineNumber   (The unique line number identifying this specific line within the credit memo document.)
   WarehouseKey        (Warehouse Reference Key.)
-  InvoiceDateKey      (Date reference key from DimDate Table. It refers to the invoiced date of this credit memo detail line.)
+  DateKey             (Date reference key from DimDate Table. It refers to the invoiced date of this credit memo detail line.)
   OrderDateKey        (Date reference key from DimDate Table. It refers to the original order date associated with this credit memo detail line.)
   ProductKey          (Product reference key from DimProduct Table. It refers to the specific product (item) being credited on this line.)
   CustomerKey         (Customer reference key from DimCustomer Table. It refers to the customer to whom this credit memo line belongs.)
+  SalesType           (Sales Type.)
   ItemType            (Item category code classifying the type of item on this credit line. Possible values: O = OAK Item, P = Program Item.)
   Quantity            (Total quantity of this product included on this credit memo line.)
-  ShippedQuantity     (Quantity of this product that was originally shipped to the customer on the related sales invoice.)
-  ReturnQuantity      (Quantity of this product that was returned by the customer and is being credited on this line.)
   UnitPrice           (The original selling price per unit of this product at the time of the original sale.)
   UnitCost            (The original cost per unit of this product at the time of the original sale.)
   DiscountAmount      (Discount amount applied to this credit memo detail line.)
@@ -647,10 +653,10 @@ Purpose: (This table contains the detail (line level) information of the Credit 
 
 Table: FactCustomerPayment
 Purpose: (This table contains the master (header level) information of the Customer Payments (Cash Receipts). It stores all payments received from customers against their outstanding sales invoices, supporting accounts receivable and cash management analytics.)
-  CustomerPaymentKey  (Surrogate key. It's the primary key of this table.)
+  CashReceiptKey      (Cash Receipt Key.)
   CashReceiptNo       (A unique identification number of the Cash Receipt (Customer Payment) used in SPARS.)
   CustomerKey         (Customer reference key from DimCustomer Table. It refers to the customer who made this payment.)
-  SalesInvoice        (The Sales Invoice number against which this payment was received.)
+  SalesInvoiceKey     (The Sales Invoice number against which this payment was received. Reference (Table FactSalesInvoice Column SalesInvoiceNo).)
   DocDateKey          (Date reference key from DimDate Table. It refers to the document date of this cash receipt record.)
   PaymentDateKey      (Date reference key from DimDate Table. It refers to the actual date when the payment was received from the customer.)
   ApprovedDateKey     (Date reference key from DimDate Table. It refers to the date when this payment was approved in SPARS.)
@@ -658,23 +664,21 @@ Purpose: (This table contains the master (header level) information of the Custo
   CashAccount         (The bank or cash GL account that received this payment.)
   CreditAccount       (The GL account credited for this payment (revenue or receivable account).)
   DiscountAccount     (The GL account where any discount granted to the customer for this payment is recorded.)
-  DocType             (Document type code identifying the method or nature of this payment (e.g., Check, Wire).)
+  DocType             (DocType = W ('WireTransfer'), DocType = C ('Check'), DocType = I ('IDC#'), DocType = S ('Cash'), DocType = R ('ReverseEntry'), DocType = D ('CreditCard'), DocType = F ('KeyOff'), DocType = H ('ACH').)
   Amount              (Total payment amount received from the customer.)
   AppliedAmount       (The payment amount that has been applied against outstanding customer invoices.)
   AppliedDiscount     (Early payment discount amount granted to the customer and deducted from the payment.)
-  Status              (Current status of the customer payment record. Possible values: Bounced (B), Close (C), Open (O), New (N), Void (V).)
-  Approved            (Flag indicating whether this payment has been approved in SPARS.)
+  Status              (Status = B ('Bounced'), Status = C ('Close'), Status = N ('New'), Status = O ('Open'), Status = V ('Void').)
   PeriodID            (Accounting period identifier associated with this customer payment.)
 
 Table: FactCustomerApplication
 Purpose: (This table contains the detail level information of Customer Payment Applications. It records how a single customer payment or credit memo is applied across multiple invoices, supporting detailed accounts receivable reconciliation and cash application analytics.)
-  CustomerApplicationKey  (Surrogate key. It's the primary key of this table.)
   CRBatchApplicationNo    (A unique identification number of the Cash Receipt Batch Application used in SPARS. It groups all application lines belonging to the same batch.)
   LineNo                  (The sequential line number identifying this specific application line within the batch.)
   CustomerKey             (Customer reference key from DimCustomer Table. It refers to the customer whose payment or credit is being applied.)
-  SalesInvoiceNo          (The Sales Invoice number to which this payment or credit is being applied.)
-  CashReceiptNo           (The Cash Receipt (Customer Payment) number being applied to the invoice on this line.)
-  CreditMemo              (The Credit Memo number being applied to the invoice on this line, if the application involves a credit memo instead of a cash payment.)
+  SalesInvoice            (The Sales Invoice number to which this payment or credit is being applied. Reference (Table FactSalesInvoice Column SalesInvoiceNo).)
+  CashReceipt             (The Cash Receipt (Customer Payment) number being applied to the invoice on this line. Reference (Table FactCustomerPayment column CashReceiptNo).)
+  CreditMemo              (The Credit Memo number being applied to the invoice on this line, if the application involves a credit memo instead of a cash payment. Reference (Table FactCreditMemo column CreditMemoNo).)
   DocDateKey              (Date reference key from DimDate Table. It refers to the document date of this batch application record.)
   TransactionDateKey      (Date reference key from DimDate Table. It refers to the actual date when this payment or credit application transaction was processed.)
   ControlAccount          (The GL control or suspense account used to manage the receivable balance for this application.)
@@ -691,7 +695,7 @@ Purpose: (This table contains the summary level information of Customer Credit M
   CreditMemoKey           (Surrogate key. It's the primary key of this table.)
   CustomerDebitNo         (A unique identification number of the Customer Debit or Credit Memo used in SPARS (ERP).)
   CustomerKey             (Customer reference key from DimCustomer Table. It refers to the customer to whom this debit or credit adjustment was issued.)
-  InvoiceNo               (The original Sales Invoice number against which this debit or credit adjustment was raised.)
+  InvoiceNo               (The original Sales Invoice number against which this debit or credit adjustment was raised. Reference (Table FactSalesInvoice, column SalesInvoiceNo).)
   WarehouseKey            (Warehouse reference key from DimWarehouse Table. It refers to the warehouse location that issued this credit or debit adjustment.)
   CreditDateKey           (Date reference key from DimDate Table. It refers to the invoice date of this debit or credit adjustment document.)
   InvoiceDateKey          (Date reference key from DimDate Table. It refers to the invoice date of the original sales document associated with this adjustment.)
@@ -726,11 +730,12 @@ Purpose: (This table contains the summary (header level) information of Vendor R
   TotalAmount           (Total value of goods being returned to the vendor on this return document.)
   PaidAmount            (Amount already paid or credited by the vendor.)
   DiscountAvailed       (The actual discount amount that has been taken or applied against this vendor return.)
+  DiscountAmount        (Discount amount applied on this vendor return document.)
   PeriodID              (Accounting period identifier associated with this vendor return transaction.)
 
 Table: FactVendorReturnDetail
 Purpose: (This table contains the detail (line level) information of the Vendor Returns. Each record represents a single product line within a vendor return document, supporting detailed vendor return analysis, cost reconciliation and inventory adjustments.)
-  VendorReturnDetailKey  (Surrogate key. It's the primary key of this table.)
+  VendorInvoiceDetailKey (Surrogate key. It's the primary key of this table.)
   VendorReturnNo         (A unique identification number of the Vendor Return used in SPARS. Links this detail line back to its parent return header in FactVendorReturn.)
   Line_No                (The sequential line number identifying this specific line within the vendor return document.)
   VendorKey              (Vendor reference key from DimVendors Table. It refers to the vendor to whom the goods on this line are being returned.)
@@ -742,11 +747,14 @@ Purpose: (This table contains the detail (line level) information of the Vendor 
   VendorStyle            (The vendor's own style code for the item being returned on this line.)
   ReturnQty              (The quantity of this product being returned to the vendor on this line.)
   Cost                   (The unit cost of the product being returned as agreed with the vendor.)
+  Discount               (Discount.)
   ExtCost                (Extended cost for this return line, calculated as Cost multiplied by the return quantity.)
   TaxRate                (The tax rate percentage applied to this vendor return detail line.)
   ExtTax                 (Extended tax amount for this return line, calculated based on the TaxRate and ExtCost.)
   SKU                    (The Stock Keeping Unit identifier of the item being returned on this line.)
-  PONo                   (The Purchase Order number associated with this vendor return detail line, referencing the original purchase.)
+  PONo                   (The Purchase Order number associated with this vendor return detail line. Reference (Table FactPurchaseOrder column PurchaseOrderNo).)
+  POLineNo               (Purchase Order Line Number.)
+  POQty                  (Purchase Order Quantity.)
   ReceiveBin             (The warehouse bin location where the returned items are to be received or staged.)
   LotNo                  (The lot number associated with the items being returned on this line, used for traceability.)
 
@@ -781,6 +789,7 @@ Table: FactSalesOrderDetail
 Purpose: (This table contains the detail (line level) information of the Sales Orders. Each record represents a single product line within a sales order, supporting detailed order analysis, inventory planning, fulfillment tracking and sales performance analytics.)
   SalesOrderDetailKey (Surrogate key. It's the primary key of this table.)
   SalesOrderNo        (A unique identification number of the Sales Order used in SPARS. Links this detail line back to its parent sales order header in FactSalesOrders.)
+  Line_No             (Sales Order Detail Line Number.)
   CustomerKey         (Customer reference key from DimCustomer Table. It refers to the customer who placed this sales order line.)
   ProductKey          (Product reference key from DimProduct Table. It refers to the specific product (item) ordered on this sales order line.)
   WarehouseKey        (Warehouse reference key from DimWarehouse Table. It refers to the warehouse responsible for fulfilling this specific sales order line.)
@@ -791,7 +800,8 @@ Purpose: (This table contains the detail (line level) information of the Sales O
   ItemType            (Item classification code identifying the type of item on this sales order detail line. Possible values: O = OAK Item, P = Program Item.)
   SKU                 (The Stock Keeping Unit identifier of the item on this sales order detail line, applicable for OAK type items.)
   OrderQty            (Total quantity of this product requested by the customer on this sales order line.)
-  ToShippedQty        (Remaining quantity of this product yet to be shipped against this sales order line.)
+  ToShipQty           (Remaining quantity of this product yet to be shipped against this sales order line.)
+  ShippedQty          (Shipped Quantity of Sales Order.)
   Cost                (The unit cost of the product on this sales order detail line at the time the order was placed.)
   Price               (The selling price per unit of the product on this sales order detail line.)
   Discount            (Discount percentage or amount applied to this specific sales order detail line.)
@@ -810,7 +820,7 @@ Purpose: (This table contains the summary (header level) information of the Pack
   DateCreatedKey      (Date reference key from DimDate Table. It refers to the date when this packing slip was created in SPARS.)
   DatePrintedKey      (Date reference key from DimDate Table. It refers to the date when this packing slip was physically printed for shipment processing.)
   SalesInvoiceNo      (The Sales Invoice number associated with this packing slip. It links the packing slip to the corresponding sales invoice in FactSalesInvoice.)
-  SalesType           (Sales classification code identifying the type of sale associated with this packing slip.)
+  SaleType            (Sales classification code identifying the type of sale associated with this packing slip.)
   Status              (Current status of the packing slip. Possible values: Open (1), In Shipping (2), Close (0), Void (9).)
   TotalQty            (Total quantity of all items included on this packing slip.)
   TotalBales          (Total number of bales or packages included in this packing slip shipment, primarily used for rugs and large bundled items.)
@@ -881,7 +891,7 @@ Purpose: (This table contains the summary level information of the Sales Commiss
   CommissionKey          (Surrogate key. It's the primary key of this table.)
   CommissionNo           (A unique identification number of the Sales Commission record used in SPARS.)
   SalesInvoiceNo         (The Sales Invoice, Consignment or Credit Memo number associated with this commission record. Links back to the respective fact table depending on the document type.)
-  SalesOrderNo           (The Sales Order number associated with this commission record.)
+  SalesOrderNo           (The Sales Order number associated with this commission record. Reference (Table FactSalesOrders column SalesOrderNo).)
   SalesRepKey            (Sales Representative reference key from DimSalesRep Table. It refers to the sales representative who earned this commission.)
   CustomerIDKey          (Customer reference key from DimCustomer Table. It refers to the customer associated with the sales transaction that generated this commission.)
   PoolID                 (The commission pool identifier grouping this commission record with other related commission records for pool-based commission calculations.)
@@ -934,6 +944,8 @@ Purpose: (This table contains the summary (header level) information of the Cons
   DateKey             (Date reference key from DimDate Table. It refers to the invoice date of this consignment document.)
   CustomerKey         (Customer reference key from DimCustomer Table. It refers to the customer associated with this consignment transaction.)
   AddressesKey        (Address reference key from DimConsignmentAddresses Table. It refers to the shipping address information associated with this consignment document.)
+  Pricecategorykey    (Price category reference key from DimPriceCategory Table. It refers to the pricing tier applied to this consignment document.)
+  PaymentTermKey      (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this consignment document.)
   SalesType           (Sales classification code identifying the type of this consignment transaction. Value will always be CO0 (Consignment Invoice) for all records in this table.)
   InvoiceType         (Document type code specifying the invoice category of this consignment document.)
   Status              (Current status of the consignment record. Possible values: Open (0), Partially Paid (1), Close (2), Void (9).)
@@ -951,7 +963,7 @@ Purpose: (This table contains the summary (header level) information of the Cons
 
 Table: FactConsignmentDetail
 Purpose: (This table contains the detail (line level) information of the Consignment Invoices. Each record represents a single product line within a consignment document, supporting detailed consignment analysis, product-level revenue tracking and profitability analytics.)
-  ConsignmentDetailKey  (Surrogate key. It's the primary key of this table.)
+  SalesKey              (Surrogate key. It's the primary key of this table.)
   ConsignmentNo         (A unique identification number of the Consignment Invoice used in SPARS. Links this detail line back to its parent consignment header in FactConsignments.)
   LineNumber            (The sequential line number identifying this specific line within the consignment document.)
   DateKey               (Date reference key from DimDate Table. It refers to the invoiced date of this consignment detail line.)
@@ -1181,21 +1193,21 @@ BALANCE SHEET — VERIFIED column mapping (confirmed by live DB test):
   (Main >= 2000 = Liabilities & Equity accounts — flip sign for correct BS presentation)
 
 CRITICAL — column-to-template level mapping (verified against live data):
-  BalanceSheet_MainGroups  → line items inside "Main Grouped" template (CURRENT ASSETS, EQUITY, etc.)
-  BalanceSheet_SubGroups   → line items inside "Sub Grouped" template (Accounts Receivable, Capital, etc.)
-  BalanceSheet_Details     → line items inside "Detailed" template (Checking Account, individual accounts)
+  BalanceSheet_MainGroups  → line items inside "Main Grouped" template (Current Assets, Non Current Assets, Current Liabilities, Long Term Liabilities, Stockholder Equity)
+  BalanceSheet_SubGroups   → line items inside "Sub Grouped" template (Accounts Receivable, Cash and Cash Equivalents, Accounts Payable, Short Term Loans, etc.)
+  BalanceSheet_Details     → line items inside "Detailed" template (individual account names, e.g. ACCOUNT RECEIVABLE, PETTY CASH, ACCOUNT PAYABLE-VENDOR, etc.)
 
 - Main Grouped   : Derived group (Assets/L&E) as section header + BalanceSheet_MainGroups as line items within each section.
     SELECT derived_main_group AS [Section], CM.BalanceSheet_MainGroups AS [Line Item], SUM(amount)
     GROUP BY derived_main_group, CM.BalanceSheet_MainGroups
     Filter: AND CM.BalanceSheet_MainGroups IS NOT NULL AND LEN(CM.BalanceSheet_MainGroups) > 0
-    → Returns rows like: Assets | CURRENT ASSETS | 15,523,012.25
+    → Returns rows like: Assets | Current Assets | 15,523,012.25
 
 - Sub Grouped    : Derived group + BalanceSheet_MainGroups (section header) + BalanceSheet_SubGroups (line items):
     SELECT derived_main_group AS [Section], CM.BalanceSheet_MainGroups AS [Sub Group], CM.BalanceSheet_SubGroups AS [Line Item], SUM(amount)
     GROUP BY derived_main_group, CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
     Filter: AND CM.BalanceSheet_SubGroups IS NOT NULL AND LEN(CM.BalanceSheet_SubGroups) > 0
-    → Returns rows like: Assets | CURRENT ASSETS | Accounts Receivable | 3,774,607.91
+    → Returns rows like: Assets | Current Assets | Accounts Receivable | 3,774,607.91
 
 - Detailed       : Derived group + BalanceSheet_MainGroups + BalanceSheet_SubGroups + BalanceSheet_Details (individual accounts):
     SELECT derived_main_group AS [Section], CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details, SUM(amount)
@@ -1203,9 +1215,9 @@ CRITICAL — column-to-template level mapping (verified against live data):
     Filter: AND CM.BalanceSheet_Details IS NOT NULL AND LEN(CM.BalanceSheet_Details) > 0
 
 P&L STATEMENT — VERIFIED column mapping (confirmed by live DB test):
-- Amount column  : YTD_Net from FactAccountMonthlySummary, multiplied by -1.
-- Expression     : SUM(FAM.YTD_Net * -1) AS [Amount]
-  NEVER use PTD_Net for P&L — always use YTD_Net.
+- Amount column  : PTD_Net from FactAccountMonthlySummary, multiplied by -1.
+- Expression     : SUM(FAM.PTD_Net * -1) AS [Amount]
+  NEVER use YTD_Net for P&L — always use PTD_Net.
 
 - Main Grouped   : GROUP BY CM.PLStatementMainGroups → returns [Group, Amount], 6 possible rows:
     SALES, COST OF SALES, GENERAL & ADMINISTRATIVE, SELLING EXPENSES, OTHER INCOME, INCOME TAXES
@@ -1349,21 +1361,30 @@ Balance Sheet Templates:-
 |:---|---:|
 | **Assets** | |
 |     Current Assets | [value] |
-|     Other Current Assets | [value] |
-|     Prepaid Expenses | [value] |
-|     Property And Equipment | [value] |
-|     Other Assets | [value] |
+|     Non Current Assets | [value] |
 | **Total Assets** | [value] |
 | | |
 | **Liabilities & Equity** | |
 |     Current Liabilities | [value] |
-|     Current Portion Long-Term | [value] |
-|     Equity | [value] |
-|     Long-Term Debt Net Of Current | [value] |
-|     Notes Payable-Officer | [value] |
-|     Other Accrued Expenses | [value] |
-|     Payroll Taxes Payable | [value] |
+|     Long Term Liabilities | [value] |
+|     Stockholder Equity | [value] |
 | **Total Liabilities & Equity** | [value] |
+
+*Balance Sheet Main Grouped — Multi-Month (2+ months requested)*
+(Same structure but one amount column per month, side-by-side. Use SQL Example 7.)
+
+| Description | [Month1 Year] ($) | [Month2 Year] ($) |
+|:---|---:|---:|
+| **Assets** | | |
+|     Current Assets | [value] | [value] |
+|     Non Current Assets | [value] | [value] |
+| **Total Assets** | [computed] | [computed] |
+| | | |
+| **Liabilities & Equity** | | |
+|     Current Liabilities | [value] | [value] |
+|     Long Term Liabilities | [value] | [value] |
+|     Stockholder Equity | [value] | [value] |
+| **Total Liabilities & Equity** | [computed] | [computed] |
 
 
 *Balance Sheet Sub Grouping*
@@ -1374,64 +1395,81 @@ Balance Sheet Templates:-
 | **Assets** | |
 | **Current Assets** | |
 |     Accounts Receivable | [value] |
-|     Cash And Cash Equivalents | [value] |
+|     Cash and Cash Equivalents | [value] |
 |     Inventory | [value] |
 |     Other Receivables | [value] |
 | **Total Current Assets** | [value] |
 | | |
-| **Other Current Assets** | |
-|     InterCompanyBalances | [value] |
-|     Other Current Assets | [value] |
-| **Total Other Current Assets** | [value] |
-| | |
-| **Prepaid Expenses** | |
-|     Prepaid Expenses | [value] |
-| | |
-| **Property And Equipment** | |
-|     Accumulated Depreciation | [value] |
-|     Property And Equipment | [value] |
-| **Total Property And Equipment** | [value] |
-| | |
-| **Other Assets** | |
-|     Other Assets | [value] |
+| **Non Current Assets** | |
+|     Other Non Current Assets | [value] |
+|     Property Plant & Equipments | [value] |
+| **Total Non Current Assets** | [value] |
 | | |
 | **Total Assets** | [value] |
 | | |
 | **Liabilities & Equity** | |
 | **Current Liabilities** | |
 |     Accounts Payable | [value] |
-|     Accrued Expense | [value] |
-|     Customer Security Deposits | [value] |
+|     Accrued Expenses | [value] |
 |     Other Payables | [value] |
-|     Refund To Customer | [value] |
-|     Sales Taxes Payable | [value] |
+|     Short Term Loans | [value] |
 | **Total Current Liabilities** | [value] |
 | | |
-| **Current Portion Long-Term** | |
-|     Current Portion Long-Term | [value] |
-|     Loan Payable | [value] |
-|     Notes Payable | [value] |
-|     Taxes Payable | [value] |
-| **Total Current Portion Long-Term** | [value] |
+| **Long Term Liabilities** | |
+|     Long Term Liabilities | [value] |
+| **Total Long Term Liabilities** | [value] |
 | | |
-| **Equity** | |
-|     Capital | [value] |
-|     P&L Accumulated | [value] |
-| **Total Equity** | [value] |
-| | |
-| **Long-Term Debt Net Of Current** | |
-|     Long-Term Debt Net Of Current | [value] |
-| | |
-| **Notes Payable-Officer** | |
-|     Notes Payable-Officer | [value] |
-| | |
-| **Other Accrued Expenses** | |
-|     Other Accrued Expenses | [value] |
-| | |
-| **Payroll Taxes Payable** | |
-|     Payroll Taxes Payable | [value] |
+| **Stockholder Equity** | |
+|     Common Stock | [value] |
+|     Distributions | [value] |
+|     Profit/(Loss) | [value] |
+|     Retained Earnings | [value] |
+|     Stockholder Equity | [value] |
+| **Total Stockholder Equity** | [value] |
 | | |
 | **Total Liabilities & Equity** | [value] |
+
+*Balance Sheet Sub Grouped — Multi-Month (2+ months requested)*
+(Same structure but one amount column per month, side-by-side. Use SQL Example 8.)
+
+| Description | [Month1 Year] ($) | [Month2 Year] ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+|     Accounts Receivable | [value] | [value] |
+|     Cash and Cash Equivalents | [value] | [value] |
+|     Inventory | [value] | [value] |
+|     Other Receivables | [value] | [value] |
+| **Total Current Assets** | [computed] | [computed] |
+| | | |
+| **Non Current Assets** | | |
+|     Other Non Current Assets | [value] | [value] |
+|     Property Plant & Equipments | [value] | [value] |
+| **Total Non Current Assets** | [computed] | [computed] |
+| | | |
+| **Total Assets** | [computed] | [computed] |
+| | | |
+| **Liabilities & Equity** | | |
+| **Current Liabilities** | | |
+|     Accounts Payable | [value] | [value] |
+|     Accrued Expenses | [value] | [value] |
+|     Other Payables | [value] | [value] |
+|     Short Term Loans | [value] | [value] |
+| **Total Current Liabilities** | [computed] | [computed] |
+| | | |
+| **Long Term Liabilities** | | |
+|     Long Term Liabilities | [value] | [value] |
+| **Total Long Term Liabilities** | [computed] | [computed] |
+| | | |
+| **Stockholder Equity** | | |
+|     Common Stock | [value] | [value] |
+|     Distributions | [value] | [value] |
+|     Profit/(Loss) | [value] | [value] |
+|     Retained Earnings | [value] | [value] |
+|     Stockholder Equity | [value] | [value] |
+| **Total Stockholder Equity** | [computed] | [computed] |
+| | | |
+| **Total Liabilities & Equity** | [computed] | [computed] |
 
 
 *Balance Sheet Detailed*
@@ -1439,75 +1477,75 @@ Balance Sheet Templates:-
 Assets                                          Amount
 
 Current Assets
-  Accounts Receivable
-    A/R-Adjustment                              [value]
-    Accounts Receivable                         [value]
-    Disputed CB                                 [value]
-
-  Cash And Cash Equivalents
-    Checking Account                            [value]
-    Money Market Acct.                          [value]
-    Payroll Account                             [value]
-    Petty Cash                                  [value]
-    Stock Investment                            [value]
-    Unapplied Cash                              [value]
-    Undeposited Cash                            [value]
-
-  Intercompanybalances
-    Due To/From 3490 Hamilton Blvd              [value]
-    Due To/From AARM LLC                        [value]
-    Due To/From Home Brands                     [value]
-    Due To/From Momeni & Sons, Inc              [value]
-    Due To/From Momeni Realty LLC               [value]
-    Due To/From Saman Realty Corp.              [value]
-    Inter-Company(Euro-Design)                  [value]
-    Momeni-Atlanta                              [value]
-    Sun Rugs Inc.                               [value]
-
-  Inventory
-    Consignment                                 [value]
-    Inventory                                   [value]
-    Inventory Control                           [value]
-    Inventory Transfer                          [value]
-    Inventory-ADJ                               [value]
-
-  Other Current Assets
-    Loans and Exchanges                         [value]
-
-  Other Receivables
-    Discounted Notes Paid                       [value]
-    Discounted Notes Returned                   [value]
-    Suspense                                    [value]
-    Write-Off                                   [value]
-
-  Prepaid Expenses
-    Prepaid Expense                             [value]
-    Prepaid Insurance                           [value]
-    Prepaid Taxes                               [value]
-
+  *** Free To Use                               [value]
+  ACCOUNT RECEIVABLE                            [value]
+  Accrued Insurance Expense                     [value]
+  Accrued Lease-Toshiba Printer                 [value]
+  Accrued Not Due Interest Payab                [value]
+  Advances - Deposits                           [value]
+  AmExp CC                                      [value]
+  Cash Account                                  [value]
+  CASH IN HAND                                  [value]
+  Credit Card AR-Receipts                       [value]
+  First Bank PPP Checking A/c                   [value]
+  First Bank TN                                 [value]
+  Inter Bank Transfer                           [value]
+  Inventory Adj.                                [value]
+  Inventory Asset                               [value]
+  Inventory Change                              [value]
+  Inventory Control                             [value]
+  Inventory on Consignment                      [value]
+  Inventory Transfer                            [value]
+  Inventory-Prepaid Import Costs                [value]
+  Loan & Adv. EMPLOYEES                         [value]
+  PETTY CASH                                    [value]
+  Prepaid Expenses                              [value]
+  RAW MATERIAL                                  [value]
+  Refund to Customer                            [value]
+  REGIONS                                       [value]
+  Reserve For Doubtful Debts                    [value]
+  Tax Refundable                                [value]
+  TRADE-AM                                      [value]
+  Truist                                        [value]
+  VENDORS - Advances                            [value]
+  Warehouse Sale Credit Card                    [value]
+  WORK IN PROGRESS                              [value]
 Total Current Assets                            [value]
 
-Other Non Current Assets
-    Accum Amortization-Goodwill                 [value]
-    Accum Amortization-Org Costs                [value]
-    Deposits                                    [value]
-    Goodwill                                    [value]
-    Officers Loans Receivable                   [value]
-    Organization Costs                          [value]
-Total Other Non Current Assets                  [value]
-
-Property And Equipment
-  Property And Equipment
-    Deferred Financing Costs                    [value]
-    Property & Equipment                        [value]
-    Vehicles                                    [value]
-
-  Accumulated Depreciation
-    Accum Depreciation                          [value]
-    Accum Depreciation-Rugs                     [value]
-    Accum Depreciation-Vehicle                  [value]
-
-Total Property And Equipment                    [value]
+Non Current Assets
+  2B Reused-CLARK ORDER PICKER                  [value]
+  2B Reused-Clrk Hyster 02/05/18               [value]
+  2B Reused-Clrk Ord Picker 0119               [value]
+  2B Reused-New Clark Ord Picker                [value]
+  2B Reused-Pallet Jack 9/28/16                [value]
+  ACCUM. AMORTIZATION-CUST LIST                 [value]
+  ACCUM. DEPRECIATION                           [value]
+  Accumulated Amortization                      [value]
+  BUILDING                                      [value]
+  Cell Phone                                    [value]
+  Customer Claim Disputes                       [value]
+  CUSTOMER LIST                                 [value]
+  Deffered Exp.(sample)Rug                      [value]
+  DEPOSITS                                      [value]
+  Design & Art Work (Atlanta)                   [value]
+  ELECTRONICS                                   [value]
+  FURNITURE                                     [value]
+  Intangible Assets                             [value]
+  LAND                                          [value]
+  Leasehold Improvements                        [value]
+  LOAN FEE                                      [value]
+  Motorola Scanner 11/17/16                     [value]
+  RACK                                          [value]
+  Sample Rugs                                   [value]
+  Samples at Warehouse                          [value]
+  SIENNA-2015                                   [value]
+  Suspense                                      [value]
+  UNDEPOSITED FUNDS                             [value]
+  VEHICLES                                      [value]
+  Warehouse Equipment-Racks                     [value]
+  Warehouse Vehicles                            [value]
+  WebSpars Software System                      [value]
+Total Non Current Assets                        [value]
 
 Total Assets                                    [value]
 
@@ -1515,102 +1553,112 @@ Total Assets                                    [value]
 Liabilities & Equity
 
 Current Liabilities
-  Accounts Payable
-    Accounts Payable                            [value]
-    Prior AP Balance                            [value]
-
-  Accrued Expense
-    Accrued Expense                             [value]
-
-  Current Portion Long-Term
-    CA Carpet-Assessment Fee                    [value]
-
-  Customer Security Deposits
-    Customer Security Deposits                  [value]
-
-  Loan Payable
-    Dudley Ventures                             [value]
-    DV Community Investment LLC                 [value]
-    Loan Payable- Merchant Bank-II              [value]
-    Loan Payable- Short Term                    [value]
-    Loan Payable-Merchant Bank-LoC              [value]
-    Loans Payable-Merchants Bank                [value]
-    Long Term Notes-Curr Portion                [value]
-
-  Long-Term Debt Net Of Current
-    Long Term Notes-Net of Current              [value]
-
-  Notes Payable
-    Note Payable - Mrs. Momeni                  [value]
-    Notes Payable-Merchants Bank                [value]
-
-  Notes Payable-Officer
-    A.A.M. Loan Payable                         [value]
-    A.M. Loan Payable                           [value]
-    M.M. Loan Payable                           [value]
-    Notes Payable-Officer                       [value]
-    R.M. Loan Payable                           [value]
-
-  Other Accrued Expenses
-    Accrued Interest                            [value]
-    Accrued Other Expenses                      [value]
-    Car Loan                                    [value]
-    Deferred Interest                           [value]
-    Exchange                                    [value]
-    L & E - A. M.                               [value]
-    L & E - AR. M.                              [value]
-    L & E - H. M.                               [value]
-    L & E - R. M.                               [value]
-    Loan                                        [value]
-    Loans Other                                 [value]
-    Officer's Loan                              [value]
-    Payroll Taxes Payable                       [value]
-
-  Other Payables
-    401K Payable                                [value]
-    Dental Insurance Payable                    [value]
-    Merch. Exchange                             [value]
-
-  Payroll Taxes Payable
-    Federal Withholding Tax Payabl              [value]
-    GA State Withholding Taxes Pay              [value]
-    Local Withholding Taxes Payabl              [value]
-    Medicare Withholding Tax payab              [value]
-    NJ State Withholding Taxes Pay              [value]
-    P/Y Taxes                                   [value]
-    Social Security Tax Payable                 [value]
-    State Withholding Taxes Payabl              [value]
-    Unemployment Insurance Tax                  [value]
-
-  Refund To Customer
-    Refund to Customer                          [value]
-
-  Sales Taxes Payable
-    Sales Taxes Payable                         [value]
-
-  Taxes Payable
-    Deferred Taxes                              [value]
-    Federal Corp. Taxes                         [value]
-    GA Taxes Payable                            [value]
-    NYC Corp. Taxes                             [value]
-    NYS Corp. Taxes                             [value]
-    Other Corp. Taxes                           [value]
-
+  401K Contribution Payable                     [value]
+  ACCOUNT PAYABLE-AMEX                          [value]
+  ACCOUNT PAYABLE-CASH                          [value]
+  ACCOUNT PAYABLE-EXPENSES                      [value]
+  ACCOUNT PAYABLE-RENT                          [value]
+  ACCOUNT PAYABLE-VENDOR                        [value]
+  ACCOUNT PAYABLE-VISA                          [value]
+  Accrued Insurance Expense                     [value]
+  Accrued Lease-Toshiba Printer                 [value]
+  ACCURED EXPENSES                              [value]
+  Advance from customer                         [value]
+  Allowance For Doubtful Debts                  [value]
+  AP- OTHER                                     [value]
+  BB&T                                          [value]
+  Bills Payable                                 [value]
+  Drip Capital Control A/c                      [value]
+  Employee Benefits Plan Payable                [value]
+  FirstBank Loan A/c 2570107680                 [value]
+  Free Bank A/c to use                          [value]
+  Free to Use                                   [value]
+  FSG BANK-CREDIT LINE                          [value]
+  FUTA PAYABLE                                  [value]
+  Garnishment-Child Support                     [value]
+  INTREST ACCRUED                               [value]
+  LOAN                                          [value]
+  LOAN ON EQUITY                                [value]
+  Not To Use Accrued Lease                      [value]
+  NOTE PAYABLE                                  [value]
+  PAYROLL                                       [value]
+  PAYROLL TAX                                   [value]
+  PPP 2nd Draw                                  [value]
+  PPP Loan - First Bank                         [value]
+  Ransomware Recovery Claim                     [value]
+  REGIONS BANK - LINE OF CREDIT                 [value]
+  SALES TAX                                     [value]
+  SBA-EIDL Loan                                 [value]
+  STATE W/H PAYABLE                             [value]
+  SUTA PAYABLE                                  [value]
+  UNSECURED LOAN                                [value]
 Total Current Liabilities                       [value]
 
-Equity
-  Capital
-    Additional Paid in Capital                  [value]
-    Capital                                     [value]
+Long Term Liabilities
+  Clark Order Picker 042117 Loan                [value]
+  LINE OF CREDIT                                [value]
+  LONG TERM LIABILITIES                         [value]
+  NOTE PAYABLE                                  [value]
+  Obligation under Capital Lease                [value]
+  STOCKHOLDER LOAN                              [value]
+Total Long Term Liabilities                     [value]
 
-  P&L Accumulated
-    P&L Summary                                 [value]
-    Distribution                                [value]
-    (Profit) Loss                               [value]
-
-Total Equity                                    [value]
+Stockholder Equity
+  COMMON STOCK                                  [value]
+  DISTRIBUTIONS                                 [value]
+  OWNERS                                        [value]
+  Profit/(Loss)                                 [value]
+  REALITY                                       [value]
+  RETAINED EARNING                              [value]
+Total Stockholder Equity                        [value]
 
 Total Liabilities & Equity                      [value]
+
+*Balance Sheet Detailed — Multi-Month (2+ months requested)*
+(Same account-level structure but one amount column per month, side-by-side. Use SQL Example 9.)
+
+| Description | [Month1 Year] ($) | [Month2 Year] ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+| **Accounts Receivable** | | |
+|     ACCOUNT RECEIVABLE | [value] | [value] |
+|     Refund to Customer | [value] | [value] |
+|     Reserve For Doubtful Debts | [value] | [value] |
+| **Cash and Cash Equivalents** | | |
+|     AmExp CC | [value] | [value] |
+|     Cash Account | [value] | [value] |
+|     (... all cash accounts ...) | [value] | [value] |
+| **Inventory** | | |
+|     Inventory Asset | [value] | [value] |
+|     (... all inventory accounts ...) | [value] | [value] |
+| **Other Receivables** | | |
+|     (... all other receivable accounts ...) | [value] | [value] |
+| **Total Current Assets** | [computed] | [computed] |
+| | | |
+| **Non Current Assets** | | |
+| **Other Non Current Assets** | | |
+|     (... accounts ...) | [value] | [value] |
+| **Property Plant & Equipments** | | |
+|     (... accounts ...) | [value] | [value] |
+| **Total Non Current Assets** | [computed] | [computed] |
+| | | |
+| **Total Assets** | [computed] | [computed] |
+| | | |
+| **Liabilities & Equity** | | |
+| **Current Liabilities** | | |
+|     (... accounts ...) | [value] | [value] |
+| **Total Current Liabilities** | [computed] | [computed] |
+| | | |
+| **Long Term Liabilities** | | |
+|     (... accounts ...) | [value] | [value] |
+| **Total Long Term Liabilities** | [computed] | [computed] |
+| | | |
+| **Stockholder Equity** | | |
+|     (... accounts ...) | [value] | [value] |
+| **Total Stockholder Equity** | [computed] | [computed] |
+| | | |
+| **Total Liabilities & Equity** | [computed] | [computed] |
 
 
 ------------------------
@@ -1620,11 +1668,18 @@ P&L Statement Templates:-
 *P&L Statement / Income Statement Main Grouped*
 (SQL returns [Group, Amount]. Bot computes Gross Profit, Total Operating Cost, Operating Profit, Net Profit.)
 
+CRITICAL LABEL RULES — NEVER rename or substitute any group name from the SQL result:
+  - "Cost Of Goods Sold" → NEVER write as "Cost Of Sales", "COGS", or any other alias
+  - "Finance Charges"   → NEVER omit or merge into another line
+  - "Other Income/Expense" → NEVER write as "Other Income", "Other Income/Expenses", or any variation
+  - "Taxes"             → NEVER write as "Income Taxes", "Tax Expense", or any other alias
+  - Use the EXACT string returned by SQL for every row. If a group has no data (0 or absent), still show the row as 0.00.
+
 | Description | Amount ($) |
 |:---|---:|
 | **Sales** | [value] |
-| **Cost Of Sales** | [value] |
-| **Gross Profit/(Loss)** | [Sales minus Cost Of Sales] |
+| **Cost Of Goods Sold** | [value] |
+| **Gross Profit/(Loss)** | [Sales minus Cost Of Goods Sold] |
 | | |
 | **Operating Cost** | |
 |     General & Administrative | [value] |
@@ -1632,9 +1687,30 @@ P&L Statement Templates:-
 | **Total Operating Cost** | [G&A plus Selling Expenses] |
 | **Operating Profit/(Loss)** | [Gross Profit minus Total Operating Cost] |
 | | |
-| **Other Income** | [value] |
-| **Income Taxes** | [value] |
-| **Net Profit/(Loss)** | [Operating Profit plus Other Income minus Income Taxes] |
+| **Finance Charges** | [value] |
+| **Other Income/Expense** | [value] |
+| **Taxes** | [value] |
+| **Net Profit/(Loss)** | [Operating Profit minus Finance Charges plus Other Income/Expense minus Taxes] |
+
+*P&L Main Grouped — Multi-Month (2+ months requested)*
+(Same structure but one amount column per month, side-by-side. Use SQL Example 10.)
+
+| Description | [Month1 Year] ($) | [Month2 Year] ($) |
+|:---|---:|---:|
+| **Sales** | [value] | [value] |
+| **Cost Of Goods Sold** | [value] | [value] |
+| **Gross Profit/(Loss)** | [computed] | [computed] |
+| | | |
+| **Operating Cost** | | |
+|     General & Administrative | [value] | [value] |
+|     Selling Expenses | [value] | [value] |
+| **Total Operating Cost** | [computed] | [computed] |
+| **Operating Profit/(Loss)** | [computed] | [computed] |
+| | | |
+| **Finance Charges** | [value] | [value] |
+| **Other Income/Expense** | [value] | [value] |
+| **Taxes** | [value] | [value] |
+| **Net Profit/(Loss)** | [computed] | [computed] |
 
 
 *P&L Statement / Income Statement Sub Grouped*
@@ -1643,291 +1719,719 @@ P&L Statement Templates:-
 | Description | Amount ($) |
 |:---|---:|
 | **Sales** | |
-|     Adj. & Discounts | [value] |
-|     Freight Collected | [value] |
-|     Sales | [value] |
-|     Sales Discounts | [value] |
-|     Sales Returns & Allowances | [value] |
-|     Service Revenue | [value] |
+|     Gross Sales | [value] |
+|     Deduction Reversal | [value] |
+|     Discount | [value] |
+|     CHARGE BACK | [value] |
+|     Price Differences | [value] |
+|     Returns | [value] |
+|     Services | [value] |
+|     SHIPPING & HANDLING | [value] |
+|     Short Shipments | [value] |
 | **Total Sales** | [sum of Sales sub-groups] |
 | | |
-| **Cost Of Sales** | |
-|     Commission | [value] |
-|     Cost Of Goods Sold | [value] |
-|     Custom & Duty | [value] |
-|     Demurrage Expenses | [value] |
+| **Cost Of Goods Sold** | |
+|     Cost of Goods Sold | [value] |
+|     Fees | [value] |
 |     Freight | [value] |
-|     Insurance | [value] |
-|     Other Costs | [value] |
-|     Purchase Returns & Allowances | [value] |
-|     Royalty | [value] |
-| **Total Cost Of Sales** | [sum of Cost Of Sales sub-groups] |
+|     Import Clearing And Forwarding | [value] |
+|     INSURANCE | [value] |
+|     Inventory Adjustment Account | [value] |
+|     Others | [value] |
+|     Packing Expense | [value] |
+|     Rent | [value] |
+|     RUG CLEANING | [value] |
+|     RUG Serging Fees | [value] |
+|     Shipping Expense | [value] |
+|     Short Shipment | [value] |
+| **Total Cost Of Goods Sold** | [sum of Cost Of Goods Sold sub-groups] |
 | | |
-| **Gross Profit/(Loss)** | [Total Sales minus Total Cost Of Sales] |
+| **Gross Profit/(Loss)** | [Total Sales minus Total Cost Of Goods Sold] |
 | | |
 | **Operating Cost** | |
 | **General & Administrative** | |
-|     Auto Expenses | [value] |
-|     Bank Charges | [value] |
-|     Compute Expenses | [value] |
-|     Contribution | [value] |
-|     Depreciation | [value] |
-|     Depreciation Expenses | [value] |
-|     Dues & Subscriptions | [value] |
-|     Insurance | [value] |
-|     Legal & Accounting | [value] |
-|     Misc. Expenses | [value] |
+|     Automobile Expenses | [value] |
+|     Bad Debt | [value] |
+|     Cash Discounts | [value] |
+|     Charge Back | [value] |
+|     Commercial Insurances | [value] |
+|     Commission | [value] |
+|     Communication Expenses | [value] |
+|     Dues And Subscriptions | [value] |
+|     Inventory Adjustment | [value] |
 |     Office Expenses | [value] |
-|     Outside Services | [value] |
-|     Payroll | [value] |
-|     Postage Expenses | [value] |
-|     Printing & Stationary | [value] |
-|     Professional Fees | [value] |
-|     Rent | [value] |
-|     Repairs & Maintenance | [value] |
-|     Stationeries | [value] |
-|     Taxes | [value] |
-|     Telephone Expenses | [value] |
-|     Utilities | [value] |
-|     Waste Disposal | [value] |
 | **Total General & Administrative** | [sum of G&A sub-groups] |
 | | |
 | **Selling Expenses** | |
-|     Advertising | [value] |
-|     Entertainment | [value] |
-|     Freight & Delivery | [value] |
-|     Other Costs | [value] |
+|     Advertising Expenses | [value] |
+|     Amortization | [value] |
+|     Depreciation Expense | [value] |
+|     Loss On Sale Of Assets | [value] |
+|     Marketing Expenses | [value] |
 |     Payroll | [value] |
-|     Professional Fees | [value] |
-|     Rebate | [value] |
-|     Sales Commission | [value] |
-|     Service & Handling Fees | [value] |
-|     Warehouse Expenses | [value] |
-| **Total Selling Expenses** | [sum of Selling sub-groups] |
+|     Provisional Expenses | [value] |
+|     Rent | [value] |
+|     Software Monthly Fee | [value] |
+|     Traveling Expenses | [value] |
+| **Total Selling Expenses** | [sum of Selling Expenses sub-groups] |
 | | |
 | **Total Operating Cost** | [Total G&A plus Total Selling Expenses] |
 | **Operating Profit/(Loss)** | [Gross Profit minus Total Operating Cost] |
 | | |
-| **Other Income** | |
-|     Catalog & Rack Sales | [value] |
-|     Finance Charges Income | [value] |
-|     Interest Expenses | [value] |
+| **Finance Charges** | |
+|     Finance Charges | [value] |
+| **Total Finance Charges** | [sum of Finance Charges sub-groups] |
+| | |
+| **Other Income/Expense** | |
+|     Abnormal Income | [value] |
 |     Interest Income | [value] |
-|     Other Income | [value] |
-|     Sales Of Assets | [value] |
-| **Total Other Income** | [sum of Other Income sub-groups] |
+|     OTHER INCOME | [value] |
+| **Total Other Income/Expense** | [sum of Other Income/Expense sub-groups] |
 | | |
-| **Income Taxes** | |
+| **Taxes** | |
 |     Taxes | [value] |
-| **Total Income Taxes** | [sum of Income Taxes sub-groups] |
+| **Total Taxes** | [sum of Taxes sub-groups] |
 | | |
-| **Net Profit/(Loss)** | [Operating Profit plus Other Income minus Income Taxes] |
+| **Net Profit/(Loss)** | [Operating Profit minus Finance Charges plus Other Income/Expense minus Taxes] |
+
+*P&L Sub Grouped — Multi-Month (2+ months requested)*
+(Same structure but one amount column per month, side-by-side. Use SQL Example 11.)
+
+| Description | [Month1 Year] ($) | [Month2 Year] ($) |
+|:---|---:|---:|
+| **Sales** | | |
+|     Gross Sales | [value] | [value] |
+|     Discount | [value] | [value] |
+|     Returns | [value] | [value] |
+|     SHIPPING & HANDLING | [value] | [value] |
+|     (... other Sales sub-groups ...) | [value] | [value] |
+| **Total Sales** | [computed] | [computed] |
+| | | |
+| **Cost Of Goods Sold** | | |
+|     Cost of Goods Sold | [value] | [value] |
+|     (... other COGS sub-groups ...) | [value] | [value] |
+| **Total Cost Of Goods Sold** | [computed] | [computed] |
+| | | |
+| **Gross Profit/(Loss)** | [computed] | [computed] |
+| | | |
+| **Operating Cost** | | |
+| **General & Administrative** | | |
+|     (... G&A sub-groups ...) | [value] | [value] |
+| **Total General & Administrative** | [computed] | [computed] |
+| | | |
+| **Selling Expenses** | | |
+|     (... Selling sub-groups ...) | [value] | [value] |
+| **Total Selling Expenses** | [computed] | [computed] |
+| | | |
+| **Total Operating Cost** | [computed] | [computed] |
+| **Operating Profit/(Loss)** | [computed] | [computed] |
+| | | |
+| **Finance Charges** | | |
+|     Finance Charges | [value] | [value] |
+| **Total Finance Charges** | [computed] | [computed] |
+| | | |
+| **Other Income/Expense** | | |
+|     (... sub-groups ...) | [value] | [value] |
+| **Total Other Income/Expense** | [computed] | [computed] |
+| | | |
+| **Taxes** | | |
+|     Taxes | [value] | [value] |
+| **Total Taxes** | [computed] | [computed] |
+| | | |
+| **Net Profit/(Loss)** | [computed] | [computed] |
 
 
 *P&L Statement / Income Statement Detailed*
-(SQL returns [Main Group, Sub Group, Account, Amount]. 3-level nesting: Main Group > Sub Group > Account.)
-(Bot computes section totals and Gross/Operating/Net Profit lines from the data.)
+(SQL returns [Main Group, Sub Group, Account, Amount]. Bot computes section totals and Gross/Operating/Net Profit lines.)
 
-| Description | Amount ($) |
-|:---|---:|
-| **Sales** | |
-| **Adj. & Discounts** | |
-|     Adj. & Discounts | [value] |
-| **Freight Collected** | |
-|     Freight Collected (SALES) | [value] |
-| **Sales** | |
-|     Sales | [value] |
-| **Sales Discounts** | |
-|     Sales Discounts | [value] |
-| **Sales Returns & Allowances** | |
-|     Sales Returns & Allowances | [value] |
-| **Service Revenue** | |
-|     Service Collected (SALES) | [value] |
-| **Total Sales** | [sum] |
-| | |
-| **Cost Of Sales** | |
-| **Commission** | |
-|     Commission | [value] |
-| **Cost Of Goods Sold** | |
-|     Cost of Goods Sold | [value] |
-|     Inventory Adjustment | [value] |
-|     Inventory Change | [value] |
-|     L/C & Others | [value] |
-|     Overseas Agent Expenses | [value] |
-|     Purchase | [value] |
-|     Purchase Diff | [value] |
-|     Purchases Discounts | [value] |
-| **Custom & Duty** | |
-|     Custom & Duty | [value] |
-| **Demurrage Expenses** | |
-|     Demurrage Expenses | [value] |
-|     Storage & Demmurage Charges | [value] |
-| **Freight** | |
-|     Freight | [value] |
-| **Insurance** | |
-|     Insurance | [value] |
-| **Other Costs** | |
-|     Custom Examinations | [value] |
-|     Designer Commission | [value] |
-|     Misc. Brokerage Charges | [value] |
-|     Storage Expenses | [value] |
-|     Travel | [value] |
-| **Purchase Returns & Allowances** | |
-|     Purchase Returns & Allowances | [value] |
-| **Royalty** | |
-|     Royalty | [value] |
-| **Total Cost Of Sales** | [sum] |
-| | |
-| **Gross Profit/(Loss)** | [Total Sales minus Total Cost Of Sales] |
-| | |
-| **Operating Cost** | |
-| **General & Administrative** | |
-| **Auto Expenses** | |
-|     Auto Expenses | [value] |
-| **Bank Charges** | |
-|     Bank Service Charges | [value] |
-| **Compute Expenses** | |
-|     Computer-Kumquat | [value] |
-|     Computer-Purchase | [value] |
-|     Computer-Service Contract | [value] |
-|     Computer-Software Expenses | [value] |
-| **Contribution** | |
-|     Contribution | [value] |
-|     Contributions | [value] |
-| **Depreciation** | |
-|     Depreciation | [value] |
-| **Depreciation Expenses** | |
-|     Depreciation Expenses | [value] |
-| **Dues & Subscriptions** | |
-|     Dues & Subscriptions | [value] |
-| **Insurance** | |
-|     Insurance-General | [value] |
-|     Insurance-Group Health | [value] |
-| **Legal & Accounting** | |
-|     Legal & Accounting | [value] |
-| **Misc. Expenses** | |
-|     Garnish | [value] |
-|     Gift | [value] |
-|     Misc. Expenses | [value] |
-| **Office Expenses** | |
-|     Alarm & Protection | [value] |
-|     Office Expenses | [value] |
-|     Supplies Expenses | [value] |
-| **Outside Services** | |
-|     Outside Services | [value] |
-| **Payroll** | |
-|     401K Expenses | [value] |
-|     Employee Medical Insurance | [value] |
-|     Employer Medicare | [value] |
-|     FUTA | [value] |
-|     Net Payroll | [value] |
-|     Profit Sharing/401K | [value] |
-|     Salaries and Wages | [value] |
-|     Salaries Misc. | [value] |
-|     SUTA | [value] |
-|     Temp Help | [value] |
-| **Postage Expenses** | |
-|     Postage Expenses | [value] |
-| **Printing & Stationary** | |
-|     Printing & Stationary | [value] |
-| **Professional Fees** | |
-|     Professional Fees | [value] |
-| **Rent** | |
-|     Rent | [value] |
-|     Rent Tax | [value] |
-| **Repairs & Maintenance** | |
-|     Condo Maintenance | [value] |
-|     Construction | [value] |
-|     Repairs & Maintenance | [value] |
-| **Stationeries** | |
-|     Stationeries | [value] |
-| **Taxes** | |
-|     Taxes-NJ | [value] |
-|     Taxes-Payroll | [value] |
-|     Taxes-Real Estate | [value] |
-| **Telephone Expenses** | |
-|     Telephone Expenses | [value] |
-| **Utilities** | |
-|     Utilities | [value] |
-| **Waste Disposal** | |
-|     Waste Disposal | [value] |
-| **Total General & Administrative** | [sum of all G&A accounts] |
-| | |
-| **Selling Expenses** | |
-| **Advertising** | |
-|     Advertising | [value] |
-|     Advertising- Others | [value] |
-|     Brochures and Catalogues | [value] |
-|     Selling Expenses | [value] |
-|     Trade Shows | [value] |
-| **Entertainment** | |
-|     Entertainment | [value] |
-| **Freight & Delivery** | |
-|     Freight & Delivery | [value] |
-|     Shipping Materials | [value] |
-|     Travel-Domestic | [value] |
-| **Other Costs** | |
-|     ACCOUNT CLOSED | [value] |
-|     Bad Debts | [value] |
-| **Payroll** | |
-|     Salaries & Wages-Warehouse | [value] |
-|     Salaries-Sales | [value] |
-| **Professional Fees** | |
-|     Professional Fee- Designers | [value] |
-| **Rebate** | |
-|     Rebate | [value] |
-| **Sales Commission** | |
-|     Commission-Fire | [value] |
-|     Sales Commission | [value] |
-| **Service & Handling Fees** | |
-|     Service & Handling Fees | [value] |
-| **Warehouse Expenses** | |
-|     Warehouse Expenses | [value] |
-|     Warehouse Expenses- New Jersey | [value] |
-| **Total Selling Expenses** | [sum of all Selling Expenses accounts] |
-| | |
-| **Total Operating Cost** | [Total G&A plus Total Selling Expenses] |
-| **Operating Profit/(Loss)** | [Gross Profit minus Total Operating Cost] |
-| | |
-| **Other Income** | |
-| **Catalog & Rack Sales** | |
-|     Catalog & Rack Sales | [value] |
-| **Finance Charges Income** | |
-|     Finance Charges Income | [value] |
-| **Interest Expenses** | |
-|     Interest Expenses | [value] |
-| **Interest Income** | |
-|     Interest Income | [value] |
-| **Other Income** | |
-|     Cash (Over)or Short | [value] |
-|     Expenses of Sale | [value] |
-|     Fines & Penalties | [value] |
-|     Other Income | [value] |
-|     Proceeds of Sale | [value] |
-| **Sales of Assets** | |
-|     Sales of Assets | [value] |
-| **Total Other Income** | [sum of all Other Income accounts] |
-| | |
-| **Income Taxes** | |
-| **Taxes** | |
-|     Federal Tax | [value] |
-|     GA LIC | [value] |
-|     GA Tax | [value] |
-|     NJ Tax | [value] |
-|     NYC Tax | [value] |
-|     NYS Tax | [value] |
-| **Total Income Taxes** | [sum of all Income Tax accounts] |
-| | |
-| **Net Profit/(Loss)** | [Operating Profit plus Other Income minus Income Taxes] |
+Sales                                                   Amount
+  Sales                                                 [value]
+  Do Not Use - PURCHASE  DISCO                          [value]
+  Shipping & Handling                                   [value]
+  Do Not Use S/H (Outgoing)                             [value]
+  Returns Shipping & Service Cha                        [value]
+  Do Not Use S/H (Outgoing)-Truc                        [value]
+  Returns on Sales                                      [value]
+  Sales Returns (Not Received)                          [value]
+  Prior Sales Returns                                   [value]
+  Free To Use                                           [value]
+  Do Not Use- CHARGE BACK (sales                        [value]
+  Services & Other Charges                              [value]
+  Serv-Drop Ship Fees                                   [value]
+  Sales Discount                                        [value]
+  Do Not Use-Discount-Amazon                            [value]
+  Do Not Use-Discount-Groupon                           [value]
+  Do Not Use Sales Discount_-Men                        [value]
+  Do Not Use Sales Discount_-Ho                         [value]
+  Do Not Use Sales Discount_-Kho                        [value]
+  Do Not Use Sales Discount_-Nei                        [value]
+  Do Not Use-Sales Discount-Wayf                        [value]
+  Do Not Use Sales Discount_Tues                        [value]
+  Do Not Use-Discount-Home Depo                         [value]
+  Do Not Use-Discount-Overstock                         [value]
+  Sales Discount-Amazon                                 [value]
+  Sales Discount-Overstock                              [value]
+  Sales Discount-Wayfair                                [value]
+  Sales Discount-Home Depot                             [value]
+  Sales Discount-Amazon CA                              [value]
+  Sales Discount-Groupon                                [value]
+  Sales Discount-Bealls                                 [value]
+  Sales Discount-Kirkland                               [value]
+  Sales Discount-Menards                                [value]
+  Sales Discount-Walmart                                [value]
+  Sales Discount-Bed Bath & Beyo                        [value]
+  Sales Discount-Old Time Potte                         [value]
+  Sales Discount-Cost Plus Wor                          [value]
+  Sales Discount-Home Roots                             [value]
+  Sales Discount-Hayneedle                              [value]
+  Sales Discount-Macys                                  [value]
+  Sales Discount-Plush Rugs                             [value]
+  Sales Discount-Pottery Barn                           [value]
+  Sales Discount-Mink & Sons                            [value]
+  Sales Discount - Zulily                               [value]
+  Sales Discount - Pier 1                               [value]
+  Sales Discount-QVC                                    [value]
+  Sales Discount -Weekends Only                         [value]
+  Sales Discount-Faire                                  [value]
+  Sales Discount-Ashley Furnit                          [value]
+  Sales Discount - JC Penny                             [value]
+  Sales Discount - Rugs Direct                          [value]
+  Sales Discount - WM Marketplace                       [value]
+  Sales Discount - Wayfair CA                           [value]
+  Sales Discount - Gordon Co                            [value]
+  Sales Discount - Lowe's                               [value]
+  Sales Discount - AMZ Marketplace                      [value]
+  Sales Discount - Home Depot PR                        [value]
+  Sales Discount - Albertsons                           [value]
+  Sales Discount -Rug& Home Group                       [value]
+  Sales Discount - Nebraska / Home Maker                [value]
+  Sales Discount - Bison Commerce                       [value]
+  Sales Discount - Bob's Discount Ecomm A/c             [value]
+  Sales Discount-Others                                 [value]
+  Sales-Price Differences                               [value]
+  Sales-Short Shipment Deduction                        [value]
+  Claim Receipts from Customers                         [value]
+  Claim Receipts-Home Depot                             [value]
+Total Sales                                             [value]
+
+Cost Of Goods Sold
+  Do Not Use Inventory Adjustmen                        [value]
+  Do Not Use Sales Price differ                         [value]
+  Damaged-Discarded Inventory                           [value]
+  Purchase Discount                                     [value]
+  Vendor Defective Reimbursement                        [value]
+  Insert Materials Cost                                 [value]
+  Insert - Pillow                                       [value]
+  Insert-Pouf / Pet Beds Filling                        [value]
+  Box Program Job Work Costs                            [value]
+  Third Party Warehouse Charges                         [value]
+  Do Not Use -Short Shipment                            [value]
+  Packing Expense                                       [value]
+  FedEx/UPS Shipping Expense                            [value]
+  FedEx/UPS Additional Handling                         [value]
+  Domestic Trucking Line Freight                        [value]
+  Domestic Trucking Line Freight - LVT                  [value]
+  DHL-Sample Mailing Expense                            [value]
+  Truck-Trailer Rent Costs                              [value]
+  Labelling & Ticketing Expense                         [value]
+  Freight Discount on LR                                [value]
+  Freight Cap Promotions Expense                        [value]
+  Freight Costs-Replacements Etc                        [value]
+  Freight - Pillow-Poufs                                [value]
+  UPC Code Purchase                                     [value]
+  Merchandising&Inspection Fee                          [value]
+  Designing & Development Expens                        [value]
+  Inventory Adjustment Account                          [value]
+  Obsolete Inventory                                    [value]
+  Temporary Labor Expenses                              [value]
+  Freight Damage Loss/Gain A/c                          [value]
+  Processing Charge                                     [value]
+  Use 5051-004 Import  Duty                             [value]
+  Import Clearing and Forwarding                        [value]
+  Import-Air Freight                                    [value]
+  Import-Ocean Freight                                  [value]
+  Import-Customs Documents Chgs                         [value]
+  Import-State Custom Duty                              [value]
+  Import-Customs Clearance Cost                         [value]
+  Import-Container Truck Freight                        [value]
+  Import-Container Storage -Detention Chgs              [value]
+  Import-Cargo Insurance                                [value]
+  Import-Tariffs                                        [value]
+  FAB Floors-Clearing & Forwarding Expense              [value]
+  Import - Prepaid Import Costs                         [value]
+  Use 5051-002 Import-Freight                           [value]
+  Use 5051-001 Import -Air Frgt                         [value]
+  Use 5051-006 Import -Trucking                         [value]
+  Use 5051-003 Import Doc. Chgs                         [value]
+  Use 5051-005 Import Clearance                         [value]
+  Use 5051-007 Import Deten. Etc                        [value]
+  Use 5051-008 Import-Insurance                         [value]
+  Do Not Use Insurance                                  [value]
+  US Customs Bond fee                                   [value]
+  Rug Cleaning                                          [value]
+  Rug Surging, Cutting,Repairng                         [value]
+Total Cost Of Goods Sold                                [value]
+
+Gross Profit/(Loss)                                     [value]
+
+
+Operating Cost
+
+General & Administrative
+  Auto Expenses                                         [value]
+  Auto Reimbursement Exp ??                             [value]
+  Auto Expenses-Fuel                                    [value]
+  Auto Expenses-Repairs & Maint.                        [value]
+  Auto Expenses-Tag Fees Etc.                           [value]
+  Auto Expenses-Auto Insurance                          [value]
+  Do Not use CAR REPAIR                                 [value]
+  Warehouse Equipment Repairs                           [value]
+  Do Not Use - GAS-WEF 070717                           [value]
+  Use 8002-Bad Debt                                     [value]
+  Small Balances Written Off                            [value]
+  Cash Discounts                                        [value]
+  Do Not Use CB - OVERSTOCK                             [value]
+  Do Not Use - CB-AMAZON                                [value]
+  Do Not Use- CB - BED, BATH, &                         [value]
+  Do Not Use CB - MENARDS                               [value]
+  Do Not Use - CB - GARDEN RIDGE                        [value]
+  Do Not Use - CB-HOME DEPOT                            [value]
+  Do Not Use CB - KHOL'S                                [value]
+  Do Not Use - CB - LOWES                               [value]
+  Do Not Use - CB-MARVIN'S                              [value]
+  Do Not Use - CB - NEIMAN MARCU                        [value]
+  Do Not Use Sales Dis -                                [value]
+  Do Not Use- CB - TUESDAY MORNI                        [value]
+  Do Not Use - CB - RUE LA LA                           [value]
+  Do Not Use - CB - CUSTOMER                            [value]
+  Free To Use                                           [value]
+  CB-Damage Allowance                                   [value]
+  CB-Damage Allownace-Amazon                            [value]
+  CB-Shipping Allowance                                 [value]
+  CB-Shipping Allowance-Amazon                          [value]
+  Do Not Use - Processing Fees                          [value]
+  Do Not Use - Overstock First C                        [value]
+  Do Not Use Shipping Cost - Ove                        [value]
+  Do Not Use Short -Ship - Overs                        [value]
+  Chargeback Customer Compliance                        [value]
+  Do Not Use - Chargeback-Damage                        [value]
+  CB Compliance-Amazon                                  [value]
+  CB Compliance-Overstock                               [value]
+  CB Compliance-Home Depot                              [value]
+  CB-Compliance-Amazon CA                               [value]
+  CB-Bealls Compliance Charge Back                      [value]
+  CB Compliance-Kirklands                               [value]
+  CB Compliance-Walmart                                 [value]
+  CB-Compliance-Bed Bath                                [value]
+  CB-Customer Compliance - Pottery Barn                 [value]
+  CB-Compliance - Zulily                                [value]
+  CB-Customer Compliance - NFM                          [value]
+  CB Compliance-Big Lots                                [value]
+  CB-Compliance -Others                                 [value]
+  Commission                                            [value]
+  Comm - Amy Bruce                                      [value]
+  Comm - Ashutosh Laddha                                [value]
+  Comm - Bill Robertson                                 [value]
+  Comm - Billy Waynerich                                [value]
+  Comm - Charless Reason                                [value]
+  Comm - Christine Reagon                               [value]
+  Comm - Daren Kozlowski                                [value]
+  Comm - David McEleven                                 [value]
+  Comm-Dointe Tyree Johnson                             [value]
+  Comm - Eric Fleat                                     [value]
+  Comm - Russell Givens                                 [value]
+  Comm - Jim Caserio                                    [value]
+  Comm - Jim Swan                                       [value]
+  Comm - John Mccaul                                    [value]
+  Comm - Joseph Gray                                    [value]
+  Comm - Richard Leckbee                                [value]
+  Comm - Marvin Junior                                  [value]
+  Comm - Natalie Smith                                  [value]
+  Comm - Reverse atlanta                                [value]
+  Comm - Teressa Huff                                   [value]
+  Comm - TONY SPEIRS                                    [value]
+  Comm - Taylor Malore                                  [value]
+  Comm - Jeanin Maxey                                   [value]
+  Comm - Bridget Favaloro                               [value]
+  Comm - M K Inc.                                       [value]
+  COMM - Robin grassi                                   [value]
+  COMM - Kim Susan White                                [value]
+  Comm - Mike V. Kehnast                                [value]
+  Comm - Ramona D Myrick                                [value]
+  Comm -Mike Thomson                                    [value]
+  Comm- Emil Qirilla                                    [value]
+  COMM - VICTOR HUGO                                    [value]
+  Comm - Black Goswick                                  [value]
+  COMM - Dan Statuto                                    [value]
+  Commi  - V-Von Sales                                  [value]
+  Commi - Joe Barkley                                   [value]
+  COMMISSION -Stacy Garcia                              [value]
+  Comm  Peyton Gay                                      [value]
+  Royalties                                             [value]
+  Royalties - Stacy Garcia                              [value]
+  Royalties -Evette Rios                                [value]
+  Royalties-London Fog                                  [value]
+  Cell Phone                                            [value]
+  706-218-8089 -Cell Phone VBL                          [value]
+  706-280-4301-Chris                                    [value]
+  706-459-8358 -Cell Phone RL                           [value]
+  706-280-5055 - Cell Phone SKL                         [value]
+  706-483-1673 -Cell Phone Colle                        [value]
+  Telephone Expenses                                    [value]
+  706-259-0155 -LR Office                               [value]
+  706-847-4479 -Vonage Office                           [value]
+  404-749-4832                                          [value]
+  EDI SERVICES                                          [value]
+  Internet & Cable                                      [value]
+  Postage & Delivery                                    [value]
+  Sample Mailing Charges                                [value]
+  DUES AND SUBSCRIPTIONS                                [value]
+  FAB Floors-Dues & Subscriptions                       [value]
+  Software Monthly Fees                                 [value]
+  Computer Server Restoration                           [value]
+  Car Insurance                                         [value]
+  Insurance-Commercial Policies                         [value]
+  Insurance-Workmen's Comp.                             [value]
+  Insurance-Auto                                        [value]
+  Insurance-Receivables Credit Coverage                 [value]
+  Service Charge                                        [value]
+  Warehouse Insurance                                   [value]
+  Insurnace-Workmens Compensatio                        [value]
+  Insurance-Commercial                                  [value]
+  Insurnace-Free To Use                                 [value]
+  Insurance-Free to Use                                 [value]
+  Employee Insurances                                   [value]
+  Insurance-Dental & Vision                             [value]
+  Insurance-Medical                                     [value]
+  Insurance Administrative Fees                         [value]
+  Supplement Insurance                                  [value]
+  Do Not Use Inventory Adjustmen                        [value]
+  Do Not Use DAMAGE INVENTORY                           [value]
+  Do Not Use SALES DISCOUNT(E                           [value]
+  Do Not Use-SDISCOUNT-AMAZON                           [value]
+  Do Not Use- SDISCOUNT-GROUPON                         [value]
+  Do Not Use SDISCOUNT-MENARDS                          [value]
+  Do Not Use - SDISCOUNT-HOME DE                        [value]
+  Do Not Use - SDISCOUNT-KOHL'S                         [value]
+  Do Not Use - SDISCOUNT-NEIMAN                         [value]
+  Do Not Use-SDISCOUNT-WAYFAIR                          [value]
+  Do Not Use SDISCOUNT-TUESDAY M                        [value]
+  Do Not Use-SDISCOUNT-BURLINGTO                        [value]
+  Do Not Use SMALL BALANCES WRIT                        [value]
+  Do Not Use - SHORT SHIPMENT                           [value]
+  Use A/c 6020-000 Ware. Eqp Rep                        [value]
+  Do Not Use - Warehouse One                            [value]
+  Do Not Use - WAREHOUSE Dallas                         [value]
+  USE 6000-004 -Car Tag Renewal                         [value]
+  Recruitment & Training                                [value]
+  Designing And Development                             [value]
+  Security Expenses                                     [value]
+  DONATIONS                                             [value]
+  General Expenses                                      [value]
+  Software Upgrade & Maintainanc                        [value]
+  ELE-.Equipment Lease Expenses                         [value]
+  ELE-Toshiba Printer Lease Expe                        [value]
+  ELE-Y2020 Servers Lease Expens                        [value]
+  ELE-Yale Picker Lease Expenses                        [value]
+  ELE-Linde V15 Lease Expense                           [value]
+  Misscellaneous                                        [value]
+  Repairs & Maintance                                   [value]
+  Office Supplies                                       [value]
+  Computer Accessories & Supplie                        [value]
+  Printing & Stationary                                 [value]
+  Utilities                                             [value]
+  UTILITIES - Electricity, Gas & Water                  [value]
+  UTILITIES - Trash Removal & Recycling                 [value]
+  UTILITIES - Pest Control                              [value]
+  UTILITIES - Office Cleaning                           [value]
+  UTILITIES - Lawn Maintenance                          [value]
+  UTILITIES - Security Monitoring                       [value]
+  UTILITIES - Propane Gas Tanks                         [value]
+  Employee Benefit Plan Contribu                        [value]
+  Employees Holiday Celeberation                        [value]
+Total General & Administrative                          [value]
+
+Selling Expenses
+  Do Not Use Outsourcing                                [value]
+  OutS.-G.K.Laddha                                     [value]
+  OutS.-Rajendra Maheshwari                             [value]
+  OutS.-Soumya Maheshwari                               [value]
+  Do Not Use LABOR EXPENSES                             [value]
+  Do Not Use - PACKING                                  [value]
+  Do Not Use - FEDEX                                    [value]
+  Do Not Use - UPS                                      [value]
+  Do Not Use - Trucking                                 [value]
+  Do Not Use - DHL                                      [value]
+  Do Not Use - LABEL                                    [value]
+  Payroll                                               [value]
+  PR - VAIBHAV LADDHA                                   [value]
+  PR - VINAMRA LADDHA                                   [value]
+  PR - KRISHNA LADDHA                                   [value]
+  PR - RAJANI LADDHA                                    [value]
+  PR - G K LADDHA                                       [value]
+  PR - AMY ROBERTS                                      [value]
+  PR - ARTHUR M THOMPSON                                [value]
+  PR - EDDIE DAVIS                                      [value]
+  PR - JOHNNY MEENDEZ                                   [value]
+  PR - KATIKA HADDEN                                    [value]
+  PR - KENNETH R MORGAN                                 [value]
+  PR - MELLISA FOWLER                                   [value]
+  PR - MELLISA JOHNSON                                  [value]
+  PR - PAULENE C COCHRAN                                [value]
+  PR - PRATIK BHATTER                                   [value]
+  PR - STACEY CARPENTER                                 [value]
+  PR - SETEVE E STULTZ                                  [value]
+  PR - TRACY R LOVAIN                                   [value]
+  PR - ZUBAIR FARIDI                                    [value]
+  Payroll SS & Medicare                                 [value]
+  SUTA                                                  [value]
+  FUTA                                                  [value]
+  Free To Use                                           [value]
+  401K-LR Contribution                                  [value]
+  Bonus                                                 [value]
+  L R 401K Contribution A/c                             [value]
+  Xtra                                                  [value]
+  Accounting                                            [value]
+  Professional Fees                                     [value]
+  Consulting                                            [value]
+  Legal Fees                                            [value]
+  USE 7730 - Visa fees                                  [value]
+  Do Not Use - RATE DIFFERENCE                          [value]
+  NFA Rebate                                            [value]
+  Atlanta Showroom                                      [value]
+  Warehouse Rent                                        [value]
+  Warehouse Rent-LR Realty                              [value]
+  Warehouse Rent-LR2-3012 Parque                        [value]
+  Warehouse Rent-LR3-3002 Parque                        [value]
+  Warehouse Rent-LR4-3351 Box Dr                        [value]
+  HP Show.Rent Old A/c.Use 7612-                        [value]
+  Do Not User High Point Showroo                        [value]
+  Guest House Rent                                      [value]
+  Free To Use                                           [value]
+  R.C. Willey Advertisement                             [value]
+  Weekends Only Advertisement                           [value]
+  Do Not Use Software monthly fe                        [value]
+  Advertising Expenses                                  [value]
+  DNU-User 7540-701-Adv Amazon                          [value]
+  Advertising-Amazon                                    [value]
+  Advertising-Overstock                                 [value]
+  Advertising-Wayfair                                   [value]
+  Advertising-Home Depot                                [value]
+  Advertising-Walmart                                   [value]
+  Advertising-Zulily                                    [value]
+  Advertising-Houzz                                     [value]
+  Advertising-Faire                                     [value]
+  Advertising-WM Marketplace                            [value]
+  Advertising-Others                                    [value]
+  Advertising Display Rack                              [value]
+  Catalog Printing-Mailing Exp.                         [value]
+  Exhibition                                            [value]
+  Atlanta Showroom Expenses                             [value]
+  Atlanta Showroom Exp-Rent                             [value]
+  Atlanta Showroom Exp-Utility                          [value]
+  Atlanta Showroom Exp-Hotel                            [value]
+  Atlanta Showroom Exp-Food                             [value]
+  Atlanta Showroom Exp-Traval                           [value]
+  Atlanta Showroom Exp-Trucking                         [value]
+  Atlanta Showroom Exp-General                          [value]
+  Atlanta Showroom Exp-Advt.                            [value]
+  High Point - Showroom Expenses                        [value]
+  High Point - Rent Expense                             [value]
+  High Point - Utility Expense                          [value]
+  High Point - Hotel Exepnse                            [value]
+  High Point - Food Expense                             [value]
+  High Point - Travel Expense                           [value]
+  High Point - Trucking                                 [value]
+  High Point - General Expense                          [value]
+  High Point - Advertising                              [value]
+  Promotional Expenses                                  [value]
+  Promotional Expenses-OX Bay                           [value]
+  Promotional Expenses-Wayfair                          [value]
+  Promotional Exp-Home Depot                            [value]
+  Promotional Expenses-RC Willey                        [value]
+  Promotional Expenses-Nebraska Furniture Mart          [value]
+  Marketing Consultancy                                 [value]
+  Marketing Consultancy - Joe Barkley                   [value]
+  Social Media-Email Marketing                          [value]
+  Website - Ecom Data Management                        [value]
+  Product Photo Images AI                               [value]
+  Websites Crawling-Uploading                           [value]
+  Ecommerce Product Listing                             [value]
+  Sampling Expense                                      [value]
+  Do Not Use - Truck Renting                            [value]
+  DO NOT USE -Medical Exp. - Sta                        [value]
+  Use 6970-Business Cards                               [value]
+  Website                                               [value]
+  Pocket Folders                                        [value]
+  Car Rental                                            [value]
+  Traveling Expenses_Food                               [value]
+  Travel-Hotel Expense                                  [value]
+  Travel-Visa-Medical-Misc Exp.                         [value]
+  Travel Conveyance,Toll,Parking                        [value]
+  Travel Ticketing Exp Account                          [value]
+  Depreciation Expense                                  [value]
+  Loss on Sale of Assets                                [value]
+  Amortization                                          [value]
+  Provision For Expenses                                [value]
+  Bad & Doubtful Debts                                  [value]
+Total Selling Expenses                                  [value]
+
+Total Operating Cost                                    [value]
+
+Operating Profit/(Loss)                                 [value]
+
+
+Finance Charges
+  Other Interest-Financial Charg                        [value]
+  Credit Card Payment Processing                        [value]
+  Warehouse Equipment Loan Inter                        [value]
+  LTL Equip.2019 A/c 2570037503                         [value]
+  LTL-Equip.2021 A/c 2570065987                         [value]
+  Bank Service Charge                                   [value]
+  Bank Wire Transfer Charges                            [value]
+  Regions Bank Interest                                 [value]
+  FirstBank Interest                                    [value]
+  FistBank 2nd Line Interest                            [value]
+  EIDL Loan Interest                                    [value]
+  Drip Capital Loan Interest                            [value]
+  Regions Loan Fees                                     [value]
+  Prius Loan Interest Expenses                          [value]
+  Prius Loan Interest -2016                             [value]
+  Prius Loan Interest - 2017                            [value]
+  Camry Interest -2013                                  [value]
+  Sienna 2015 Loan Interest                             [value]
+  Mercedes car- Interest A/c                            [value]
+  MB-EQB 300 Loan Interest A/c                          [value]
+  Finance Charge                                        [value]
+  FC-Interest On Lease                                  [value]
+  Regions Bank Int. on Eq Loan                          [value]
+  Credit Card Interest & Fees                           [value]
+  Import - Bank Document Collect                        [value]
+Total Finance Charges                                   [value]
+
+
+Other Income/Expense
+  Other Income                                          [value]
+  Profit On Sale Of Asset                               [value]
+  OIN-PPP Loan Forgiven                                 [value]
+  Other Income-Interest Received                        [value]
+  Restocking Fee                                        [value]
+  Other Income-Bad Debts Recovered                      [value]
+  Abnormal Income                                       [value]
+  Free To Use                                           [value]
+  Interest Income                                       [value]
+Total Other Income/Expense                              [value]
+
+
+Taxes
+  Use 7201 Fm 01/01/19-Payroll S                        [value]
+  State                                                 [value]
+  Property Tax                                          [value]
+  Licenses-Tax-Permit-Penalties                         [value]
+  Business Licenses & Permits                           [value]
+  Use 7202 -Suta                                        [value]
+  Use 7203 - Futa                                       [value]
+  940-FOR 2012                                          [value]
+Total Taxes                                             [value]
+
+Net Profit/(Loss)                                       [value]
+
+*P&L Detailed — Multi-Month (2+ months requested)*
+(Same account-level structure but one amount column per month, side-by-side. Use SQL Example 12.)
+
+| Description | [Month1 Year] ($) | [Month2 Year] ($) |
+|:---|---:|---:|
+| **Sales** | | |
+| **Gross Sales** | | |
+|     Sales | [value] | [value] |
+| **Discount** | | |
+|     Sales Discount | [value] | [value] |
+|     (... all Discount accounts ...) | [value] | [value] |
+| **Returns** | | |
+|     Returns on Sales | [value] | [value] |
+|     (... all Returns accounts ...) | [value] | [value] |
+| **SHIPPING & HANDLING** | | |
+|     Shipping & Handling | [value] | [value] |
+|     (... all S&H accounts ...) | [value] | [value] |
+| (... other Sales sub-groups ...) | [value] | [value] |
+| **Total Sales** | [computed] | [computed] |
+| | | |
+| **Cost Of Goods Sold** | | |
+| **Cost of Goods Sold** | | |
+|     Cost Of Goods Sold | [value] | [value] |
+|     (... all COGS accounts ...) | [value] | [value] |
+| (... other COGS sub-groups ...) | [value] | [value] |
+| **Total Cost Of Goods Sold** | [computed] | [computed] |
+| | | |
+| **Gross Profit/(Loss)** | [computed] | [computed] |
+| | | |
+| **Operating Cost** | | |
+| **General & Administrative** | | |
+| **Automobile Expenses** | | |
+|     (... all Automobile accounts ...) | [value] | [value] |
+| (... other G&A sub-groups with all accounts ...) | [value] | [value] |
+| **Total General & Administrative** | [computed] | [computed] |
+| | | |
+| **Selling Expenses** | | |
+| **Payroll** | | |
+|     (... all Payroll accounts ...) | [value] | [value] |
+| (... other Selling sub-groups with all accounts ...) | [value] | [value] |
+| **Total Selling Expenses** | [computed] | [computed] |
+| | | |
+| **Total Operating Cost** | [computed] | [computed] |
+| **Operating Profit/(Loss)** | [computed] | [computed] |
+| | | |
+| **Finance Charges** | | |
+| **Finance Charges** | | |
+|     (... all Finance Charge accounts ...) | [value] | [value] |
+| **Total Finance Charges** | [computed] | [computed] |
+| | | |
+| **Other Income/Expense** | | |
+|     (... all Other Income accounts ...) | [value] | [value] |
+| **Total Other Income/Expense** | [computed] | [computed] |
+| | | |
+| **Taxes** | | |
+|     (... all Tax accounts ...) | [value] | [value] |
+| **Total Taxes** | [computed] | [computed] |
+| | | |
+| **Net Profit/(Loss)** | [computed] | [computed] |
 
 
 ================================================================
       FEW-SHOT EXAMPLES (FOLLOW EXACT PATTERN)
 ================================================================
 
+================================================================
+  MULTI-MONTH PRESENTATION RULE (MANDATORY)
+================================================================
+When a request covers MORE THAN ONE month (e.g. "April 2024 to May 2024",
+"compare March vs April", "Q1 2024", "last 3 months"), you MUST:
+  1. Use the multi-month SQL examples (7–12) with conditional aggregation.
+  2. Present a SINGLE unified table where:
+       - First column  = Description / Account name
+       - Remaining columns = one per month, labelled [MonthName Year ($)]
+  3. NEVER repeat the full statement twice (once per month). One table only.
+  4. Still compute and show subtotals / section totals in every month column.
+
+Example 2-month table layout (use this exact structure for ALL 6 templates):
+
+| Description | April 2024 ($) | May 2024 ($) |
+|:---|---:|---:|
+| **Assets** | | |
+| **Current Assets** | | |
+| **Accounts Receivable** | | |
+|     ACCOUNT RECEIVABLE | [value] | [value] |
+| **Total Current Assets** | [computed] | [computed] |
+| **Total Assets** | [computed] | [computed] |
+| | | |
+| **Liabilities & Equity** | | |
+| **Total Liabilities & Equity** | [computed] | [computed] |
+
+================================================================
+
 --- Financial Statement Example 1: Balance Sheet Main Grouped (VERIFIED) ---
 Question: "Show me the balance sheet" / "Balance sheet main grouped" / "Balance sheet summary" / "Balance sheet for [month] [year]"
--- Main Grouped: Section = Assets/L&E derived from Main column; Line Item = BalanceSheet_MainGroups values (CURRENT ASSETS, EQUITY, etc.)
+-- Main Grouped: Section = Assets/L&E derived from Main column; Line Item = BalanceSheet_MainGroups values (Current Assets, Non Current Assets, Current Liabilities, Long Term Liabilities, Stockholder Equity)
 -- Returns multiple rows per section — NOT just 2 rows. Each BalanceSheet_MainGroups value is one line item under its section.
 SELECT
     CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
@@ -1951,7 +2455,7 @@ ORDER BY [Section], [Line Item]
 --- Financial Statement Example 2: Balance Sheet Sub Grouped (VERIFIED) ---
 Question: "Balance sheet sub grouped" / "Grouped balance sheet" / "Balance sheet with sub groups"
 -- Sub Grouped: Section = Assets/L&E, Sub Group = BalanceSheet_MainGroups (section header), Line Item = BalanceSheet_SubGroups values
--- Returns rows like: Assets | CURRENT ASSETS | Accounts Receivable | 3,774,607.91
+-- Returns rows like: Assets | Current Assets | Accounts Receivable | 3,774,607.91
 SELECT
     CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
          ELSE 'Liabilities & Equity' END                                              AS [Section],
@@ -1996,18 +2500,95 @@ GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
          CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
 ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
 
---- Financial Statement Example 4: P&L / Income Statement Main Grouped (VERIFIED) ---
-Question: "Show me the P&L" / "Income statement" / "Profit and loss" / "P&L main grouped" / "Income statement for [month] [year]" / "Profit and loss summary"
--- Use YTD_Net * -1 (NEVER PTD_Net). Returns [Group, Amount] — 6 possible groups.
--- Bot must compute Gross Profit, Total Operating Cost, Operating Profit, Net Profit from the results.
+--- Financial Statement Example 7: Balance Sheet Main Grouped MULTI-MONTH (VERIFIED) ---
+Question: "Balance sheet from April 2024 to May 2024" / "Balance sheet for [month1] and [month2]" / "Compare balance sheet [month] vs [month]" / "Balance sheet [month] [year] to [month] [year]"
+-- RULE: When multiple months are requested, use conditional aggregation — ONE column per month. NEVER add PeriodStartDate to GROUP BY. NEVER return a tall table.
+-- Column names = month+year label e.g. [April 2024], [May 2024]. PeriodStartDate = first day of month 'YYYY-MM-01'.
 SELECT
-    CM.PLStatementMainGroups                  AS [Group],
-    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-04-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [April 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-05-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [May 2024]
 FROM FactAccountMonthlySummary FAM
 JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
 JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
-WHERE DD.Year  = YEAR(GETDATE())
-  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+WHERE FAM.PeriodStartDate IN ('2024-04-01', '2024-05-01')
+  AND CM.BalanceSheet_MainGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_MainGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups
+ORDER BY [Section], [Line Item]
+
+--- Financial Statement Example 8: Balance Sheet Sub Grouped MULTI-MONTH (VERIFIED) ---
+Question: "Balance sheet sub grouped from [month1] to [month2]" / "Sub grouped balance sheet comparison [month] vs [month]"
+-- RULE: Conditional aggregation — one column per month, PeriodStartDate NOT in GROUP BY.
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Section],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Line Item],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-04-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [April 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-05-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [May 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2024-04-01', '2024-05-01')
+  AND CM.BalanceSheet_SubGroups IS NOT NULL
+  AND LEN(CM.BalanceSheet_SubGroups) > 0
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups
+ORDER BY [Section], [Sub Group], [Line Item]
+
+--- Financial Statement Example 9: Balance Sheet Detailed MULTI-MONTH (VERIFIED) ---
+Question: "Detailed balance sheet from [month1] to [month2]" / "Full balance sheet [month] vs [month]" / "Detailed balance sheet [month] [year] and [month] [year]"
+-- RULE: Conditional aggregation — one column per month, PeriodStartDate NOT in GROUP BY.
+SELECT
+    CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+         ELSE 'Liabilities & Equity' END                                              AS [Main Group],
+    CM.BalanceSheet_MainGroups                                                        AS [Sub Group],
+    CM.BalanceSheet_SubGroups                                                         AS [Detail Group],
+    CM.BalanceSheet_Details                                                           AS [Account],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-04-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [April 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-05-01'
+             THEN CASE WHEN TRY_CAST(CM.Main AS INT) >= 2000 THEN FAM.ClosingBalance * -1 ELSE FAM.ClosingBalance END
+             ELSE 0 END)                                                              AS [May 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
+WHERE FAM.PeriodStartDate IN ('2024-04-01', '2024-05-01')
+  AND CM.BalanceSheet_Details IS NOT NULL
+  AND CM.BalanceSheet_Details <> ''
+GROUP BY CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
+              ELSE 'Liabilities & Equity' END,
+         CM.BalanceSheet_MainGroups, CM.BalanceSheet_SubGroups, CM.BalanceSheet_Details
+ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
+
+--- Financial Statement Example 4: P&L / Income Statement Main Grouped (VERIFIED) ---
+Question: "Show me the P&L" / "Income statement" / "Profit and loss" / "P&L main grouped" / "Income statement for [month] [year]" / "Profit and loss summary" / "Grouped P&L"
+-- Use PTD_Net * -1 (NEVER YTD_Net). Filter on FAM.PeriodStartDate directly — do NOT use DimDate join or DateKey for P&L.
+-- Returns up to 7 groups: Sales, Cost Of Goods Sold, General & Administrative, Selling Expenses, Finance Charges, Other Income/Expense, Taxes
+-- Bot must compute: Gross Profit = Sales + Cost Of Goods Sold; Total Operating Cost = G&A + Selling; Operating Profit = Gross Profit - Total Operating Cost; Net Profit = Operating Profit - Finance Charges + Other Income/Expense - Taxes
+-- CRITICAL: Use EXACT group names from SQL. NEVER rename: "Cost Of Goods Sold" ≠ "Cost Of Sales"; "Finance Charges" must appear as its own line; "Other Income/Expense" ≠ "Other Income"; "Taxes" ≠ "Income Taxes". Show 0.00 for groups with no data.
+-- Present in this fixed order: Sales → Cost Of Goods Sold → Gross Profit → Operating Cost section → Total Operating Cost → Operating Profit → Finance Charges → Other Income/Expense → Taxes → Net Profit
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0)
   AND CM.PLStatementMainGroups IS NOT NULL
   AND LEN(CM.PLStatementMainGroups) > 0
 GROUP BY CM.PLStatementMainGroups
@@ -2016,15 +2597,14 @@ ORDER BY CM.PLStatementMainGroups
 --- Financial Statement Example 5: P&L / Income Statement Sub Grouped (VERIFIED) ---
 Question: "P&L sub grouped" / "Income statement sub grouped" / "P&L with sub groups" / "Detailed income statement by category" / "Profit and loss sub grouped"
 -- Returns [Main Group, Sub Group, Amount]. Bot must present hierarchy with section totals and computed lines.
+-- Filter on FAM.PeriodStartDate directly — do NOT use DimDate join or DateKey for P&L.
 SELECT
     CM.PLStatementMainGroups                  AS [Main Group],
     CM.PLStatementSubGroups                   AS [Sub Group],
-    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
 FROM FactAccountMonthlySummary FAM
 JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
-JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
-WHERE DD.Year  = YEAR(GETDATE())
-  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+WHERE FAM.PeriodStartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0)
   AND CM.PLStatementSubGroups IS NOT NULL
   AND LEN(CM.PLStatementSubGroups) > 0
 GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
@@ -2033,16 +2613,65 @@ ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
 --- Financial Statement Example 6: P&L / Income Statement Detailed (VERIFIED) ---
 Question: "Detailed P&L" / "Detailed income statement" / "Full income statement" / "Full P&L" / "Detailed profit and loss"
 -- Returns [Main Group, Sub Group, Account, Amount]. 3-level nesting. Bot must compute totals and computed lines.
+-- Filter on FAM.PeriodStartDate directly — do NOT use DimDate join or DateKey for P&L.
 SELECT
     CM.PLStatementMainGroups                  AS [Main Group],
     CM.PLStatementSubGroups                   AS [Sub Group],
     CM.PLStatementDetails                     AS [Account],
-    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
 FROM FactAccountMonthlySummary FAM
 JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
-JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
-WHERE DD.Year  = YEAR(GETDATE())
-  AND DD.Month = MONTH(DATEADD(MONTH, -1, GETDATE()))
+WHERE FAM.PeriodStartDate = DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE()) - 1, 0)
+  AND CM.PLStatementDetails IS NOT NULL
+  AND LEN(CM.PLStatementDetails) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
+
+--- Financial Statement Example 10: P&L Main Grouped MULTI-MONTH (VERIFIED) ---
+Question: "P&L from April 2024 to May 2024" / "Income statement for [month1] and [month2]" / "Compare P&L [month] vs [month]" / "Profit and loss [month] [year] to [month] [year]"
+-- RULE: When multiple months are requested, use conditional aggregation — ONE column per month. NEVER add PeriodStartDate to GROUP BY. Filter: PeriodStartDate IN (...). Use PTD_Net * -1.
+-- Column names = month+year label e.g. [April 2024], [May 2024]. PeriodStartDate = first day of month 'YYYY-MM-01'.
+-- CRITICAL: Use EXACT group names from SQL. NEVER rename: "Cost Of Goods Sold" ≠ "Cost Of Sales"; "Finance Charges" must appear; "Other Income/Expense" ≠ "Other Income"; "Taxes" ≠ "Income Taxes".
+SELECT
+    CM.PLStatementMainGroups                  AS [Group],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-04-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [April 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-05-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [May 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate IN ('2024-04-01', '2024-05-01')
+  AND CM.PLStatementMainGroups IS NOT NULL
+  AND LEN(CM.PLStatementMainGroups) > 0
+GROUP BY CM.PLStatementMainGroups
+ORDER BY CM.PLStatementMainGroups
+
+--- Financial Statement Example 11: P&L Sub Grouped MULTI-MONTH (VERIFIED) ---
+Question: "P&L sub grouped from [month1] to [month2]" / "Income statement sub grouped [month] vs [month]"
+-- RULE: Conditional aggregation — one column per month, PeriodStartDate NOT in GROUP BY. Use PTD_Net * -1.
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-04-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [April 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-05-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [May 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate IN ('2024-04-01', '2024-05-01')
+  AND CM.PLStatementSubGroups IS NOT NULL
+  AND LEN(CM.PLStatementSubGroups) > 0
+GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups
+
+--- Financial Statement Example 12: P&L Detailed MULTI-MONTH (VERIFIED) ---
+Question: "Detailed P&L from [month1] to [month2]" / "Full income statement [month] vs [month]" / "Detailed profit and loss [month] [year] and [month] [year]"
+-- RULE: Conditional aggregation — one column per month, PeriodStartDate NOT in GROUP BY. Use PTD_Net * -1.
+SELECT
+    CM.PLStatementMainGroups                  AS [Main Group],
+    CM.PLStatementSubGroups                   AS [Sub Group],
+    CM.PLStatementDetails                     AS [Account],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-04-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [April 2024],
+    SUM(CASE WHEN FAM.PeriodStartDate = '2024-05-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [May 2024]
+FROM FactAccountMonthlySummary FAM
+JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
+WHERE FAM.PeriodStartDate IN ('2024-04-01', '2024-05-01')
   AND CM.PLStatementDetails IS NOT NULL
   AND LEN(CM.PLStatementDetails) > 0
 GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetails
