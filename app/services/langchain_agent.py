@@ -30,7 +30,7 @@ def _create_chat_llm(*, streaming: bool = False, callbacks: list | None = None):
     """Create the chat LLM based on USE_GEMINI setting.
 
     When USE_GEMINI=true and langchain-google-genai is installed → Gemini 2.5 Pro.
-    Otherwise → GPT-4.1 via langchain-openai.
+    Otherwise → gpt-4.1 via langchain-openai.
     Note: langchain-google-genai is not in requirements.txt because it requires langchain-core>=1.2,
     which conflicts with the SQL agent stack (langchain-core 0.3.x). Set USE_GEMINI=False for a conflict-free install.
     """
@@ -62,7 +62,7 @@ def _create_chat_llm(*, streaming: bool = False, callbacks: list | None = None):
         kwargs["callbacks"] = callbacks
     else:
         kwargs["streaming"] = False
-    print("[LangChainAgent] Using GPT-4.1")
+    print("[LangChainAgent] Using gpt-4.1")
     return ChatOpenAI(**kwargs)
 
 
@@ -70,7 +70,7 @@ def _create_mini_llm(*, streaming: bool = True, callbacks: list | None = None):
     """Create a lighter LLM for simple chat / report generation.
 
     When USE_GEMINI=true and langchain-google-genai is installed → Gemini 2.5 Pro.
-    Otherwise → GPT-4.1-mini.
+    Otherwise → gpt-4.1-mini.
     """
     if settings.USE_GEMINI and settings.GEMINI_API_KEY:
         try:
@@ -334,9 +334,21 @@ def _fix_response_table_pipes(
                     result.extend(block)
                     print(f"[TablePipeFix] Preserved LLM-computed table ({lm_data_row_count} rows > {len(captured_data)} SQL rows)")
                 else:
-                    # Same or fewer rows — rebuild with properly escaped raw SQL data
-                    result.append(block[0])
-                    result.append(block[1])
+                    # Same or fewer rows — rebuild with properly escaped raw SQL data.
+                    # Use actual SQL column names as header (not the LLM's renamed/reordered
+                    # headers) so that column header and data order always match.
+                    # Auto-detect alignment: right-align numeric columns, left-align text.
+                    def _is_numeric_col(col: str) -> bool:
+                        for r in captured_data:
+                            v = str(r.get(col, "")).strip().lstrip("-").replace(",", "").replace(".", "", 1)
+                            if v and not v.isdigit():
+                                return False
+                        return bool(captured_data)
+                    sep_parts = ["---:" if _is_numeric_col(col) else ":---" for col in captured_cols]
+                    header = "| " + " | ".join(str(c) for c in captured_cols) + " |"
+                    separator = "| " + " | ".join(sep_parts) + " |"
+                    result.append(header)
+                    result.append(separator)
                     for row in captured_data:
                         cells = [
                             str(row.get(col, "")).replace("|", "\\|")
@@ -448,6 +460,83 @@ def _build_context_messages(history: list[dict]) -> list:
 # Streaming callback handler
 # ---------------------------------------------------------------------------
 
+def _extract_sql_col_names(sql: str) -> list[str]:
+    """Extract column names/aliases from the final SELECT of a SQL statement (handles CTEs).
+    Returns actual names in SELECT order, or empty list on failure."""
+    if not sql:
+        return []
+    upper = sql.upper()
+    # Find the last top-level SELECT (after all CTE closing parens)
+    depth = 0
+    last_select_pos = -1
+    i = 0
+    while i < len(sql):
+        c = sql[i]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            if depth > 0:
+                depth -= 1
+        elif depth == 0 and upper[i:i+6] == 'SELECT':
+            last_select_pos = i
+        i += 1
+    if last_select_pos == -1:
+        return []
+    # Find FROM after this SELECT at depth 0
+    depth = 0
+    from_pos = -1
+    i = last_select_pos + 6
+    while i < len(sql):
+        c = sql[i]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            if depth > 0:
+                depth -= 1
+        elif depth == 0 and upper[i:i+5] in (' FROM', '\tFROM', '\nFROM'):
+            from_pos = i
+            break
+        i += 1
+    if from_pos == -1:
+        return []
+    select_clause = sql[last_select_pos + 6:from_pos].strip()
+    # Remove TOP N
+    select_clause = re.sub(r'^TOP\s+\d+\s+', '', select_clause, flags=re.IGNORECASE).strip()
+    # Split by comma at depth 0 (ignore commas inside function calls)
+    items: list[str] = []
+    depth = 0
+    current = ""
+    for char in select_clause:
+        if char == '(':
+            depth += 1
+            current += char
+        elif char == ')':
+            depth -= 1
+            current += char
+        elif char == ',' and depth == 0:
+            items.append(current.strip())
+            current = ""
+        else:
+            current += char
+    if current.strip():
+        items.append(current.strip())
+    # Extract alias (AS <name>) or bare column name for each item
+    names: list[str] = []
+    for item in items:
+        item = item.strip()
+        as_match = re.search(r'\bAS\b\s+([`"\[]?[\w]+[`"\]]?)\s*$', item, re.IGNORECASE)
+        if as_match:
+            names.append(as_match.group(1).strip('`"[]'))
+        else:
+            parts = item.split()
+            if parts:
+                last = parts[-1].strip('`"[]')
+                if '.' in last:
+                    last = last.split('.')[-1]
+                names.append(last if last and last != '*' else f"Col{len(names)+1}")
+    return names
+
+
 def _parse_sql_tool_result_to_table(output: str) -> Optional[tuple[list[str], list[dict]]]:
     """Parse sql_db_query tool output (e.g. '[(a, b), (c, d)]' or with Decimal) into table_columns and table_data."""
     if not output or not isinstance(output, str):
@@ -507,11 +596,18 @@ def _parse_sql_tool_result_to_table(output: str) -> Optional[tuple[list[str], li
 
 
 def _build_markdown_table(columns: list[str], data: list[dict]) -> str:
-    """Build a markdown table string from column names and list of row dicts."""
+    """Build a markdown table string from column names and list of row dicts.
+    Numeric columns are right-aligned (---:), text columns left-aligned (:---)."""
     if not columns or not data:
         return ""
+    def _is_numeric(col: str) -> bool:
+        for r in data:
+            v = str(r.get(col, "")).strip().lstrip("-").replace(",", "").replace(".", "", 1)
+            if v and not v.isdigit():
+                return False
+        return bool(data)
     header = "| " + " | ".join(str(c) for c in columns) + " |"
-    sep = "|" + "|".join(":---" for _ in columns) + "|"
+    sep = "|" + "|".join("---:" if _is_numeric(c) else ":---" for c in columns) + "|"
     rows = []
     for row in data:
         cells = [str(row.get(c, "")).replace("|", "\\|") for c in columns]
@@ -762,6 +858,16 @@ class StreamingCallbackHandler(BaseCallbackHandler):
             parsed = _parse_sql_tool_result_to_table(str(output))
             if parsed:
                 cols, data = parsed
+                # Replace generic "Column N" names with actual SQL column names/aliases
+                sql_names = _extract_sql_col_names(self._last_sql or "")
+                if sql_names and len(sql_names) == len(cols):
+                    renamed_data = [
+                        {sql_names[j]: row[cols[j]] for j in range(len(cols))}
+                        for row in data
+                    ]
+                    cols = sql_names
+                    data = renamed_data
+                    print(f"[LangChainAgent][Callback] Resolved SQL column names: {cols}")
                 self._query_result_columns = cols
                 self._query_result_table = data
                 print(f"[LangChainAgent][Callback] Parsed query result: {len(data)} rows, {len(cols)} cols")
@@ -816,8 +922,10 @@ async def stream_chat_with_database(
 
         llm = _create_chat_llm(streaming=False)
 
-        # Build context prefix from history (larger assistant context for SQL path)
-        context_prefix = _build_history_prefix(chat_history, max_assistant_chars=1500)
+        # Build context prefix from history.  SQL strings are deliberately
+        # excluded (include_sql=False) so the LLM input stays stable across
+        # repeated identical questions, ensuring deterministic SQL at temperature=0.
+        context_prefix = _build_history_prefix(chat_history, max_assistant_chars=1000, include_sql=False)
         if context_prefix:
             print(f"[LangChainAgent] Injecting {len(chat_history)} history messages as context")
 
@@ -877,9 +985,44 @@ async def stream_chat_with_database(
             + "\n• Do NOT infer row counts from samples — always run SELECT COUNT(*)."
 
             + "\n\n=== OUTPUT FORMAT — FINAL ANSWER RULES ==="
+            + "\n• NEVER display surrogate key or internal ID columns in the final table."
+            + "\n  Columns ending in 'Key' (CustomerKey, DateKey, ProductKey, VendorKey, WarehouseKey, etc.)"
+            + "\n  are meaningless integers to the user. Strip them from the output even if the SQL selected them."
+            + "\n  Always show business names and descriptions instead."
+            + "\n"
+            + "\n• ABSOLUTE RULE — YOUR FINAL RESPONSE MUST NEVER CONTAIN SQL CODE."
+            + "\n  Never write SELECT, FROM, WHERE, JOIN, WITH, or any SQL statement in your reply text."
+            + "\n  The sql_db_query tool handles SQL execution. Your job is to present the results."
+            + "\n  If asked to 'generate SQL', 'write a query', or 'show me the SQL' — still execute the"
+            + "\n  query silently with the tool and return the formatted results, not the SQL text."
+            + "\n"
             + "\n• !! FINANCIAL STATEMENT EXCEPTION (Balance Sheet / P&L / Income Statement) !!"
-            + "\n  When the user asks for any financial statement, output ONLY a TWO-COLUMN markdown table."
-            + "\n  NO summary sentence, NO extra text before or after the table, NO SQL."
+            + "\n  TWO CASES — detect which applies BEFORE writing your response:"
+            + "\n"
+            + "\n  CASE A — Pure financial statement request (no analysis asked):"
+            + "\n    e.g. 'Show me the balance sheet', 'P&L for March', 'Income statement sub grouped'"
+            + "\n    → Output ONLY the formatted markdown table. NO summary, NO commentary, NO SQL."
+            + "\n"
+            + "\n  CASE B — Financial statement WITH explicit analysis/insights requested:"
+            + "\n    Triggered by ANY of these words/phrases in the user request:"
+            + "\n      'key findings', 'insights', 'analysis', 'analyse', 'areas that require attention',"
+            + "\n      'what should I focus on', 'recommendations', 'trends', 'highlight', 'summary',"
+            + "\n      'tell me about', 'explain', 'what does this mean', 'comment on', 'observations',"
+            + "\n      'compare', 'year over year', 'YoY', 'period over period', or any similar phrase"
+            + "\n      asking for business interpretation beyond just the numbers."
+            + "\n    → Output in this EXACT order:"
+            + "\n      1. A concise business-analyst commentary (3–8 bullet points) covering:"
+            + "\n         - Notable trends across the periods (growth, decline, volatility)"
+            + "\n         - Largest cost drivers or revenue contributors"
+            + "\n         - Year-over-year or period-over-period changes worth noting"
+            + "\n         - Specific areas that need management attention or action"
+            + "\n         - Any positive developments or improving trends"
+            + "\n         Write like a CFO-level analyst: specific figures, percentages where useful,"
+            + "\n         bold key numbers, no technical jargon, no SQL, no database terms."
+            + "\n      2. Immediately after the commentary: the full formatted financial statement table."
+            + "\n    → NEVER skip the table when analysis is requested. NEVER skip the commentary either."
+            + "\n    → Both parts are mandatory in CASE B."
+            + "\n"
             + "\n  Use header: | Description | Amount ($) | with alignment |:---|---:|"
             + "\n"
             + "\n  BALANCE SHEET — HOW TO FORMAT EACH QUERY LEVEL:"
@@ -1137,7 +1280,6 @@ async def stream_chat_with_database(
 
         # Extract captured SQL early — used both for cleaning and the done event
         sql_query = getattr(handler, "_last_sql", None) or ""
-
         # Safety net: if the LLM never called the tool (sql_query is empty) but its output
         # looks like it could be raw SQL, try to execute it directly.  The database engine
         # acts as the validator — no keyword scanning, no regex heuristics.
@@ -1153,9 +1295,14 @@ async def stream_chat_with_database(
                         parsed = _parse_sql_tool_result_to_table(raw_result)
                         if parsed:
                             cols, data = parsed
+                            sql_names = _extract_sql_col_names(candidate_sql)
+                            if sql_names and len(sql_names) == len(cols):
+                                data = [{sql_names[j]: row[cols[j]] for j in range(len(cols))} for row in data]
+                                cols = sql_names
                             handler._last_sql = candidate_sql
                             handler._query_result_columns = cols
                             handler._query_result_table = data
+                            agent_output = _build_markdown_table(cols, data)
                             sql_query = candidate_sql
                             print(f"[LangChainAgent] Auto-executed LLM output as SQL: {len(data)} rows, {len(cols)} cols")
                         else:
@@ -1179,6 +1326,18 @@ async def stream_chat_with_database(
         qdata = getattr(handler, "_query_result_table", None)
         qrows = len(qdata) if qdata else 0
         has_captured_sql = bool((getattr(handler, "_last_sql", None) or "").strip())
+
+        # Guard: if the agent's raw output starts with a SQL keyword it almost certainly
+        # leaked raw SQL instead of a natural language response.  Check against agent_output
+        # (before stripping) not against full_response so we are not fooled by prose that
+        # mentions "select" or "from" in ordinary English.
+        # No natural language response ever begins with SELECT / WITH / INSERT / CREATE.
+        _ao_stripped = agent_output.strip()
+        _sql_starters = ("SELECT", "WITH ", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER")
+        _output_is_sql = _ao_stripped.upper().startswith(_sql_starters)
+        if _output_is_sql and qcols and qdata and qrows > 0:
+            full_response = _build_markdown_table(qcols, qdata)
+            print(f"[LangChainAgent] agent_output starts with SQL keyword — replaced with captured table ({qrows} rows)")
 
         # When the DB query returned 0 rows, never show fabricated tables — force no-data message
         if has_captured_sql and qrows == 0:
@@ -1274,8 +1433,18 @@ async def stream_chat_with_database(
         yield f"data: {error_event}\n\n"
 
 
-def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 1500) -> str:
-    """Build [User]/[Assistant] history prefix for context (shared by SQL and simple chat). Includes sql_query when present for assistant messages."""
+def _build_history_prefix(
+    chat_history: list[dict],
+    max_assistant_chars: int = 1500,
+    include_sql: bool = True,
+) -> str:
+    """Build [User]/[Assistant] history prefix for context.
+
+    When include_sql=False (SQL agent path) previous SQL strings are omitted
+    from the injected history so the LLM receives a stable input and generates
+    deterministic SQL at temperature=0.  The conversation text (user questions
+    and assistant summaries) is still included for contextual continuity.
+    """
     if not chat_history:
         return ""
     parts = ["Previous conversation (oldest first):"]
@@ -1284,7 +1453,7 @@ def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 1
         content = msg.get("content") or ""
         if msg.get("role") == "assistant" and len(content) > max_assistant_chars:
             content = content[:max_assistant_chars] + "... [truncated]"
-        if msg.get("role") == "assistant":
+        if include_sql and msg.get("role") == "assistant":
             sql_query = msg.get("sql_query") or ""
             if sql_query:
                 content = content + "\n(SQL that was run: " + (sql_query[:400] + "..." if len(sql_query) > 400 else sql_query) + ")"

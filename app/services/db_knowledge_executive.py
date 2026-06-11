@@ -145,7 +145,7 @@ Purpose: (This table contains the Customer's master data used for sales and rece
   TaxRate             (Default tax rate applied to the customer.)
   CreditLimit         (Maximum credit amount allowed for this customer account.)
   CurrentBalance      (Current Balance of the Customer.)
-  Status              (Current account status of the customer. Possible values: Active (0), Sales Hold (1), Credit Hold (2).)
+  Status              (Current account status of the customer. Possible values: Active, Sales Hold, Credit Hold.)
   IsDropShipOnly      (Drop-ship only flag.)
   IsSpecialPricing    (Flag indicating if special pricing rules apply.)
   CreatedDate         (Record creation timestamp.)
@@ -201,7 +201,7 @@ Purpose: (This table contains the master data of Vendors for procurement analyti
   Category            (Business category of the respective vendor.)
   Class               (Priority or quality class.)
   Region              (Geographic region.)
-  Status              (Status of the vendor. Possible values: Active (0), Purchase Hold (1), Payment Hold (2).)
+  Status              (Status of the vendor. Possible values: Active, Purchase Hold, Payment Hold.)
   City                (Vendor city.)
   State               (Vendor state.)
   Country             (Vendor country.)
@@ -259,7 +259,7 @@ Purpose: (This table contains the information (Definitions) of the Payment terms
   DueDays             (Number of days until payment is due.)
   DiscountDays        (Days within which early payment discount applies.)
   PaymentDiscount     (Discount percentage if paid early.)
-  CreditCardTerms     (It's a Flag for credit card terms. If this flag will be enabled (1), then this payment term will be used for Credit Card payments as well. Otherwise if it will be disabled (0), then the respective payment term record will not be used for credit card payments.)
+  CreditCardTerms     (It's a Flag for credit card terms. It has only value only [0 and 1]. If this flag will be enabled (1), then this payment term will be used for Credit Card payments as well. Otherwise if it will be disabled (0), then the respective payment term record will not be used for credit card payments.)
 
 Table: DimPriceCategory
 Purpose: (This table contains the definitions of the Price Category definitions.)
@@ -536,7 +536,7 @@ Purpose: (This table contains the master (header level) information of the Vendo
   VendorKey             (Vendor reference key. Resolved from DimVendors.)
   InvoiceType           (Code classifying the invoice type. Possible values: P = Purchase Invoice, T = Transfer Invoice.)
   PaymentTermKey        (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this vendor invoice.)
-  Status                (Current invoice status. Possible values: Close (0), Open (1), Partially Paid (2), Void (3).)
+  Status                (VARCHAR. Current invoice status. Actual stored string values: 'Open', 'Close', 'Partially Paid', 'Void'. ALWAYS filter using string literals e.g. <> 'Void' — NEVER use integer codes.)
   VendorInvoiceRef      (Vendor's own reference or invoice number as provided by the vendor.)
   VendorInvoiceDateKey  (Date reference key from DimDate Table. It refers to the date on the vendor's original invoice.)
   DueDateKey            (Date reference key from DimDate Table. It refers to the payment due date of this vendor invoice.)
@@ -626,7 +626,7 @@ Purpose: (This table contains the master (header level) information of the Credi
   SalesDiscount            (Discount amount applied to this credit memo.)
   PaymentDiscountAmount    (Payment discount amount deducted at the time of credit settlement.)
   AppliedAmount            (Amount of credit that has already been applied against outstanding balances.)
-  Status                   (Current status of the credit memo. Possible values: Open (0), Partially Paid (1), Close (2), Void (9).)
+  Status                   (VARCHAR. Current status of the credit memo. Actual stored string values: 'Open', 'Partially Paid', 'Close', 'Void'. ALWAYS filter using string literals e.g. <> 'Void' — NEVER use integer codes.)
   PriceCategoryKey         (Price category reference key from DimPriceCategory Table. It refers to the pricing tier that was applied to this credit memo.)
   PaymentTermKey           (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to any outstanding balance on this credit memo.)
 
@@ -712,7 +712,7 @@ Purpose: (This table contains the summary level information of Customer Credit M
   OpenCredit              (The remaining balance of this credit that has not yet been applied to any outstanding invoice.)
   AppliedAmount           (The amount of this credit that has already been applied against outstanding customer invoices.)
   CreditApplied           (Flag or amount indicating the total credit that has been applied from this document.)
-  Status                  (Current status of this debit or credit adjustment record. Possible values: Open (0), Partially Paid (1), Close (2), Void (9).)
+  Status                  (Current status of this debit or credit adjustment record. Possible values: Open, Partially Paid, Close, Void.)
   InvoiceType             (Internal document type code classifying the nature of this adjustment.)
   SalesType               (Sales classification code identifying the type of sale associated with this adjustment (e.g., SO = Sales Order).)
 
@@ -723,7 +723,7 @@ Purpose: (This table contains the summary (header level) information of Vendor R
   VendorKey             (Vendor reference key from DimVendors Table. It refers to the vendor to whom the goods are being returned.)
   PaymentTermKey        (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this vendor return transaction.)
   InvoiceType           (Code classifying the type of this vendor return document. Value will always be D (Debit Memo / Vendor Return) for all records in this table.)
-  Status                (Current status of the vendor return record. Possible values: Close (0), Approved (1), Partially Paid (2), Void (3).)
+  Status                (Current status of the vendor return record. Possible values: Close, Approved, Partially Paid, Void.)
   VendorInvoiceRef      (The vendor's own reference or invoice number associated with this return transaction, as provided by the vendor.)
   VendorReturnDateKey   (Date reference key from DimDate Table. It refers to the date of the vendor return document.)
   WarehouseKey          (Warehouse reference key from DimWarehouse Table. It refers to the warehouse from which the goods are being returned to the vendor.)
@@ -767,10 +767,10 @@ Purpose: (This table contains the summary (header level) information of the Sale
   PriceCategoryKey    (Price category reference key from DimPriceCategory Table. It refers to the pricing tier applied to this sales order.)
   PaymentTermKey      (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this sales order.)
   OrderDateKey        (Date reference key from DimDate Table. It refers to the date when this sales order was placed by the customer.)
-  ShippingDateKey     (Date reference key from DimDate Table. It refers to the expected or actual shipping date of this sales order.)
+  ShippingDateKey     (Date reference key from DimDate Table. IMPORTANT: stores the ACTUAL ship date — only populated AFTER an order is physically shipped. It is NULL for open/unshipped orders. Do NOT use this to filter for "orders due to ship today" or "orders ready to ship". For due/overdue shipment queries use RequiredDateKey from FactSalesOrderDetail instead.)
   CancelDateKey       (Date reference key from DimDate Table. It refers to the date by which this sales order must be cancelled if not fulfilled.)
   SalesType           (Sales classification code identifying the type of this sales order transaction.)
-  Status              (Current status of the sales order. Possible values: Open (1), Partially Paid (2), Close (0), Cancel (8), Void (9).)
+  Status              (VARCHAR. Current status of the sales order. Actual stored string values: 'Open', 'Close', 'Cancel', 'Void', 'Partially Paid'. ALWAYS filter using string literals e.g. NOT IN ('Cancel', 'Void') — NEVER use integer codes.)
   SpecialOrder        (Flag indicating whether this is a special order placed specifically for a customer rather than from regular stock. Possible values: 1 = Yes, 0 = No.)
   TotalQty            (Total quantity of all items included on this sales order.)
   TotalQtyShipped     (Total quantity of items that have been physically shipped against this sales order.)
@@ -821,7 +821,7 @@ Purpose: (This table contains the summary (header level) information of the Pack
   DatePrintedKey      (Date reference key from DimDate Table. It refers to the date when this packing slip was physically printed for shipment processing.)
   SalesInvoiceNo      (The Sales Invoice number associated with this packing slip. It links the packing slip to the corresponding sales invoice in FactSalesInvoice.)
   SaleType            (Sales classification code identifying the type of sale associated with this packing slip.)
-  Status              (Current status of the packing slip. Possible values: Open (1), In Shipping (2), Close (0), Void (9).)
+  Status              (Current status of the packing slip. Possible values: Open , In Shipping, Close , Void .)
   TotalQty            (Total quantity of all items included on this packing slip.)
   TotalBales          (Total number of bales or packages included in this packing slip shipment, primarily used for rugs and large bundled items.)
   TotalWeight         (Total weight of all items included in this packing slip shipment.)
@@ -864,7 +864,7 @@ Purpose: (This table contains the summary (header level) information of the Vend
   TotalAmount         (Total monetary value of all items included on this vendor packing slip shipment.)
   Received            (Flag indicating whether the goods on this vendor packing slip have been physically received at the warehouse. Possible values: 1 = Received, 0 = Not Yet Received.)
   WarehouseKey        (Warehouse reference key from DimWarehouse Table. It refers to the destination warehouse where the vendor shipment is to be received.)
-  Status              (Current status of the vendor packing slip. Possible values: Received (2), New (0).)
+  Status              (Current status of the vendor packing slip. Possible values: Received, New.)
   PeriodID            (Accounting period identifier associated with this vendor packing slip.)
 
 Table: FactVendorPackingSlipDetail
@@ -914,7 +914,7 @@ Purpose: (This table contains the summary (header level) information of the Comm
   CommissionInvoiceNo       (A unique identification number of the Commission Invoice used in SPARS.)
   SalesRepKey               (Sales Representative reference key from DimSalesRep Table. It refers to the sales representative to whom this commission invoice was issued.)
   PaymentTermKey            (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this commission invoice.)
-  Status                    (Current status of the commission invoice record. Possible values: Close (0), Open (1), Partially Paid (2), Void (3).)
+  Status                    (Current status of the commission invoice record. Possible values: Close, Open, Partially Paid, Void.)
   CommissionInvoiceRef      (The reference number or identifier associated with this commission invoice, as provided by the sales representative.)
   CommissionInvoiceDateKey  (Date reference key from DimDate Table. It refers to the date on the commission invoice document.)
   InvoiceDateKey            (Date reference key from DimDate Table. It refers to the entry date when this commission invoice was recorded into SPARS.)
@@ -948,7 +948,7 @@ Purpose: (This table contains the summary (header level) information of the Cons
   PaymentTermKey      (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this consignment document.)
   SalesType           (Sales classification code identifying the type of this consignment transaction. Value will always be CO0 (Consignment Invoice) for all records in this table.)
   InvoiceType         (Document type code specifying the invoice category of this consignment document.)
-  Status              (Current status of the consignment record. Possible values: Open (0), Partially Paid (1), Close (2), Void (9).)
+  Status              (Current status of the consignment record. Possible values: Open, Partially Paid, Close, Void.)
   TotalQuantity       (Total quantity of all items included in this consignment document.)
   TotalAmount         (Total monetary value of this consignment including all merchandise, services and charges.)
   TaxAmount           (Total tax amount applied to this consignment document.)
@@ -1122,8 +1122,15 @@ o	NEVER use DateKey on FactInventorySnapshot — that column does NOT exist.
 o	Query FactInventorySnapshot directly without date filters.
 
 AP5: 
-o	NEVER use >= YEAR(GETDATE())-N for "last N years" — it includes future data. instead Use: WHERE DD.Year BETWEEN YEAR(GETDATE())-N AND YEAR(GETDATE())
-
+o	NEVER use >= YEAR(GETDATE())-N for "last N years" — it includes future data.
+o	"Last N years" means exactly N calendar years including the current year.
+    Formula: WHERE DD.Year BETWEEN YEAR(GETDATE())-(N-1) AND YEAR(GETDATE())
+    Examples:
+      "last 3 years"  → BETWEEN YEAR(GETDATE())-2 AND YEAR(GETDATE())   (e.g. 2023,2024,2025)
+      "last 5 years"  → BETWEEN YEAR(GETDATE())-4 AND YEAR(GETDATE())   (e.g. 2021,2022,2023,2024,2025)
+      "last 10 years" → BETWEEN YEAR(GETDATE())-9 AND YEAR(GETDATE())
+    NEVER write YEAR(GETDATE())-N directly for "last N years" — that gives N+1 years.
+    
 AP6: 
 o	NEVER query the wrong fact table for a domain:
 o	Vendor returns → FactVendorReturn / FactVendorReturnDetail (NOT DimVendors)
@@ -1136,6 +1143,125 @@ o	NEVER omit Status filters when computing totals (see DEFAULT FILTERS above).
 AP8: 
 o	Table name accuracy: FactVendorPayments (with 's'), FactVendorInvoices (with 's').
 
+AP9 — CRITICAL: NEVER JOIN TWO FACT TABLES TO THE SAME DIMENSION IN ONE CTE.
+o	Joining FactSalesInvoice AND FactCustomerPayment to DimCustomer in the same CTE
+    causes a CARTESIAN EXPLOSION: every invoice row × every payment row per customer.
+    A customer with 1,000 invoices and 200 payments = 200,000 rows before MAX() collapses them.
+    With millions of rows across all customers this query will run for hours or time out.
+o	MANDATORY PATTERN for any query that needs activity from multiple fact tables per entity:
+    Step 1 — One CTE per fact table, GROUP BY the key column first:
+        SalesActivity AS (
+            SELECT CustomerKey, MAX(DD.FullDate) AS LastSaleDate
+            FROM FactSalesInvoice FSI
+            JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+            WHERE FSI.Status NOT IN ('Void','Cancelled','Reversed')
+            GROUP BY CustomerKey
+        ),
+        PaymentActivity AS (
+            SELECT CustomerKey, MAX(DD.FullDate) AS LastPaymentDate
+            FROM FactCustomerPayment FCP
+            JOIN DimDate DD ON FCP.PaymentDateKey = DD.DateKey
+            GROUP BY CustomerKey
+        )
+    Step 2 — Join the pre-aggregated CTEs to the dimension:
+        SELECT DC.CustomerKey, SA.LastSaleDate, PA.LastPaymentDate
+        FROM DimCustomer DC
+        LEFT JOIN SalesActivity   SA ON DC.CustomerKey = SA.CustomerKey
+        LEFT JOIN PaymentActivity PA ON DC.CustomerKey = PA.CustomerKey
+o	This rule applies to ANY entity (Customer, Vendor, Product, Warehouse) and
+    ANY combination of fact tables (invoices + payments, invoices + returns, sales + credit memos, etc.).
+o	NEVER collapse two fact-table joins into one CTE. Always one CTE per fact table.
+
+AP10 — NEVER REFERENCE A CTE COMPUTED COLUMN IN ORDER BY WITHOUT REPEATING THE EXPRESSION.
+o	SQL Server does not allow ORDER BY to reference a column alias computed in a CTE or sub-query
+    that is not present in the outer GROUP BY.
+o	WRONG:  ORDER BY LastActivityDate            ← alias from inner CTE, not in outer GROUP BY
+o	CORRECT: Repeat the full CASE expression in ORDER BY, or add a numeric sort column:
+            ORDER BY CASE WHEN ... THEN 1 WHEN ... THEN 2 ELSE 3 END
+
+
+AP11 — NEVER SELECT SURROGATE KEYS OR INTERNAL ID COLUMNS IN THE FINAL OUTPUT.
+o	Columns ending in 'Key' (CustomerKey, ProductKey, DateKey, VendorKey, WarehouseKey,
+    PriceCategoryKey, RegionKey, PaymentTermKey, BillOfLadingKey, RugKey, AddressesKey, etc.)
+    are internal database surrogate integers — they are meaningless to a business user.
+o	These columns MAY ONLY be used internally for JOINs, GROUP BY, or WHERE clauses.
+o	NEVER include any *Key column in the final SELECT list that is shown to the user.
+o	WRONG:  SELECT DC.CustomerKey, DC.CustomerName, SUM(FSI.MerchandiseAmount) AS Revenue ...
+o	CORRECT: SELECT DC.CustomerName, SUM(FSI.MerchandiseAmount) AS Revenue ...
+o	This applies to ALL surrogate/foreign keys across ALL tables regardless of the query type.
+o	Exception: Only include a Key column if the user EXPLICITLY asks for it
+    (e.g. "show me the customer key/ID", "include the product key").
+
+AP12 — NEVER JOIN FactSalesOrders DIRECTLY TO FactSalesOrderDetail FOR HEADER-LEVEL QUERIES.
+o	FactSalesOrders is the ORDER HEADER (one row per order).
+    FactSalesOrderDetail is the ORDER DETAIL (many rows per order — one per product line).
+    Joining them directly causes the same fan-out explosion as AP1:
+    an order with 20 lines becomes 20 rows, multiplied across thousands of orders = millions of rows.
+o	FactSalesOrders already contains header-level totals: TotalQty, TotalQtyShipped,
+    TotalMerchandise, TotalAmount, Status, ShippingDateKey — use these for order-level queries.
+o	Only join FactSalesOrderDetail when you SPECIFICALLY need line-level product detail
+    (e.g. "show each product line on the order", "which items are on backorder per order").
+o	If you need a date from FactSalesOrderDetail (e.g. RequiredDate) for a header-level query,
+    PRE-AGGREGATE it in a CTE first (one row per SalesOrderNo), then join the CTE:
+    CORRECT:
+        RequiredDates AS (
+            SELECT FSOD.SalesOrderNo, MIN(DD.FullDate) AS MinRequiredDate
+            FROM   FactSalesOrderDetail FSOD
+            JOIN   DimDate DD ON FSOD.RequiredDateKey = DD.DateKey
+            GROUP BY FSOD.SalesOrderNo
+        )
+        ...
+        LEFT JOIN RequiredDates RD ON FSO.SalesOrderNo = RD.SalesOrderNo
+    WRONG: LEFT JOIN FactSalesOrderDetail FSOD ON FSO.SalesOrderNo = FSOD.SalesOrderNo
+o	STATUS REMINDER: FactSalesOrders.Status is VARCHAR — always use NOT IN ('Cancel', 'Void'),
+    NEVER integer codes.
+o	SHIPPING DATE REMINDER: FactSalesOrders.ShippingDateKey is the ACTUAL (post-shipment) date.
+    For "orders due to ship / can ship today" queries, filter on RequiredDateKey from
+    FactSalesOrderDetail (via pre-aggregated CTE), not on ShippingDateKey.
+    Pattern: WHERE RD.MinRequiredDate <= CAST(GETDATE() AS DATE)
+             AND FSO.TotalQty > ISNULL(FSO.TotalQtyShipped, 0)
+
+================================================================
+  QUERY PERFORMANCE RULES  (prevent long-running / timed-out queries)
+================================================================
+These rules must be applied to EVERY query. A slow query that times out is worse than no answer.
+
+PERF1 — PRE-AGGREGATE EACH FACT TABLE IN ITS OWN CTE BEFORE JOINING (aggregation/summary queries only).
+  When the goal is to compute a summary metric per entity (e.g. last activity date, total spend,
+  total payments per customer), never join two or more fact tables to the same dimension in a
+  single FROM/JOIN block. Reduce each fact table to one row per key in its own CTE first, then
+  join the pre-aggregated CTEs to the dimension.
+  This rule applies to aggregation/summary queries. It does NOT apply to row-level detail queries
+  where you need individual matching rows from two tables (e.g. "show each invoice with its
+  payment", "list all credit memos with their original invoice").
+
+PERF2 — NEVER USE SELECT * OR RETRIEVE ALL COLUMNS FROM LARGE TABLES.
+  FactSalesDetail (3.4M rows), FactSalesInvoice (1M+ rows), FactCustomerPayment, FactCreditMemo
+  are all large tables. Always project only the columns you need and always apply TOP N.
+
+PERF3 — FILTER EARLY, NOT LATE.
+  Apply date filters, Status filters, and WHERE clauses inside CTEs (as close to the table scan
+  as possible), never only in the outermost SELECT. This lets SQL Server use index seeks.
+  GOOD: CTE with WHERE DD.Year = 2025  →  small intermediate result
+  BAD:  Join everything then WHERE Year = 2025 in the outer SELECT  →  full table scan
+
+PERF4 — PREFER DATEADD RANGE COMPARISONS OVER DATEDIFF FOR DATE FILTERING.
+  When filtering rows by a date range, prefer range comparisons over DATEDIFF where both
+  approaches give the same result — range comparisons are SARG-able (index-friendly):
+    PREFER:  col >= DATEADD(MONTH, -12, GETDATE())
+    AVOID:   DATEDIFF(MONTH, col, GETDATE()) <= 12  (scans every row, cannot use index)
+  DATEDIFF is still acceptable when you genuinely need an exact month-count value in a
+  SELECT or CASE expression (e.g. computing "X months overdue" as a display column).
+  Do not change existing working DATEDIFF logic unless rewriting the query from scratch.
+
+PERF5 — AVOID CORRELATED SUB-QUERIES INSIDE SELECT OR WHERE.
+  A sub-query like SELECT (SELECT MAX(...) FROM Fact WHERE key = outer.key) runs once per row.
+  Replace with a pre-aggregated CTE joined once.
+
+PERF6 — LIMIT SCHEMA INSPECTION CALLS.
+  Do not call sql_db_schema repeatedly for tables whose schema you already know from
+  the current conversation or from the DB knowledge provided in this prompt.
+  Look up schema only when you genuinely need an unfamiliar table.
 
 ================================================================
   CONSISTENCY RULES
@@ -1215,9 +1341,9 @@ CRITICAL — column-to-template level mapping (verified against live data):
     Filter: AND CM.BalanceSheet_Details IS NOT NULL AND LEN(CM.BalanceSheet_Details) > 0
 
 P&L STATEMENT — VERIFIED column mapping (confirmed by live DB test):
-- Amount column  : YTD_Net from FactAccountMonthlySummary, multiplied by -1.
-- Expression     : SUM(FAM.YTD_Net * -1) AS [Amount]
-  NEVER use PTD_Net for P&L — always use YTD_Net.
+- Amount column  : PTD_Net from FactAccountMonthlySummary, multiplied by -1.
+- Expression     : SUM(FAM.PTD_Net * -1) AS [Amount]
+  NEVER use YTD_Net for P&L — always use PTD_Net.
 
 - Main Grouped   : GROUP BY CM.PLStatementMainGroups → returns [Group, Amount], 6 possible rows:
     SALES, COST OF SALES, GENERAL & ADMINISTRATIVE, SELLING EXPENSES, OTHER INCOME, INCOME TAXES
@@ -1251,7 +1377,11 @@ NO TOP LIMIT on financial statements — always return ALL rows (no TOP N).
 ================================================================
 - For time-based filtering: JOIN to DimDate on DateKey and filter on Year, Month, Quarter, MonthName.
 - For current period: use YEAR(GETDATE()), MONTH(GETDATE()), DATEPART(QUARTER, GETDATE()).
-- For last N years: WHERE DD.Year BETWEEN YEAR(GETDATE())-N AND YEAR(GETDATE()).
+- For last N years: WHERE DD.Year BETWEEN YEAR(GETDATE())-(N-1) AND YEAR(GETDATE()).
+   "Last N years" = N calendar years INCLUDING the current year.
+   Examples: last 5 years → BETWEEN YEAR(GETDATE())-4 AND YEAR(GETDATE())
+             last 3 years → BETWEEN YEAR(GETDATE())-2 AND YEAR(GETDATE())
+   NEVER use YEAR(GETDATE())-N for "last N years" — that gives N+1 years total.
    NOT >= YEAR(GETDATE())-N which includes future data.
 - For last N months: WHERE DD.FullDate >= DATEADD(MONTH, -N, GETDATE()) AND DD.FullDate <= GETDATE().
 - CRITICAL — LAG/LEAD/ROW_NUMBER monthly sort: ORDER BY (Year * 100 + Month), never (Year, Month) separately.
@@ -1279,18 +1409,97 @@ NO TOP LIMIT on financial statements — always return ALL rows (no TOP N).
 - Customer payment application: FactCustomerApplication + FactCustomerPayment via CashReceiptNo.
 - Back-order history: DimSalesOrderDetail_Log filtered on BackOrder column.
 - Customer debit analysis: FactCustomerDebit + DimCustomer via CustomerKey.
-- Purchase on-time analysis: join FactPurchaseOrder to DimDate twice (DueDateKey, CompletionDateKey) and compare.
+- Purchase on-time analysis: join FactPurchaseOrder to DimDate twice (DueDateKey, CompsletionDateKey) and compare.
 
 
 ================================================================
   SQL QUALITY RULES (CRITICAL)
 ================================================================
-- MANDATORY STATUS FILTERS — apply on every query, no exceptions:
+  ----------STATUS VALUES & INTENT-BASED FILTER RULES  (part of SQL QUALITY RULES)------------------
+
+
+All Status columns listed below are VARCHAR. NEVER use integer codes.
+
+── A. STATUS VALUE CATALOG ─────────────────────────────────────────────
+  FactSalesOrders.Status    : 'Open' | 'Partially Paid' | 'Close' | 'Cancel' | 'Void'
+  FactSalesInvoice.Status   : 'Open' | 'Partially Paid' | 'Close' | 'Void' | 'Cancelled' | 'Reversed'
+  FactCreditMemo.Status     : 'Open' | 'Partially Paid' | 'Close' | 'Void'
+  FactVendorInvoice.Status  : 'Open' | 'Partially Paid' | 'Close' | 'Void'
+  FactVendorPayments        : No Status column — voided = VoidDateKey IS NOT NULL
+                              Default exclude: WHERE FVP.VoidDateKey IS NULL
+  FactCustomerPayment       : No Status column — use as-is (no exclusion filter needed)
+  FactCustomerReturn        : No Status column — use as-is
+  FactConsignments          : No Status column — use as-is
+
+── B. INTENT DETECTION — classify BEFORE writing any WHERE clause ───────
+  Read the user's question and assign ONE of these intents:
+
+  INTENT-1 [ANALYTICS]   — keywords: revenue, sales, total, profit, trend, summary,
+                            comparison, forecast, how much, how many (total count),
+                            YoY, monthly, quarterly, annual, report, statement, margin
+                            → Exclude only invalidated records (Void / Cancelled / Reversed).
+                              Include Open, Partially Paid, and Close.
+
+  INTENT-2 [OPERATIONAL] — keywords: open, pending, ready, can be shipped, due,
+                            outstanding, unpaid, not yet shipped, backlog, awaiting,
+                            current, today, what needs to, actionable, active orders
+                            → Include ONLY 'Open' and 'Partially Paid'.
+                              Exclude Close, Cancel, Void entirely.
+
+  INTENT-3 [COMPLETED]   — keywords: closed, fulfilled, completed, shipped, paid,
+                            delivered, settled, done, processed, finalized
+                            → Include ONLY 'Close'.
+                              Exclude Open, Partially Paid, Cancel, Void.
+
+  INTENT-4 [INVALID]     — keywords: cancelled, voided, reversed, rejected,
+                            how many were cancelled, cancellation rate
+                            → Include ONLY Cancel / Void / Reversed as relevant.
+                              Exclude all active and completed records.
+
+  INTENT-5 [FULL HISTORY] — keywords: all, every, including cancelled, full history,
+                             regardless of status, even voided
+                             → Apply NO status filter. Fetch everything.
+
+  AMBIGUOUS RULE: If intent is unclear (no keywords match), default to INTENT-1
+  [ANALYTICS] — exclude only Void/Cancelled/Reversed. NEVER default to INTENT-2
+  or INTENT-3 unless the user's question clearly indicates active/open or completed.
+
+── C. FILTER TEMPLATES ──────────────────────────────────────────────────
+
+  INTENT-1 [ANALYTICS] — default for most queries:
+    FactSalesOrders   → AND FSO.Status NOT IN ('Cancel', 'Void')
     FactSalesInvoice  → AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
-    FactSalesOrders   → AND FSO.Status NOT IN (8, 9)         -- 8=Cancel, 9=Void
-    FactCreditMemo    → AND FCM.Status <> 9                  -- 9=Void
-    FactVendorInvoice → AND FVI.Status <> 3                  -- 3=Void
-  Omitting these filters includes invalid transactions and inflates revenue/cost figures.
+    FactCreditMemo    → AND FCM.Status <> 'Void'
+    FactVendorInvoice → AND FVI.Status <> 'Void'
+    FactVendorPayments → AND FVP.VoidDateKey IS NULL
+
+  INTENT-2 [OPERATIONAL] — open/pending/active/ready-to-ship queries:
+    FactSalesOrders   → AND FSO.Status IN ('Open', 'Partially Paid')
+    FactSalesInvoice  → AND FSI.Status IN ('Open', 'Partially Paid')
+    FactCreditMemo    → AND FCM.Status IN ('Open', 'Partially Paid')
+    FactVendorInvoice → AND FVI.Status IN ('Open', 'Partially Paid')
+    FactVendorPayments → AND FVP.VoidDateKey IS NULL
+
+  INTENT-3 [COMPLETED] — closed/fulfilled/paid queries:
+    FactSalesOrders   → AND FSO.Status = 'Close'
+    FactSalesInvoice  → AND FSI.Status = 'Close'
+    FactCreditMemo    → AND FCM.Status = 'Close'
+    FactVendorInvoice → AND FVI.Status = 'Close'
+
+  INTENT-4 [INVALID] — cancelled/voided/reversed queries:
+    FactSalesOrders   → AND FSO.Status IN ('Cancel', 'Void')
+    FactSalesInvoice  → AND FSI.Status IN ('Void', 'Cancelled', 'Reversed')
+    FactCreditMemo    → AND FCM.Status = 'Void'
+    FactVendorInvoice → AND FVI.Status = 'Void'
+    FactVendorPayments → AND FVP.VoidDateKey IS NOT NULL
+
+  INTENT-5 [FULL HISTORY]: No status filter applied.
+
+── D. OVERRIDE RULE ─────────────────────────────────────────────────────
+  If the user explicitly names a status value in their question
+  (e.g. "show Void invoices", "only Open orders", "all Cancelled transactions"),
+  use that exact value directly — override all intent detection above.
+  The user's explicit mention ALWAYS takes priority over the default intent filter.
 - NULL-SAFE EXCLUSIONS: NEVER use NOT IN with a subquery. Use LEFT JOIN ... WHERE key IS NULL instead.
 - ALWAYS COMPUTE WHAT IS ASKED: growth/trend/comparison → use LAG/LEAD window functions with both absolute and % change.
 - PRODUCT ANALYSIS: Exclude discontinued (IsDiscontinued=0), cross-check inventory, include revenue/profit context.
@@ -2010,11 +2219,11 @@ ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
 
 --- Financial Statement Example 4: P&L / Income Statement Main Grouped (VERIFIED) ---
 Question: "Show me the P&L" / "Income statement" / "Profit and loss" / "P&L main grouped" / "Income statement for [month] [year]" / "Profit and loss summary"
--- Use YTD_Net * -1 (NEVER PTD_Net). Returns [Group, Amount] — 6 possible groups.
+-- Use PTD_Net * -1 (NEVER YTD_Net). Returns [Group, Amount] — 6 possible groups.
 -- Bot must compute Gross Profit, Total Operating Cost, Operating Profit, Net Profit from the results.
 SELECT
     CM.PLStatementMainGroups                  AS [Group],
-    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
 FROM FactAccountMonthlySummary FAM
 JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
 JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
@@ -2031,7 +2240,7 @@ Question: "P&L sub grouped" / "Income statement sub grouped" / "P&L with sub gro
 SELECT
     CM.PLStatementMainGroups                  AS [Main Group],
     CM.PLStatementSubGroups                   AS [Sub Group],
-    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
 FROM FactAccountMonthlySummary FAM
 JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
 JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
@@ -2049,7 +2258,7 @@ SELECT
     CM.PLStatementMainGroups                  AS [Main Group],
     CM.PLStatementSubGroups                   AS [Sub Group],
     CM.PLStatementDetails                     AS [Account],
-    SUM(FAM.YTD_Net * -1)                     AS [Amount]
+    SUM(FAM.PTD_Net * -1)                     AS [Amount]
 FROM FactAccountMonthlySummary FAM
 JOIN COAMaping CM ON FAM.AccountID = CM.AccountID
 JOIN DimDate DD    ON FAM.DateKey   = DD.DateKey
