@@ -1376,19 +1376,11 @@ async def stream_chat_with_database(
         if _rc and _rd and len(_rd) > 0:
             full_response = _fix_response_table_pipes(full_response, _rc, _rd)
 
-        # Simulate streaming: send the final response in small chunks so the UI feels responsive
-        chunk_size = 12
-        for i in range(0, len(full_response), chunk_size):
-            chunk = full_response[i:i + chunk_size]
-            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
-            # Small delay every few chunks so the UI renders progressively
-            if (i // chunk_size) % 5 == 4:
-                await asyncio.sleep(0.01)
-
         # Build structured table data for the UI (save/export/graph).
-        # The markdown tables in full_response have already been rebuilt by
-        # _fix_response_table_pipes (escaped pipes, real data from captured
-        # SQL result).  Parse them to get real column names + all tables.
+        # Moved BEFORE the token streaming so the pre_done event below carries
+        # the complete payload and chat.py can save to MongoDB immediately —
+        # this guarantees persistence even when the client disconnects before
+        # the first token is delivered (e.g. the user reloads mid-query).
         all_tables = _parse_all_tables_from_markdown(full_response)
         has_table = len(all_tables) > 0
         table_data = all_tables[0]["data"] if all_tables else []
@@ -1405,7 +1397,22 @@ async def stream_chat_with_database(
                 has_table = True
                 print(f"[LangChainAgent] Using captured query result (fallback): {len(qdata)} rows, {len(qcols)} cols")
 
-        # Emit done event
+        # ── Pre-save signal ─────────────────────────────────────────────────
+        # Yield the complete response payload BEFORE any token chunks so that
+        # chat.py can persist it to MongoDB the instant the agent finishes.
+        # This event is never forwarded to the frontend (chat.py intercepts it).
+        yield f"data: {json.dumps({'type': 'pre_done', 'full_response': full_response, 'has_table': has_table, 'table_data': table_data, 'table_columns': table_columns, 'tables': all_tables, 'sql_query': sql_query or ''})}\n\n"
+
+        # Simulate streaming: send the final response in small chunks so the UI feels responsive
+        chunk_size = 12
+        for i in range(0, len(full_response), chunk_size):
+            chunk = full_response[i:i + chunk_size]
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+            # Small delay every few chunks so the UI renders progressively
+            if (i // chunk_size) % 5 == 4:
+                await asyncio.sleep(0.01)
+
+        # Emit done event (table fields already computed above)
         done_event = json.dumps({
             "type": "done",
             "has_table": has_table,

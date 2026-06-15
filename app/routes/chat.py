@@ -46,6 +46,18 @@ class ChatHistoryResponse(BaseModel):
     session_id: str
 
 
+class ChatPendingResponse(BaseModel):
+    active: bool
+    user_message_id: str = ""
+    question: str = ""
+
+
+class ChatCancelRequest(BaseModel):
+    user_message_id: Optional[str] = None
+    keep_partial: bool = False
+    partial_content: Optional[str] = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -83,6 +95,261 @@ async def _get_last_n_pairs(db, user_id: str, session_id: str, n: int = 5) -> li
     return out
 
 
+async def _is_generation_cancelled(db, user_message_id: str) -> bool:
+    """True when the user pressed Stop for this generation."""
+    doc = await db.chat_generations.find_one({"user_message_id": user_message_id})
+    return bool(doc and doc.get("status") == "cancelled")
+
+
+async def _mark_generation_completed(db, user_message_id: str) -> None:
+    """Mark completed only if the user has not cancelled this generation."""
+    await db.chat_generations.update_one(
+        {"user_message_id": user_message_id, "status": {"$ne": "cancelled"}},
+        {"$set": {"status": "completed", "updated_at": datetime.utcnow()}},
+    )
+
+
+async def _delete_user_message(db, user_id: str, user_message_id: str) -> bool:
+    """Remove the user message when a send is cancelled during thinking."""
+    try:
+        user_oid = ObjectId(user_message_id)
+    except Exception:
+        return False
+    result = await db.chat_messages.delete_one({"_id": user_oid, "user_id": user_id})
+    return result.deleted_count > 0
+
+
+async def _cleanup_cancelled_generation(
+    db, user_id: str, session_id: str, user_message_id: str
+) -> None:
+    """Remove assistant replies and user message when cancelled without keep_partial."""
+    doc = await db.chat_generations.find_one({"user_message_id": user_message_id})
+    if not doc or doc.get("status") != "cancelled" or doc.get("keep_partial"):
+        return
+    deleted = await _delete_assistants_after_user(db, user_id, session_id, user_message_id)
+    if deleted:
+        print(
+            f"[ChatRoute] Post-cancel cleanup removed {deleted} assistant(s) | "
+            f"user_message_id={user_message_id}"
+        )
+    if await _delete_user_message(db, user_id, user_message_id):
+        print(
+            f"[ChatRoute] Post-cancel cleanup removed user message | "
+            f"user_message_id={user_message_id}"
+        )
+
+
+async def _find_first_assistant_after_user(
+    db, user_id: str, session_id: str, user_message_id: str
+) -> str:
+    """Return the earliest assistant message id saved after a user message."""
+    try:
+        user_oid = ObjectId(user_message_id)
+    except Exception:
+        return ""
+    user_doc = await db.chat_messages.find_one({"_id": user_oid, "user_id": user_id})
+    if not user_doc:
+        return ""
+    assistant = await db.chat_messages.find_one(
+        {
+            "user_id": user_id,
+            "session_id": session_id,
+            "role": "assistant",
+            "created_at": {"$gte": user_doc["created_at"]},
+        },
+        sort=[("created_at", 1)],
+    )
+    return str(assistant["_id"]) if assistant else ""
+
+
+async def _resolve_existing_assistant_id(
+    db,
+    user_id: str,
+    session_id: str,
+    user_message_id: str,
+    existing_id: str = "",
+) -> str:
+    """Find the single assistant doc for this generation (never create duplicates)."""
+    if existing_id:
+        return existing_id
+    gen = await db.chat_generations.find_one({"user_message_id": user_message_id})
+    if gen and gen.get("assistant_message_id"):
+        return gen["assistant_message_id"]
+    return await _find_first_assistant_after_user(db, user_id, session_id, user_message_id)
+
+
+async def _set_generation_assistant_id(
+    db, user_message_id: str, assistant_id: str
+) -> None:
+    if not assistant_id:
+        return
+    await db.chat_generations.update_one(
+        {"user_message_id": user_message_id},
+        {"$set": {"assistant_message_id": assistant_id, "updated_at": datetime.utcnow()}},
+    )
+
+
+async def _dedupe_assistants_after_user(
+    db, user_id: str, session_id: str, user_message_id: str, keep_id: str
+) -> int:
+    """Remove duplicate assistant replies for one user message, keeping keep_id."""
+    if not keep_id:
+        return 0
+    try:
+        user_oid = ObjectId(user_message_id)
+        keep_oid = ObjectId(keep_id)
+    except Exception:
+        return 0
+    user_doc = await db.chat_messages.find_one({"_id": user_oid, "user_id": user_id})
+    if not user_doc:
+        return 0
+    cursor = db.chat_messages.find(
+        {
+            "user_id": user_id,
+            "session_id": session_id,
+            "role": "assistant",
+            "created_at": {"$gte": user_doc["created_at"]},
+        },
+        sort=[("created_at", 1)],
+    )
+    assistants = await cursor.to_list(length=20)
+    dup_ids = [
+        a["_id"] for a in assistants
+        if a["_id"] != keep_oid
+    ]
+    if not dup_ids:
+        return 0
+    result = await db.chat_messages.delete_many({"_id": {"$in": dup_ids}, "user_id": user_id})
+    if result.deleted_count:
+        print(
+            f"[ChatRoute] Deduped {result.deleted_count} duplicate assistant(s) | "
+            f"keep={keep_id} | user_message_id={user_message_id}"
+        )
+    return result.deleted_count
+
+
+async def _upsert_assistant_for_generation(
+    db,
+    user_id: str,
+    session_id: str,
+    user_message_id: str,
+    content: str,
+    existing_id: str = "",
+    has_table: bool = False,
+    table_data=None,
+    table_columns=None,
+    all_tables=None,
+    sql_query: str = "",
+) -> str:
+    """Insert or update the assistant reply for an in-flight generation (partial save)."""
+    content = (content or "").strip()
+    if not content:
+        return existing_id or ""
+
+    if table_data is None:
+        table_data = []
+    if table_columns is None:
+        table_columns = []
+    if all_tables is None:
+        all_tables = []
+
+    fields = {
+        "content": content,
+        "has_table": has_table,
+        "table_data": table_data,
+        "table_columns": table_columns,
+        "tables": all_tables,
+        "sql_query": sql_query or "",
+    }
+
+    resolved_id = await _resolve_existing_assistant_id(
+        db, user_id, session_id, user_message_id, existing_id
+    )
+    if resolved_id:
+        try:
+            await db.chat_messages.update_one(
+                {"_id": ObjectId(resolved_id), "user_id": user_id},
+                {"$set": fields},
+            )
+            await _dedupe_assistants_after_user(
+                db, user_id, session_id, user_message_id, resolved_id
+            )
+            await _set_generation_assistant_id(db, user_message_id, resolved_id)
+            return resolved_id
+        except Exception:
+            pass
+
+    assistant_msg = ChatMessage(
+        session_id=session_id,
+        user_id=user_id,
+        role="assistant",
+        content=content,
+        has_table=has_table,
+        table_data=table_data,
+        table_columns=table_columns,
+        tables=all_tables,
+        sql_query=sql_query or "",
+    )
+    result = await db.chat_messages.insert_one(assistant_msg.to_dict())
+    saved_id = str(result.inserted_id)
+    await _dedupe_assistants_after_user(db, user_id, session_id, user_message_id, saved_id)
+    await _set_generation_assistant_id(db, user_message_id, saved_id)
+    print(f"[ChatRoute] Upserted partial assistant | id={saved_id} | len={len(content)}")
+    return saved_id
+
+
+async def _save_partial_for_keep_cancel(
+    db,
+    user_id: str,
+    session_id: str,
+    user_message_id: str,
+    content: str,
+    existing_id: str = "",
+    has_table: bool = False,
+    table_data=None,
+    table_columns=None,
+    all_tables=None,
+    sql_query: str = "",
+) -> str:
+    """Persist partial assistant content when the user stops mid-stream."""
+    doc = await db.chat_generations.find_one({"user_message_id": user_message_id})
+    if not doc or doc.get("status") != "cancelled" or not doc.get("keep_partial"):
+        return existing_id or ""
+    return await _upsert_assistant_for_generation(
+        db,
+        user_id,
+        session_id,
+        user_message_id,
+        content,
+        existing_id,
+        has_table,
+        table_data,
+        table_columns,
+        all_tables,
+        sql_query,
+    )
+
+
+async def _delete_assistants_after_user(
+    db, user_id: str, session_id: str, user_message_id: str
+) -> int:
+    """Remove assistant replies saved after a cancelled user message."""
+    try:
+        user_oid = ObjectId(user_message_id)
+    except Exception:
+        return 0
+    user_doc = await db.chat_messages.find_one({"_id": user_oid, "user_id": user_id})
+    if not user_doc:
+        return 0
+    result = await db.chat_messages.delete_many({
+        "user_id": user_id,
+        "session_id": session_id,
+        "role": "assistant",
+        "created_at": {"$gte": user_doc["created_at"]},
+    })
+    return result.deleted_count
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -108,135 +375,325 @@ async def chat_stream(
     session_id = await _get_or_create_session(db, user_id)
     history = await _get_last_n_pairs(db, user_id, session_id, n=5)
 
-    async def event_generator():
-        full_response = ""
-        has_table = False
-        table_data = []
-        table_columns = []
-        all_tables: list = []
-        sql_query = ""
-        error_occurred = False
+    # Save the user message IMMEDIATELY — before QuestionResolver runs.
+    # QuestionResolver can take 1-4 s; if the user reloads during that window
+    # the question must already be persisted so it shows up in history.
+    user_msg = ChatMessage(
+        session_id=session_id,
+        user_id=user_id,
+        role="user",
+        content=question,
+    )
+    user_insert = await db.chat_messages.insert_one(user_msg.to_dict())
+    user_message_id = str(user_insert.inserted_id)
+    print(f"[ChatRoute] Saved user message to MongoDB (early, pre-resolver) | id={user_message_id}")
 
-        user_role = getattr(current_user, "role", "executive") or "executive"
+    await db.chat_generations.insert_one({
+        "user_id": user_id,
+        "session_id": session_id,
+        "user_message_id": user_message_id,
+        "question": question,
+        "status": "processing",
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow(),
+    })
 
-        if settings.USE_VANNA_AI:
-            from app.services.vanna_agent import stream_chat_with_database_vanna
-            stream_fn = stream_chat_with_database_vanna
-            resolved_question = question
-            access_denied = False
-            denial_reason = ""
-            print("[ChatRoute] Using Vanna AI agent")
-        else:
-            from app.services.question_resolver import resolve_question
-            from app.services.langchain_agent import stream_chat_with_database, stream_simple_chat
-            loop = asyncio.get_event_loop()
-            resolved = await loop.run_in_executor(
-                None,
-                lambda: resolve_question(question, history, role=user_role),
-            )
-            resolved_question = resolved.get("resolved_question", question) or question
-            intent = resolved.get("intent", "sql")
-            is_followup = resolved.get("is_followup", False)
-            access_denied = resolved.get("access_denied", False)
-            denial_reason = resolved.get("denial_reason", "")
-            print(f"[ChatRoute] Resolved: intent={intent!r} is_followup={is_followup} access_denied={access_denied} | original='{question[:60]}' | resolved='{resolved_question[:60]}'")
+    user_role = getattr(current_user, "role", "executive") or "executive"
+    chunk_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
 
-            if access_denied:
-                print(f"[ChatRoute] Access denied for role={user_role}: {denial_reason}")
-            elif intent == "sql":
-                stream_fn = stream_chat_with_database
-                print("[ChatRoute] Routing to LangChain SQL agent")
-            else:
-                stream_fn = stream_simple_chat
-                print("[ChatRoute] Routing to simple LLM (no SQL)")
+    full_response = ""
+    full_response_parts: list[str] = []
+    has_table = False
+    table_data = []
+    table_columns = []
+    all_tables: list = []
+    sql_query = ""
+    error_occurred = False
+    already_saved = False
+    pre_saved_id = ""
+
+    async def _maybe_persist_streaming_partial(force: bool = False) -> None:
+        """Save in-progress tokens so reload/stop can recover partial answers."""
+        nonlocal already_saved, pre_saved_id
+        if await _is_generation_cancelled(db, user_message_id):
+            doc = await db.chat_generations.find_one({"user_message_id": user_message_id})
+            if not doc or not doc.get("keep_partial"):
+                return
+        partial = full_response or "".join(full_response_parts)
+        if not partial.strip():
+            return
+        if not force and len(full_response_parts) % 8 != 0:
+            return
+        new_id = await _upsert_assistant_for_generation(
+            db,
+            user_id,
+            session_id,
+            user_message_id,
+            partial,
+            pre_saved_id,
+            has_table,
+            table_data,
+            table_columns,
+            all_tables,
+            sql_query,
+        )
+        if new_id:
+            pre_saved_id = new_id
+            already_saved = True
+
+    async def _run_pipeline() -> None:
+        """Resolve, stream, save — survives client disconnect/reload."""
+        nonlocal full_response, full_response_parts, has_table
+        nonlocal table_data, table_columns, all_tables, sql_query
+        nonlocal error_occurred, already_saved, pre_saved_id
 
         try:
-            # Save user message first
-            user_msg = ChatMessage(
-                session_id=session_id,
-                user_id=user_id,
-                role="user",
-                content=question,
+            await chunk_queue.put(
+                f"data: {json.dumps({'type': 'user_saved', 'user_message_id': user_message_id})}\n\n"
             )
-            await db.chat_messages.insert_one(user_msg.to_dict())
-            print(f"[ChatRoute] Saved user message to MongoDB")
 
-            # If access is denied for this role, yield a polite denial and stop streaming
+            if await _is_generation_cancelled(db, user_message_id):
+                print(f"[ChatRoute] Pipeline aborted early — generation cancelled | id={user_message_id}")
+                return
+
+            if settings.USE_VANNA_AI:
+                from app.services.vanna_agent import stream_chat_with_database_vanna
+                stream_fn = stream_chat_with_database_vanna
+                resolved_question = question
+                access_denied = False
+                denial_reason = ""
+                print("[ChatRoute] Using Vanna AI agent")
+            else:
+                from app.services.question_resolver import resolve_question
+                from app.services.langchain_agent import stream_chat_with_database, stream_simple_chat
+                loop = asyncio.get_event_loop()
+                resolved = await loop.run_in_executor(
+                    None,
+                    lambda: resolve_question(question, history, role=user_role),
+                )
+                resolved_question = resolved.get("resolved_question", question) or question
+                intent = resolved.get("intent", "sql")
+                is_followup = resolved.get("is_followup", False)
+                access_denied = resolved.get("access_denied", False)
+                denial_reason = resolved.get("denial_reason", "")
+                print(
+                    f"[ChatRoute] Resolved: intent={intent!r} is_followup={is_followup} "
+                    f"access_denied={access_denied} | original='{question[:60]}' | "
+                    f"resolved='{resolved_question[:60]}'"
+                )
+                if access_denied:
+                    print(f"[ChatRoute] Access denied for role={user_role}: {denial_reason}")
+                elif intent == "sql":
+                    stream_fn = stream_chat_with_database
+                    print("[ChatRoute] Routing to LangChain SQL agent")
+                else:
+                    stream_fn = stream_simple_chat
+                    print("[ChatRoute] Routing to simple LLM (no SQL)")
+
             if access_denied:
-                denial_msg = denial_reason or "You don't have rights to access this information. As per your current role, you are only assigned access to topics relevant to your team."
+                denial_msg = (
+                    denial_reason
+                    or "You don't have rights to access this information. "
+                    "As per your current role, you are only assigned access to "
+                    "topics relevant to your team."
+                )
                 full_response = denial_msg
-                token_event = json.dumps({"type": "token", "content": denial_msg})
-                yield f"data: {token_event}\n\n"
-                done_event = json.dumps({
-                    "type": "done",
-                    "has_table": False,
-                    "table_data": [],
-                    "table_columns": [],
-                    "tables": [],
-                    "full_response": denial_msg,
-                    "sql_query": "",
-                })
-                yield f"data: {done_event}\n\n"
-                # fall through — save block below will persist the denial response
-
+                await chunk_queue.put(
+                    f"data: {json.dumps({'type': 'token', 'content': denial_msg})}\n\n"
+                )
+                await chunk_queue.put(
+                    f"data: {json.dumps({'type': 'done', 'has_table': False, 'table_data': [], 'table_columns': [], 'tables': [], 'full_response': denial_msg, 'sql_query': ''})}\n\n"
+                )
             else:
                 if settings.USE_VANNA_AI:
                     stream_iter = stream_fn(resolved_question, history)
                 else:
                     stream_iter = stream_fn(resolved_question, history, role=user_role)
-                async for chunk in stream_iter:
-                    yield chunk
 
-                    # Parse chunk to track state
+                async for _chunk in stream_iter:
+                    if await _is_generation_cancelled(db, user_message_id):
+                        print(f"[ChatRoute] Pipeline stream aborted — cancelled | id={user_message_id}")
+                        await _maybe_persist_streaming_partial(force=True)
+                        break
+                    _skip = False
                     try:
-                        raw = chunk.strip()
-                        if raw.startswith("data: "):
-                            payload = json.loads(raw[6:])
-                            if payload.get("type") == "done":
-                                full_response = payload.get("full_response", "")
-                                has_table = payload.get("has_table", False)
-                                table_data = payload.get("table_data", [])
-                                table_columns = payload.get("table_columns", [])
-                                all_tables = payload.get("tables", [])
-                                sql_query = payload.get("sql_query", "") or ""
-                            elif payload.get("type") == "error":
+                        _raw = _chunk.strip()
+                        if _raw.startswith("data: "):
+                            _p = json.loads(_raw[6:])
+                            _t = _p.get("type")
+                            if _t == "token":
+                                full_response_parts.append(_p.get("content", ""))
+                                await _maybe_persist_streaming_partial()
+                            elif _t == "pre_done":
+                                full_response = _p.get("full_response", "")
+                                has_table = _p.get("has_table", False)
+                                table_data = _p.get("table_data", [])
+                                table_columns = _p.get("table_columns", [])
+                                all_tables = _p.get("tables", [])
+                                sql_query = _p.get("sql_query", "") or ""
+                                if full_response:
+                                    if await _is_generation_cancelled(db, user_message_id):
+                                        break
+                                    try:
+                                        pre_saved_id = await _upsert_assistant_for_generation(
+                                            db,
+                                            user_id,
+                                            session_id,
+                                            user_message_id,
+                                            full_response,
+                                            pre_saved_id,
+                                            has_table,
+                                            table_data,
+                                            table_columns,
+                                            all_tables,
+                                            sql_query,
+                                        )
+                                        if pre_saved_id:
+                                            already_saved = True
+                                            print(
+                                                f"[ChatRoute] BG pre-saved | id={pre_saved_id} | "
+                                                f"has_table={has_table}"
+                                            )
+                                    except Exception as _pe:
+                                        print(f"[ChatRoute] BG pre-save failed: {_pe}")
+                                _skip = True
+                            elif _t == "done":
+                                full_response = _p.get("full_response", "") or full_response
+                                has_table = _p.get("has_table", False)
+                                table_data = _p.get("table_data", [])
+                                table_columns = _p.get("table_columns", [])
+                                all_tables = _p.get("tables", [])
+                                sql_query = _p.get("sql_query", "") or ""
+                            elif _t == "error":
                                 error_occurred = True
                     except Exception:
                         pass
+                    if not _skip:
+                        try:
+                            chunk_queue.put_nowait(_chunk)
+                        except asyncio.QueueFull:
+                            pass
 
-        except Exception as e:
-            print(f"[ChatRoute] event_generator error: {e}")
+            if not full_response and full_response_parts:
+                full_response = "".join(full_response_parts)
+
+            if await _is_generation_cancelled(db, user_message_id):
+                print(f"[ChatRoute] Generation cancelled — partial save handled in finally | id={user_message_id}")
+            elif full_response and not error_occurred:
+                try:
+                    if already_saved and pre_saved_id:
+                        print(f"[ChatRoute] Using pre-saved id={pre_saved_id} | skipping duplicate insert")
+                        await chunk_queue.put(
+                            f"data: {json.dumps({'type': 'saved', 'assistant_db_id': pre_saved_id})}\n\n"
+                        )
+                        await _mark_generation_completed(db, user_message_id)
+                    else:
+                        assistant_msg = ChatMessage(
+                            session_id=session_id,
+                            user_id=user_id,
+                            role="assistant",
+                            content=full_response,
+                            has_table=has_table,
+                            table_data=table_data,
+                            table_columns=table_columns,
+                            tables=all_tables,
+                            sql_query=sql_query or "",
+                        )
+                        result = await db.chat_messages.insert_one(assistant_msg.to_dict())
+                        saved_id = str(result.inserted_id)
+                        pre_saved_id = saved_id
+                        already_saved = True
+                        print(f"[ChatRoute] Saved assistant message | id={saved_id} | has_table={has_table}")
+                        await chunk_queue.put(
+                            f"data: {json.dumps({'type': 'saved', 'assistant_db_id': saved_id})}\n\n"
+                        )
+                        await _mark_generation_completed(db, user_message_id)
+                except Exception as save_err:
+                    print(f"[ChatRoute] Failed to save assistant message: {save_err}")
+
+        except Exception as _pipe_err:
+            print(f"[ChatRoute] Pipeline error: {_pipe_err}")
             import traceback
             traceback.print_exc()
-            error_event = json.dumps({"type": "error", "content": str(e)})
-            yield f"data: {error_event}\n\n"
             error_occurred = True
-
-        # Save assistant response to MongoDB.
-        # This runs outside finally so we can yield the 'saved' event containing
-        # the real MongoDB _id — the frontend uses it for message deletion.
-        if full_response and not error_occurred:
             try:
-                assistant_msg = ChatMessage(
-                    session_id=session_id,
-                    user_id=user_id,
-                    role="assistant",
-                    content=full_response,
-                    has_table=has_table,
-                    table_data=table_data,
-                    table_columns=table_columns,
-                    tables=all_tables,
-                    sql_query=sql_query or "",
+                await chunk_queue.put(
+                    f"data: {json.dumps({'type': 'error', 'content': str(_pipe_err)})}\n\n"
                 )
-                result = await db.chat_messages.insert_one(assistant_msg.to_dict())
-                saved_id = str(result.inserted_id)
-                print(f"[ChatRoute] Saved assistant message | id={saved_id} | has_table={has_table} | tables={len(all_tables)}")
-                # Notify the frontend of the real DB id so delete works immediately
-                yield f"data: {json.dumps({'type': 'saved', 'assistant_db_id': saved_id})}\n\n"
-            except Exception as save_err:
-                print(f"[ChatRoute] Failed to save assistant message: {save_err}")
-        else:
-            print(f"[ChatRoute] Skipping assistant message save | full_response empty={not full_response} | error={error_occurred}")
+            except Exception:
+                pass
+        finally:
+            cancelled = await _is_generation_cancelled(db, user_message_id)
+            if cancelled:
+                if not full_response and full_response_parts:
+                    full_response = "".join(full_response_parts)
+                saved_id = await _save_partial_for_keep_cancel(
+                    db,
+                    user_id,
+                    session_id,
+                    user_message_id,
+                    full_response,
+                    pre_saved_id,
+                    has_table,
+                    table_data,
+                    table_columns,
+                    all_tables,
+                    sql_query,
+                )
+                if saved_id:
+                    pre_saved_id = saved_id
+                    already_saved = True
+                await _cleanup_cancelled_generation(db, user_id, session_id, user_message_id)
+            elif not already_saved and not error_occurred:
+                if not full_response and full_response_parts:
+                    full_response = "".join(full_response_parts)
+                if full_response:
+                    try:
+                        _am2 = ChatMessage(
+                            session_id=session_id,
+                            user_id=user_id,
+                            role="assistant",
+                            content=full_response,
+                            has_table=has_table,
+                            table_data=table_data,
+                            table_columns=table_columns,
+                            tables=all_tables,
+                            sql_query=sql_query or "",
+                        )
+                        _r2 = await db.chat_messages.insert_one(_am2.to_dict())
+                        pre_saved_id = str(_r2.inserted_id)
+                        already_saved = True
+                        print(f"[ChatRoute] Pipeline fallback save | id={pre_saved_id}")
+                        await _mark_generation_completed(db, user_message_id)
+                    except Exception as _e2:
+                        print(f"[ChatRoute] Pipeline fallback save failed: {_e2}")
+            elif already_saved and pre_saved_id:
+                await _mark_generation_completed(db, user_message_id)
+            try:
+                chunk_queue.put_nowait(None)
+            except asyncio.QueueFull:
+                pass
+            print(
+                f"[ChatRoute] Pipeline done | cancelled={cancelled} | "
+                f"already_saved={already_saved} | id={pre_saved_id or 'none'}"
+            )
+
+    asyncio.create_task(_run_pipeline())
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    _qchunk = await asyncio.wait_for(chunk_queue.get(), timeout=320.0)
+                except asyncio.TimeoutError:
+                    print("[ChatRoute] Queue read timeout — stream assumed ended")
+                    break
+                if _qchunk is None:
+                    break
+                yield _qchunk
+        except (asyncio.CancelledError, GeneratorExit):
+            print("[ChatRoute] Client disconnected — pipeline continues in background")
+            raise
 
     return StreamingResponse(
         event_generator(),
@@ -247,6 +704,92 @@ async def chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/pending", response_model=ChatPendingResponse)
+async def get_chat_pending(current_user: User = Depends(get_current_user)):
+    """Return whether this user has a generation still running (DB source of truth)."""
+    user_id = str(current_user._id)
+    db = get_database()
+    doc = await db.chat_generations.find_one(
+        {"user_id": user_id, "status": "processing"},
+        sort=[("created_at", -1)],
+    )
+    if not doc:
+        return ChatPendingResponse(active=False)
+    return ChatPendingResponse(
+        active=True,
+        user_message_id=doc.get("user_message_id", ""),
+        question=doc.get("question", ""),
+    )
+
+
+@router.post("/cancel")
+async def cancel_chat_generation(
+    body: ChatCancelRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Stop an in-flight generation — prevents assistant reply from being kept."""
+    user_id = str(current_user._id)
+    db = get_database()
+    session_id = await _get_or_create_session(db, user_id)
+
+    query: dict = {"user_id": user_id, "status": "processing"}
+    if body.user_message_id:
+        query["user_message_id"] = body.user_message_id
+
+    doc = await db.chat_generations.find_one(query, sort=[("created_at", -1)])
+    if not doc:
+        print(f"[ChatRoute] Cancel: no active generation for user={user_id}")
+        return {"cancelled": False}
+
+    user_message_id = doc["user_message_id"]
+    await db.chat_generations.update_one(
+        {"_id": doc["_id"]},
+        {
+            "$set": {
+                "status": "cancelled",
+                "keep_partial": body.keep_partial,
+                "updated_at": datetime.utcnow(),
+            }
+        },
+    )
+    deleted = 0
+    user_deleted = False
+    partial_saved_id = ""
+    if body.keep_partial:
+        partial_text = (body.partial_content or "").strip()
+        if partial_text:
+            existing_id = doc.get("assistant_message_id") or await _find_first_assistant_after_user(
+                db, user_id, session_id, user_message_id
+            )
+            partial_saved_id = await _upsert_assistant_for_generation(
+                db,
+                user_id,
+                session_id,
+                user_message_id,
+                partial_text,
+                existing_id,
+            )
+            print(
+                f"[ChatRoute] Cancel saved partial assistant | id={partial_saved_id} | "
+                f"len={len(partial_text)}"
+            )
+    else:
+        deleted = await _delete_assistants_after_user(db, user_id, session_id, user_message_id)
+        user_deleted = await _delete_user_message(db, user_id, user_message_id)
+    print(
+        f"[ChatRoute] Cancelled generation | user_message_id={user_message_id} | "
+        f"deleted_assistants={deleted} | deleted_user={user_deleted} | "
+        f"partial_saved={bool(partial_saved_id)}"
+    )
+    return {
+        "cancelled": True,
+        "user_message_id": user_message_id,
+        "question": doc.get("question", ""),
+        "user_message_deleted": user_deleted,
+        "assistant_db_id": partial_saved_id or None,
+    }
 
 
 @router.get("/history", response_model=ChatHistoryResponse)
