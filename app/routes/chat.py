@@ -550,6 +550,7 @@ async def chat_stream(
                                         )
                                         if pre_saved_id:
                                             already_saved = True
+                                            await _mark_generation_completed(db, user_message_id)
                                             print(
                                                 f"[ChatRoute] BG pre-saved | id={pre_saved_id} | "
                                                 f"has_table={has_table}"
@@ -559,11 +560,46 @@ async def chat_stream(
                                 _skip = True
                             elif _t == "done":
                                 full_response = _p.get("full_response", "") or full_response
+                                if not full_response and full_response_parts:
+                                    full_response = "".join(full_response_parts)
                                 has_table = _p.get("has_table", False)
                                 table_data = _p.get("table_data", [])
                                 table_columns = _p.get("table_columns", [])
                                 all_tables = _p.get("tables", [])
                                 sql_query = _p.get("sql_query", "") or ""
+                                # Finalize immediately so reload/poll clears stop UI
+                                # even while cosmetic token chunks finish draining.
+                                if full_response and not error_occurred:
+                                    if not await _is_generation_cancelled(db, user_message_id):
+                                        try:
+                                            pre_saved_id = await _upsert_assistant_for_generation(
+                                                db,
+                                                user_id,
+                                                session_id,
+                                                user_message_id,
+                                                full_response,
+                                                pre_saved_id,
+                                                has_table,
+                                                table_data,
+                                                table_columns,
+                                                all_tables,
+                                                sql_query,
+                                            )
+                                            if pre_saved_id:
+                                                already_saved = True
+                                            await _mark_generation_completed(db, user_message_id)
+                                            print(
+                                                f"[ChatRoute] done-event finalized | id={pre_saved_id} | "
+                                                f"len={len(full_response)}"
+                                            )
+                                            try:
+                                                chunk_queue.put_nowait(
+                                                    f"data: {json.dumps({'type': 'saved', 'assistant_db_id': pre_saved_id})}\n\n"
+                                                )
+                                            except asyncio.QueueFull:
+                                                pass
+                                        except Exception as _de:
+                                            print(f"[ChatRoute] done-event finalize failed: {_de}")
                             elif _t == "error":
                                 error_occurred = True
                     except Exception:
@@ -669,6 +705,13 @@ async def chat_stream(
                         print(f"[ChatRoute] Pipeline fallback save failed: {_e2}")
             elif already_saved and pre_saved_id:
                 await _mark_generation_completed(db, user_message_id)
+            # Never leave a saved generation stuck in processing
+            _gen_doc = await db.chat_generations.find_one({"user_message_id": user_message_id})
+            if _gen_doc and _gen_doc.get("status") == "processing" and already_saved:
+                await _mark_generation_completed(db, user_message_id)
+                print(
+                    f"[ChatRoute] Safety-completed stuck generation | id={user_message_id}"
+                )
             try:
                 chunk_queue.put_nowait(None)
             except asyncio.QueueFull:
