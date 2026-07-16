@@ -17,7 +17,9 @@ openpyxl>=3.1.0
 
 # LangChain + SQL Server for chat with database (use 0.3.x stack to avoid conflicts)
 # Do NOT add langchain-google-genai here: it requires langchain-core>=1.2, which conflicts with create_sql_agent (requires 0.3.x).
-langchain-core>=0.3.0,<0.4
+# NOTE: floor raised to 0.3.72 (from 0.3.0) — this is the minimum langchain-mcp-adapters
+# (below) needs; langchain 0.3.27 itself needs >=0.3.72 too, so this is a no-op in practice.
+langchain-core>=0.3.72,<0.4
 langchain>=0.3.0,<0.4
 langchain-community>=0.3.0,<0.4
 langchain-openai>=0.2.0
@@ -25,6 +27,28 @@ pyodbc>=5.0.0
 sqlalchemy>=2.0.0
 markdown
 weasyprint
+
+# MCP (Model Context Protocol) — hosted tool server integration for chat-with-database.
+# langgraph.prebuilt.create_react_agent runs the bounded multi-tool loop;
+# langchain-mcp-adapters bridges the hosted MCP server's tools into LangChain tools.
+# IMPORTANT — version pins are load-bearing, do not let `pip install -U` move these:
+#   - langchain-mcp-adapters MUST stay <0.2.0: versions 0.2.0+ import
+#     langchain_core.messages.content, a module that only exists in langchain-core 1.x,
+#     which conflicts with the 0.3.x stack above (langchain 0.3.27 requires core<1.0.0).
+#   - mcp MUST stay <1.15.0: starting at 1.15.0, mcp raises its pydantic floor to
+#     >=2.11.0, which conflicts with pydantic==2.9.2 pinned above (used app-wide, so
+#     it is not safe to bump). mcp==1.12.4 is the newest release still on
+#     pydantic>=2.8.0, and it exposes the same `streamablehttp_client` API used by
+#     langchain-mcp-adapters==0.1.14 — verified via a clean pip dry-run resolution.
+#   - sse-starlette + starlette are pinned because mcp's newer releases (irrespective
+#     of the pydantic issue above) pull in sse-starlette>=3.x, which requires
+#     starlette>=1.0 — that breaks fastapi==0.115.0 (needs starlette<0.39). This exact
+#     combo is verified conflict-free.
+langgraph>=0.6.0,<0.7
+langchain-mcp-adapters==0.1.14
+mcp==1.12.4
+sse-starlette==1.8.2
+starlette==0.38.6
 
 # Vanna AI (optional: set USE_VANNA_AI=true in .env for chat-with-database)
 vanna

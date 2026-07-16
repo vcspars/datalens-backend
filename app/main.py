@@ -46,6 +46,17 @@ async def lifespan(app: FastAPI):
     else:
         print("[Main] DB snapshot pre-fetch skipped (SQL DB not available)")
 
+    # Warm up the MCP (Model Context Protocol) tool cache, if configured.
+    # Runs concurrently with the rest of startup — an MCP outage or missing
+    # MCP_SERVER_URL never blocks the app; chat simply uses the LangChain SQL
+    # agent for every question until MCP tools become available.
+    try:
+        from app.services.mcp_manager import init_mcp_tools
+        asyncio.create_task(init_mcp_tools())
+        print("[Main] MCP tool cache warm-up task launched in background")
+    except Exception as e:
+        print(f"[Main] MCP tool cache warm-up task launch failed: {e}")
+
     yield
     # Shutdown
     await close_mongo_connection()

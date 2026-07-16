@@ -54,6 +54,12 @@ _ROLE_SCOPE: dict[str, str] = {
     ),
 }
 
+def get_role_scope_text(role: str) -> str:
+    """Public accessor for the role-based access-scope text (used by the MCP
+    orchestrator prompt too, so both paths enforce the same restrictions)."""
+    return _ROLE_SCOPE.get(role, "")
+
+
 SYSTEM_PROMPT = """You are a question resolver for a chat-with-database app. The database contains business data: sales, customers, products, vendors, purchases, inventory, tables/schema.
 
 Your task:

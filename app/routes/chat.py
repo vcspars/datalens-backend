@@ -465,7 +465,8 @@ async def chat_stream(
                 print("[ChatRoute] Using Vanna AI agent")
             else:
                 from app.services.question_resolver import resolve_question
-                from app.services.langchain_agent import stream_chat_with_database, stream_simple_chat
+                from app.services.langchain_agent import stream_simple_chat
+                from app.services.mcp_agent import stream_chat_with_database_with_mcp
                 loop = asyncio.get_event_loop()
                 resolved = await loop.run_in_executor(
                     None,
@@ -484,8 +485,8 @@ async def chat_stream(
                 if access_denied:
                     print(f"[ChatRoute] Access denied for role={user_role}: {denial_reason}")
                 elif intent == "sql":
-                    stream_fn = stream_chat_with_database
-                    print("[ChatRoute] Routing to LangChain SQL agent")
+                    stream_fn = stream_chat_with_database_with_mcp
+                    print("[ChatRoute] Routing to SQL path (MCP tools tried first, LangChain SQL agent as fallback)")
                 else:
                     stream_fn = stream_simple_chat
                     print("[ChatRoute] Routing to simple LLM (no SQL)")

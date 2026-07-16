@@ -25,6 +25,17 @@ class Settings(BaseSettings):
     USE_GEMINI: bool = False
     GEMINI_API_KEY: str = ""
 
+    # --- MCP (Model Context Protocol) — hosted tool server integration ---
+    # Set MCP_SERVER_URL in .env to enable. Tools are cached at startup and
+    # tried (via a bounded LangGraph ReAct loop) before falling back to the
+    # LangChain SQL agent. Leave MCP_SERVER_URL empty to fully skip this path.
+    MCP_ENABLED: bool = True
+    MCP_SERVER_URL: str = ""            # e.g. https://your-mcp-host.example.com/mcp
+    MCP_API_KEY: str = ""               # optional — sent as "Authorization: Bearer <key>"
+    MCP_MAX_TOOL_CALLS: int = 6         # max MCP tool calls allowed per user turn
+    MCP_AGENT_TIMEOUT_SECONDS: float = 60.0   # overall wall-clock budget for the MCP ReAct loop
+    MCP_TOOLS_REFRESH_MINUTES: float = 30.0   # auto-refresh cached tool catalog after this long
+
     # Swagger /docs password gate
     DOCS_PASSWORD: str = "sdf@#FDF23fd"
 
@@ -37,12 +48,13 @@ class Settings(BaseSettings):
     # For development, you can use ["*"] to allow all origins
     # For production, specify exact origins
     CORS_ORIGINS: list[str] = [
-        "http://localhost:5173",
-        "http://localhost:3000", 
+        "http://localhost:4173",   # Vite dev server (this project)
+        "http://127.0.0.1:4173",
+        "http://localhost:5173",   # Vite default port
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
         "http://localhost:8080",
         "http://localhost:8081",
-        "http://122.129.80.228:8080",
-        "http://122.129.80.228:4173"
     ]
      
     class Config:
