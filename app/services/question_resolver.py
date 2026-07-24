@@ -22,7 +22,10 @@ def _get_resolver_llm() -> ChatOpenAI:
         _RESOLVER_LLM = ChatOpenAI(
             model="gpt-4.1",
             temperature=0,
-            max_tokens=500,
+            seed=42,
+            frequency_penalty=0,
+            presence_penalty=0,
+            max_tokens=600,
             openai_api_key=settings.OPENAI_API_KEY,
         )
     return _RESOLVER_LLM
@@ -65,10 +68,17 @@ SYSTEM_PROMPT = """You are a question resolver for a chat-with-database app. The
 Your task:
 1. Look at the recent conversation (User and Assistant messages, and any SQL that was run).
 2. Determine if the CURRENT user message is a follow-up (e.g. "yes", "no", "show me all", "continue", "break it down by month", "only last year", "explain that") that only makes sense in context of the previous exchange.
-3. If it IS a follow-up: produce a single self-contained question that captures what the user really wants. Preserve the original intent; do not change the meaning.
+3. If it IS a follow-up: produce a single FULLY SELF-CONTAINED question that captures EVERYTHING the user really wants — including all analytical dimensions, filters, time periods, groupings, and metrics established across ALL prior turns in the chain. The resolved_question must be readable by someone with NO access to conversation history and still be 100% unambiguous.
+
+   FULL EXPANSION RULE — CRITICAL: Do NOT produce a shorthand resolved_question. Expand completely:
+   - "now for 2025" after a chain of 4 questions building a gross margin analysis by product, by category, comparing Q1 vs Q2 → resolved: "Show gross margin percentage by product, broken down by category, comparing Q1 2025 versus Q2 2025, for products where margin declined more than 10 percentage points."
+   - "same but by region" after a sales rep revenue analysis → resolved: "Show total sales revenue by region (instead of by sales rep), for the same time period and filters as the prior analysis."
+   - "break it down by month" after a YTD total → resolved: "Show [same metric] broken down month by month for [same year/filter from prior turn]."
+   Never produce: "Show the same analysis for 2025." — this is NOT self-contained.
+
    - CRITICAL: If the assistant had offered to show "the full list", "all of them", "the rest", or "more" and the user said "yes", "yeah", "sure", "show all", or "show me all", the resolved question MUST ask for the COMPLETE list (e.g. "List all table names in the database"), NOT "How many tables" or a repeat of the count/summary question. The user is accepting the offer to see everything.
    - CRITICAL — AMBIGUOUS GROUPING TERM RESOLUTION: When the user uses a generic word ("category", "group", "type", "segment", "class", "tier", "band") in a follow-up, inspect the previous assistant response. If that response computed or derived a named classification (any labelled grouping that does not directly correspond to a raw database column — e.g. a computed analysis that produced named buckets or tiers), the generic word refers to THAT derived classification, not to any schema column with a similar name. In the resolved_question, replace the generic word with the exact name of the derived classification as it appeared in the previous response. If no prior derived classification exists in the conversation, treat the generic term as referring to the raw schema column.
-4. If it is NOT a follow-up (standalone question): use the user's message as-is with minimal changes (fix typos only if obvious; preserve their wording).
+4. If it is NOT a follow-up (standalone question): copy the user's message VERBATIM into resolved_question. Fix obvious typos only (e.g. "groess" → "gross"). Do NOT add columns, do NOT rephrase, do NOT elaborate, do NOT expand. The resolved_question must be word-for-word identical to the user's input except for typo corrections. This is critical for output consistency.
 5. Classify intent — read ALL rules carefully before deciding:
 
    ALWAYS classify as "simple" (NO database query needed):

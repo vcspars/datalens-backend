@@ -27,14 +27,26 @@ class Settings(BaseSettings):
 
     # --- MCP (Model Context Protocol) — hosted tool server integration ---
     # Set MCP_SERVER_URL in .env to enable. Tools are cached at startup and
-    # tried (via a bounded LangGraph ReAct loop) before falling back to the
-    # LangChain SQL agent. Leave MCP_SERVER_URL empty to fully skip this path.
+    # included as individual tools in the unified orchestrator agent's tool
+    # list. Leave MCP_SERVER_URL empty to run the SQL subagent only.
     MCP_ENABLED: bool = True
     MCP_SERVER_URL: str = ""            # e.g. https://your-mcp-host.example.com/mcp
     MCP_API_KEY: str = ""               # optional — sent as "Authorization: Bearer <key>"
-    MCP_MAX_TOOL_CALLS: int = 6         # max MCP tool calls allowed per user turn
-    MCP_AGENT_TIMEOUT_SECONDS: float = 60.0   # overall wall-clock budget for the MCP ReAct loop
     MCP_TOOLS_REFRESH_MINUTES: float = 30.0   # auto-refresh cached tool catalog after this long
+
+    # --- Unified orchestrator agent (outer ReAct loop) ---
+    # Governs the single top-level agent that decides whether to call MCP
+    # tools, the SQL subagent, or both. Timeout MUST exceed
+    # SQL_AGENT_TIMEOUT_SECONDS because a single query_sql_database tool call
+    # can itself run for the full SQL agent budget.
+    ORCHESTRATOR_MAX_TOOL_CALLS: int = 6      # max outer tool calls (each MCP call + the SQL subagent call count toward this)
+    ORCHESTRATOR_TIMEOUT_SECONDS: float = 300.0  # wall-clock budget for the whole orchestrator turn
+
+    # --- SQL ReAct subagent (inner bounded loop, called via query_sql_database tool) ---
+    # These bound the SQL-only agent that runs inside the query_sql_database
+    # wrapper tool. Values are unchanged from before the unified-agent redesign.
+    SQL_AGENT_MAX_TOOL_CALLS: int = 16        # max SQL tool calls per query_sql_database invocation
+    SQL_AGENT_TIMEOUT_SECONDS: float = 280.0  # wall-clock budget per query_sql_database invocation
 
     # Swagger /docs password gate
     DOCS_PASSWORD: str = "sdf@#FDF23fd"

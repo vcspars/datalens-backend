@@ -11,17 +11,20 @@ Each yielded chunk is one of:
 import json
 import re
 import asyncio
+import datetime as _dt
+from decimal import Decimal
 from typing import AsyncGenerator, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_community.utilities import SQLDatabase
-from langchain_community.agent_toolkits import create_sql_agent
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
 
 from app.config import settings
-from app.services.db_knowledge import get_system_prompt
 from app.services.db_knowledge_router import get_system_prompt_for_role
+from app.services.skill_loader import load_skill
 
 print("[LangChainAgent] Module loaded")
 
@@ -55,6 +58,9 @@ def _create_chat_llm(*, streaming: bool = False, callbacks: list | None = None):
     kwargs = dict(
         model="gpt-4.1",
         temperature=0,
+        seed=42,
+        frequency_penalty=0,
+        presence_penalty=0,
         openai_api_key=settings.OPENAI_API_KEY,
     )
     if streaming and callbacks:
@@ -92,6 +98,9 @@ def _create_mini_llm(*, streaming: bool = True, callbacks: list | None = None):
     kwargs = dict(
         model="gpt-4.1",
         temperature=0,
+        seed=42,
+        frequency_penalty=0,
+        presence_penalty=0,
         openai_api_key=settings.OPENAI_API_KEY,
     )
     if streaming:
@@ -627,60 +636,6 @@ _USER_FACING_FORBIDDEN = [
 ]
 
 
-def _strip_sql_fences(text: str) -> str:
-    """Remove ```sql ... ``` code blocks using plain string operations — no regex."""
-    parts: list[str] = []
-    remaining = text
-    lower = remaining.lower()
-    while True:
-        start = lower.find("```sql")
-        if start == -1:
-            parts.append(remaining)
-            break
-        parts.append(remaining[:start])
-        after_open = start + 6  # len("```sql") == 6
-        end = lower.find("```", after_open)
-        if end == -1:
-            # No closing fence — drop everything from the opening marker onward
-            break
-        remaining = remaining[end + 3:]
-        lower = remaining.lower()
-    return "".join(parts).strip()
-
-
-def _strip_captured_sql(text: str, captured_sql: str) -> str:
-    """Remove the exact captured SQL from the response using str.replace — no regex.
-
-    Three passes in increasing looseness:
-    1. Verbatim match — fastest, handles the common case.
-    2. Single-line collapsed match — handles LLM writing SQL on one line vs
-       the captured version having newlines/indentation.
-    3. Full whitespace-normalization of BOTH sides — handles two edge cases:
-       a) LLM writes the SQL twice fused end-to-end (no separator), producing
-          a double-copy that neither Pass 1 nor Pass 2 can match.
-       b) LLM writes bare unfenced SQL whose surrounding whitespace differs from
-          the captured version in any other way.
-       Because str.replace removes ALL occurrences, it clears both copies in
-       case (a) in a single call.
-    """
-    if not captured_sql or not text:
-        return text
-    # Pass 1: verbatim
-    if captured_sql in text:
-        return text.replace(captured_sql, "").strip()
-    # Pass 2: single-line collapsed
-    sql_one_line = " ".join(captured_sql.split())
-    if sql_one_line in text:
-        return text.replace(sql_one_line, "").strip()
-    # Pass 3: fully normalize both sides — removes duplicates/fused copies too
-    text_normalized = " ".join(text.split())
-    sql_normalized = " ".join(captured_sql.split())
-    if sql_normalized in text_normalized:
-        cleaned = text_normalized.replace(sql_normalized, "").strip()
-        return cleaned
-    return text
-
-
 def _sanitize_user_response(text: str) -> str:
     """Replace technical phrases so user never sees 'query', 'sql', 'returned no results' etc."""
     if not text or not text.strip():
@@ -689,6 +644,191 @@ def _sanitize_user_response(text: str) -> str:
     for pattern, replacement, flags in _USER_FACING_FORBIDDEN:
         out = re.sub(pattern, replacement, out, flags=flags)
     return out
+
+
+# ---------------------------------------------------------------------------
+# SQL ReAct agent (LangGraph) — domain prompt, tools, JSON final-answer parsing
+# ---------------------------------------------------------------------------
+
+def _build_sql_domain_prompt(role: str, dialect: str = "mssql") -> str:
+    """Build the full system prompt for the SQL ReAct subagent.
+
+    Composes: role-specific schema knowledge (dynamic, from db_knowledge_router)
+    + static SQL domain rules loaded from app/skills/sql_agent_skill.md.
+    The dialect placeholder is spliced in as a one-liner header between the two.
+    """
+    parts = [
+        get_system_prompt_for_role(role),
+        f"\n\nDialect: {dialect}.\n\n",
+        load_skill("sql_agent_skill"),
+    ]
+    return "".join(parts)
+
+
+def _json_safe(value):
+    """Convert a raw DB cell value into a JSON-serializable Python value."""
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        f = float(value)
+        return int(f) if f.is_integer() else f
+    if isinstance(value, _dt.datetime):
+        return value.isoformat(sep=" ")
+    if isinstance(value, (_dt.date, _dt.time)):
+        return str(value)
+    if isinstance(value, (bytes, bytearray)):
+        return value.hex()
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+_SQL_AGENT_ROW_CAP = 500  # hard server-side cap regardless of what the LLM's own SQL requests
+
+
+def _execute_sql_for_agent(sql_db: SQLDatabase, query: str) -> str:
+    """Run *query* directly via SQLAlchemy (bypassing SQLDatabase.run's string
+    formatting) so column names and values come back clean and JSON-safe —
+    no ast.literal_eval / datetime-regex parsing needed downstream, and real
+    column names come from the driver instead of guessed 'Column N' placeholders.
+
+    Returns a JSON string: {"columns": [...], "rows": [...], "row_count": N,
+    "truncated": bool} on success, or {"error": "..."} on failure. Errors are
+    returned as tool output (not raised) so the agent can see the DB error and
+    try a corrected query on its next turn.
+    """
+    from sqlalchemy import text as _sql_text
+
+    stripped = (query or "").strip().rstrip(";")
+    upper = stripped.upper()
+    if not (upper.startswith("SELECT") or upper.startswith("WITH")):
+        return json.dumps({"error": "Only SELECT/WITH (read-only) queries are allowed."})
+
+    try:
+        with sql_db._engine.connect() as conn:
+            result = conn.execute(_sql_text(stripped))
+            columns = list(result.keys())
+            rows = result.fetchmany(_SQL_AGENT_ROW_CAP + 1)
+    except Exception as e:
+        print(f"[LangChainAgent][SQLTool] Query failed: {e}")
+        return json.dumps({"error": str(e)[:500]})
+
+    truncated = len(rows) > _SQL_AGENT_ROW_CAP
+    rows = rows[:_SQL_AGENT_ROW_CAP]
+    row_dicts = [
+        {columns[i]: _json_safe(row[i]) for i in range(len(columns))}
+        for row in rows
+    ]
+    print(f"[LangChainAgent][SQLTool] Query OK: {len(row_dicts)} rows, {len(columns)} cols, truncated={truncated}")
+    return json.dumps({
+        "columns": columns,
+        "rows": row_dicts,
+        "row_count": len(row_dicts),
+        "truncated": truncated,
+    }, default=str)
+
+
+def _build_sql_tools(sql_db: SQLDatabase) -> list:
+    """Build the tools the SQL ReAct agent can call.
+
+    Deliberately minimal — no query-checker sub-chain (that would be a hidden
+    extra LLM call per query) — so the only LLM calls made for a SQL question
+    are the ReAct agent's own turns. If a query fails, the tool returns the DB
+    error as its result and the agent can rewrite the query on its next turn.
+    """
+
+    @tool
+    def sql_db_list_tables(tool_input: str = "") -> str:
+        """List all tables available in the database. Input is ignored — pass an empty string."""
+        try:
+            return ", ".join(sql_db.get_usable_table_names())
+        except Exception as e:
+            return f"Error listing tables: {e}"
+
+    @tool
+    def sql_db_schema(table_names: str) -> str:
+        """Get the CREATE TABLE statement and sample rows for a comma-separated
+        list of table names, e.g. 'FactSalesInvoice, DimCustomer'."""
+        names = [t.strip() for t in (table_names or "").split(",") if t.strip()]
+        try:
+            return sql_db.get_table_info(table_names=names or None)
+        except Exception as e:
+            return f"Error getting schema: {e}"
+
+    @tool
+    def sql_db_query(query: str) -> str:
+        """Execute a read-only SQL SELECT/WITH query against the database and
+        return the result as JSON: {"columns": [...], "rows": [...],
+        "row_count": N, "truncated": bool}. Returns {"error": "..."} if the
+        query fails — read the error, fix the query, and try again."""
+        return _execute_sql_for_agent(sql_db, query)
+
+    return [sql_db_list_tables, sql_db_schema, sql_db_query]
+
+
+def _parse_json_final_answer(text: str) -> dict:
+    """Parse the SQL ReAct agent's final message as JSON. Tolerates ```json
+    fences and stray leading/trailing prose. Never raises — on failure it
+    degrades gracefully to a plain-text response with no table, exactly like
+    the old free-text path did when the agent didn't behave as instructed.
+    """
+    if not text or not text.strip():
+        return {"response": "", "has_table": False, "tables": []}
+
+    s = text.strip()
+    if s.startswith("```"):
+        s = s.strip("`").strip()
+        if s.lower().startswith("json"):
+            s = s[4:].strip()
+
+    try:
+        data = json.loads(s)
+        if isinstance(data, dict):
+            return data
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    # Fallback: find the outermost {...} block and try that (handles stray
+    # prose before/after the JSON object despite instructions not to).
+    start = s.find("{")
+    end = s.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            data = json.loads(s[start:end + 1])
+            if isinstance(data, dict):
+                return data
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    print("[LangChainAgent] Final answer was not valid JSON — treating as plain text")
+    return {"response": text.strip(), "has_table": False, "tables": []}
+
+
+def _extract_last_sql_execution(messages: list) -> tuple[str, Optional[int]]:
+    """Walk the ReAct loop's message trace and return (last_sql_query_text,
+    last_row_count). last_row_count is None if no query ever executed
+    successfully. Used to (a) report the exact SQL that ran — extracted from
+    the tool-call args, never retyped by the LLM, so it can't drift — and
+    (b) force an honest 'no data' response when the last query returned zero
+    rows, regardless of what the LLM's JSON claims.
+    """
+    last_sql = ""
+    last_row_count: Optional[int] = None
+    for m in messages:
+        for tc in (getattr(m, "tool_calls", None) or []):
+            if tc.get("name") == "sql_db_query":
+                q = (tc.get("args") or {}).get("query")
+                if isinstance(q, str) and q.strip():
+                    last_sql = q.strip()
+        if getattr(m, "type", "") == "tool" and getattr(m, "name", "") == "sql_db_query":
+            content = getattr(m, "content", "")
+            try:
+                parsed = json.loads(content) if isinstance(content, str) else None
+            except (json.JSONDecodeError, ValueError):
+                parsed = None
+            if isinstance(parsed, dict) and "row_count" in parsed:
+                last_row_count = parsed["row_count"]
+    return last_sql, last_row_count
 
 
 class StreamingCallbackHandler(BaseCallbackHandler):
@@ -916,10 +1056,6 @@ async def stream_chat_with_database(
                 return
             raise
 
-        # Callback handler — only used for SQL capture & keepalive, NOT for token streaming
-        token_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
-        handler = StreamingCallbackHandler(token_queue)
-
         llm = _create_chat_llm(streaming=False)
 
         # Build context prefix from history.  SQL strings are deliberately
@@ -931,471 +1067,107 @@ async def stream_chat_with_database(
 
         full_question = context_prefix + question
 
-        # Create SQL agent with DB knowledge prefix (role-specific)
-        db_prefix = (
-            get_system_prompt_for_role(role)
-            + "\n\nYou are an expert SQL agent for the StarScemaSPARS star schema database. "
-            + "Dialect: {dialect}. Only execute SELECT queries — never INSERT, UPDATE, DELETE, DROP, or DDL."
-
-            + "\n\n=== ROW LIMITS (CRITICAL — ABSOLUTE MAXIMUM 40 ROWS) ==="
-            + "\n• ALWAYS include SELECT TOP 40 in EVERY query. TOP 40 is the hard maximum — never exceed it."
-            + "\n• If user says 'top 10', use TOP 10. If user says 'top 5', use TOP 5."
-            + "\n• If user says 'all' or requests more than 40 rows, silently cap at TOP 40."
-            + "\n• GROUP BY queries (per-customer, per-product, per-reason breakdowns) MUST use TOP 40 — they return thousands of rows without it."
-            + "\n• ONLY exception: a query returning exactly ONE row (SELECT SUM/COUNT with no GROUP BY) does not need TOP."
-            + "\n• NEVER run any multi-row SELECT without TOP — fact tables contain millions of rows."
-            + "\n• If user asks for row counts, run SELECT COUNT(*) with no GROUP BY — do NOT select all rows."
-            + "\n• TOP-N PER GROUP (CRITICAL PATTERN): When the user asks for 'top N per category', 'top N per group',"
-            + "\n  'top N within each X', or 'N items from each Y' — this is a PARTITION query, NOT a simple TOP query."
-            + "\n  MANDATORY STRUCTURE:"
-            + "\n    Step 1 — Compute the classification/grouping in a CTE (e.g. ABC_Category)"
-            + "\n    Step 2 — In a separate CTE, assign ROW_NUMBER() OVER (PARTITION BY <classification_col> ORDER BY <metric> DESC) AS rn"
-            + "\n    Step 3 — Final SELECT filters WHERE rn <= N  ← this is where the user's 'top N' is applied"
-            + "\n    Step 4 — Outer SELECT TOP = N × number_of_groups  (e.g. top 10 per 3 ABC categories = SELECT TOP 30)"
-            + "\n  CRITICAL: The user's 'top N' maps to WHERE rn <= N — NOT to the outer SELECT TOP clause."
-            + "\n  CRITICAL: ALL groups must appear in the result — NEVER filter to just one group."
-            + "\n  CRITICAL: NEVER add a WHERE clause that limits to a single group value (e.g. WHERE ABCCategory = 'A')."
-            + "\n  CRITICAL: NEVER say 'only X category shown due to row limit' — show all groups using PARTITION BY."
-            + "\n  CRITICAL PARTITION BY RULE: The PARTITION BY must contain ONLY the classification/group column."
-            + "\n    CORRECT: PARTITION BY ABC_Category"
-            + "\n    WRONG:   PARTITION BY ABC_Category, DP.Category   ← adding extra dimension columns creates thousands of micro-groups"
-            + "\n    Adding any extra column to PARTITION BY (e.g. product Category, Region, Warehouse) multiplies the number"
-            + "\n    of partitions and makes the rn filter meaningless — each tiny group gets rn=1,2,3... independently."
-            + "\n  CRITICAL ABC ANALYSIS RULE: ABC classification must use the cumulative Pareto method (running sum):"
-            + "\n    A = items where cumulative inventory value (ordered high→low) ≤ 80% of total inventory value"
-            + "\n    B = cumulative value between 80% and 95%"
-            + "\n    C = cumulative value above 95%"
-            + "\n    Use SUM() OVER (ORDER BY value DESC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) for running total."
-            + "\n    NEVER use PERCENTILE_CONT or value thresholds for ABC — only the cumulative Pareto running-sum method."
-            + "\n  Example: 'top 5 per ABC category' (3 groups) → PARTITION BY ABC_Category only, WHERE rn <= 5, SELECT TOP 15."
-            + "\n  Example: 'top 3 products per warehouse' (8 warehouses) → PARTITION BY WarehouseKey only, WHERE rn <= 3, SELECT TOP 24."
-            + "\n  If N × number_of_groups exceeds 40, reduce N so that all groups still appear (e.g. top 13 × 3 = 39 ≤ 40)."
-            + "\n• CLASSIFICATION SUMMARY QUERIES: When the user asks for a summary or analysis that classifies items"
-            + "\n  into computed buckets using cumulative window functions (running totals, percentile tiers, ranked bands),"
-            + "\n  the query MUST follow this two-stage structure:"
-            + "\n    Stage 1 — Classification CTE: compute the bucket label for EVERY row using window functions. NO TOP here."
-            + "\n              Applying TOP at this stage truncates the running total mid-way and collapses all rows into the first bucket."
-            + "\n    Stage 2 — Aggregation SELECT: GROUP BY the computed bucket column to produce one summary row per bucket."
-            + "\n              Apply SELECT TOP only here — the result has at most as many rows as there are buckets (typically 3–10)."
-            + "\n  This rule applies to any analysis that assigns items to ranked tiers based on cumulative value, count, or percentage."
-            + "\n  NEVER apply TOP to the intermediate classification step or to the row-level data before aggregation."
-
-            + "\n\n=== COMPLETENESS ==="
-            + "\n• Present the FULL result up to TOP 40. NEVER say 'similar data available for others'."
-            + "\n• Do NOT infer row counts from samples — always run SELECT COUNT(*)."
-
-            + "\n\n=== OUTPUT FORMAT — FINAL ANSWER RULES ==="
-            + "\n• NEVER display surrogate key or internal ID columns in the final table."
-            + "\n  Columns ending in 'Key' (CustomerKey, DateKey, ProductKey, VendorKey, WarehouseKey, etc.)"
-            + "\n  are meaningless integers to the user. Strip them from the output even if the SQL selected them."
-            + "\n  Always show business names and descriptions instead."
-            + "\n"
-            + "\n• ABSOLUTE RULE — YOUR FINAL RESPONSE MUST NEVER CONTAIN SQL CODE."
-            + "\n  Never write SELECT, FROM, WHERE, JOIN, WITH, or any SQL statement in your reply text."
-            + "\n  The sql_db_query tool handles SQL execution. Your job is to present the results."
-            + "\n  If asked to 'generate SQL', 'write a query', or 'show me the SQL' — still execute the"
-            + "\n  query silently with the tool and return the formatted results, not the SQL text."
-            + "\n"
-            + "\n• !! FINANCIAL STATEMENT EXCEPTION (Balance Sheet / P&L / Income Statement) !!"
-            + "\n  TWO CASES — detect which applies BEFORE writing your response:"
-            + "\n"
-            + "\n  CASE A — Pure financial statement request (no analysis asked):"
-            + "\n    e.g. 'Show me the balance sheet', 'P&L for March', 'Income statement sub grouped'"
-            + "\n    → Output ONLY the formatted markdown table. NO summary, NO commentary, NO SQL."
-            + "\n"
-            + "\n  CASE B — Financial statement WITH explicit analysis/insights requested:"
-            + "\n    Triggered by ANY of these words/phrases in the user request:"
-            + "\n      'key findings', 'insights', 'analysis', 'analyse', 'areas that require attention',"
-            + "\n      'what should I focus on', 'recommendations', 'trends', 'highlight', 'summary',"
-            + "\n      'tell me about', 'explain', 'what does this mean', 'comment on', 'observations',"
-            + "\n      'compare', 'year over year', 'YoY', 'period over period', or any similar phrase"
-            + "\n      asking for business interpretation beyond just the numbers."
-            + "\n    → Output in this EXACT order:"
-            + "\n      1. A concise business-analyst commentary (3–8 bullet points) covering:"
-            + "\n         - Notable trends across the periods (growth, decline, volatility)"
-            + "\n         - Largest cost drivers or revenue contributors"
-            + "\n         - Year-over-year or period-over-period changes worth noting"
-            + "\n         - Specific areas that need management attention or action"
-            + "\n         - Any positive developments or improving trends"
-            + "\n         Write like a CFO-level analyst: specific figures, percentages where useful,"
-            + "\n         bold key numbers, no technical jargon, no SQL, no database terms."
-            + "\n      2. Immediately after the commentary: the full formatted financial statement table."
-            + "\n    → NEVER skip the table when analysis is requested. NEVER skip the commentary either."
-            + "\n    → Both parts are mandatory in CASE B."
-            + "\n"
-            + "\n  Use header: | Description | Amount ($) | with alignment |:---|---:|"
-            + "\n"
-            + "\n  BALANCE SHEET — HOW TO FORMAT EACH QUERY LEVEL:"
-            + "\n  The SQL returns columns [Section], [Line Item], [Amount] OR [Section], [Sub Group], [Line Item], [Amount]."
-            + "\n  Read the column names in the result to determine which level you are at:"
-            + "\n"
-            + "\n  LEVEL 1 — Main Grouped (SQL returns 3 cols: Section, Line Item, Amount):"
-            + "\n    For each unique Section value, output:"
-            + "\n      | **<Section value>** | |"
-            + "\n      |     <Line Item value> | <Amount value> |   <- one row per Line Item"
-            + "\n      | **Total <Section value>** | <sum of all amounts for this Section> |"
-            + "\n      | | |   <- blank separator before next section"
-            + "\n"
-            + "\n  LEVEL 2 — Sub Grouped (SQL returns 4 cols: Section, Sub Group, Line Item, Amount):"
-            + "\n    For each unique Section value, output:"
-            + "\n      | **<Section value>** | |"
-            + "\n      For each Sub Group within the Section:"
-            + "\n        | **<Sub Group value>** | |"
-            + "\n        |     <Line Item value> | <Amount value> |   <- one row per Line Item"
-            + "\n        | **Total <Sub Group value>** | <sum of amounts for this Sub Group> |"
-            + "\n        | | |"
-            + "\n      | **Total <Section value>** | <sum of all amounts for this Section> |"
-            + "\n      | | |"
-            + "\n"
-            + "\n  LEVEL 3 — Detailed (SQL returns 5 cols: Section, Sub Group, Detail Group, Account, Amount):"
-            + "\n    4-level nesting: Section -> Sub Group -> Detail Group -> Account"
-            + "\n    Bold headers for each level, indented line items for lowest level."
-            + "\n"
-            + "\n  P&L / INCOME STATEMENT — HOW TO FORMAT EACH QUERY LEVEL:"
-            + "\n  IMPORTANT: P&L and Income Statement are the same report. Both use the same templates."
-            + "\n  CRITICAL — DETECT LEVEL BY COLUMN COUNT BEFORE DOING ANYTHING ELSE:"
-            + "\n    2 columns in result  → LEVEL 1  ← apply the mandatory template below, NEVER dump raw rows"
-            + "\n    3 columns in result  → LEVEL 2"
-            + "\n    4 columns in result  → LEVEL 3"
-            + "\n"
-            + "\n  LEVEL 1 — Main Grouped (SQL returns EXACTLY 2 cols: Group name + Amount):"
-            + "\n  !! MANDATORY — when you receive exactly 2 columns for a P&L / Income Statement query:"
-            + "\n    NEVER output the rows as a plain table. The raw 2-column output is ALWAYS wrong."
-            + "\n    You MUST restructure it using the steps below, every single time."
-            + "\n    Step 1 — Collect the group amounts from the result rows."
-            + "\n             If any of these 6 groups is absent from the result, treat its amount as 0.00:"
-            + "\n             SALES | COST OF SALES | GENERAL & ADMINISTRATIVE | SELLING EXPENSES | OTHER INCOME | INCOME TAXES"
-            + "\n    Step 2 — Expense groups are stored as NEGATIVE numbers. Compute derived lines by adding:"
-            + "\n             Gross Profit/(Loss)     = SALES + COST OF SALES"
-            + "\n             Total Operating Cost    = GENERAL & ADMINISTRATIVE + SELLING EXPENSES"
-            + "\n             Operating Profit/(Loss) = Gross Profit + Total Operating Cost"
-            + "\n             Net Profit/(Loss)       = Operating Profit + OTHER INCOME + INCOME TAXES"
-            + "\n    Step 3 — Output EXACTLY this structure (apply thousands separators and 2 decimal places):"
-            + "\n      | **Sales** | <SALES amount> |"
-            + "\n      | **Cost Of Sales** | <COST OF SALES amount> |"
-            + "\n      | **Gross Profit/(Loss)** | <computed Gross Profit> |"
-            + "\n      | | |"
-            + "\n      | **Operating Cost** | |"
-            + "\n      |     General & Administrative | <G&A amount, 0.00 if absent> |"
-            + "\n      |     Selling Expenses | <Selling amount, 0.00 if absent> |"
-            + "\n      | **Total Operating Cost** | <computed Total Op Cost> |"
-            + "\n      | **Operating Profit/(Loss)** | <computed Operating Profit> |"
-            + "\n      | | |"
-            + "\n      | **Other Income** | <Other Income amount, 0.00 if absent> |"
-            + "\n      | **Income Taxes** | <Income Taxes amount, 0.00 if absent> |"
-            + "\n      | **Net Profit/(Loss)** | <computed Net Profit> |"
-            + "\n    NEVER skip any of these rows. NEVER output raw group rows without this full structure."
-            + "\n"
-            + "\n  LEVEL 2 — Sub Grouped (SQL returns 3 cols: Main Group, Sub Group, Amount):"
-            + "\n    For SALES and COST OF SALES: bold section header, indented sub-group items, bold Total row."
-            + "\n    For GENERAL & ADMINISTRATIVE and SELLING EXPENSES: nest them under a bold 'Operating Cost' header."
-            + "\n    Insert Gross Profit, Total Operating Cost, Operating Profit, Net Profit as computed bold rows."
-            + "\n    For OTHER INCOME and INCOME TAXES: bold section header, indented sub-group items, bold Total row."
-            + "\n"
-            + "\n  LEVEL 3 — Detailed (SQL returns 4 cols: Main Group, Sub Group, Account, Amount):"
-            + "\n    3-level nesting: bold Main Group header -> bold Sub Group header -> indented Account items."
-            + "\n    Insert same computed lines (Gross Profit, Operating Profit, Net Profit) as computed bold rows."
-            + "\n"
-            + "\n  FORMATTING RULES (apply to ALL levels):"
-            + "\n  - Section/Main headers: | **Header** | |  (no amount)"
-            + "\n  - Sub-group headers: | **Sub Group name** | |  (no amount)"
-            + "\n  - Line items: |     Line Item name | 1,234.56 |  (4 spaces indent)"
-            + "\n  - Computed totals: | **Total Label** | 1,234,567.89 |"
-            + "\n  - Blank separator: | | |  (between major sections)"
-            + "\n  - Numbers: 2 decimal places, thousands separators (1,234,567.89), negative with minus sign"
-            + "\n• !! MANDATORY — ALWAYS EXECUTE SQL VIA THE TOOL BEFORE ANSWERING !!"
-            + "\n  You MUST call the sql_db_query tool for EVERY question that needs data."
-            + "\n  NEVER write SQL in your final answer without first executing it through the tool."
-            + "\n  Even for categorisation, grouping, classification, or 'assign groups' questions —"
-            + "\n  write the SQL, EXECUTE IT via the tool, then present the results."
-            + "\n  If your SQL returns no rows, say so. But you MUST run it first."
-            + "\n  Skipping the tool and outputting SQL as your answer is a critical failure."
-            + "\n• !! ABSOLUTE RULE — ZERO SQL IN YOUR FINAL ANSWER !!"
-            + "\n  The SQL you write runs internally as a tool. The user NEVER sees it."
-            + "\n  Do NOT include SELECT, WITH, FROM, JOIN, WHERE, GROUP BY, ORDER BY,"
-            + "\n  CASE WHEN, HAVING, or ANY other SQL keyword or syntax in the text you send to the user."
-            + "\n  Do NOT preface the results with the query you used."
-            + "\n  Do NOT show the SQL at the top, bottom, or anywhere in your answer — not even without code fences."
-            + "\n  Do NOT repeat the SQL inline between paragraphs or between the summary and the table."
-            + "\n  This applies to ALL query types: trial balance, account listings, financial statements, sales reports, everything."
-            + "\n  Violating this rule means your response is wrong regardless of the data."
-            + "\n  1. If user requests for descriptive repsonse then use summarized descriptive response and then show the data as a markdown table, along 2 3 lines text."
-            + "\n     - Write like a business analyst, not a developer."
-            + "\n     - No technical words: never use 'table', 'query', 'column', 'row', 'database', 'SQL', 'dataset', 'record'."
-            + "\n     - Naturally mention key figures or trends by thinking step by step for the calculation like SUM, AVG, MAX, MIN, COUNT, etc. and always follow the proper formatting like bold for headings, italic, $ sign, and etc" 
-            + "\n     - Do NOT repeat the user's question back to them."
-            + "\n  2. The data as a markdown table immediately after the summary."
-            + "\n• Format the table: header row → separator row (|:---|---:|) → one data row per result."
-            + "\n• NEVER use placeholders like [ProductName1] or [Value]. Every cell must be ACTUAL data."
-            + "\n• Include units in column headers: 'Revenue ($)', 'Quantity (units)', 'Growth (%)'."
-            + "\n• Right-align numeric columns (---:). Left-align text (:---). Use thousands separators: 1,216,581.73."
-            + "\n• Do NOT show intermediate reasoning, retries, or tool calls — final result only."
-            + "\n• If no matching rows: say exactly \"I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query.\" and briefly suggest why."
-            + "\n• NEVER use the words 'query', 'SQL', or 'returned no results' in your response."
-            + "\n• NEVER include SQL code in your final answer — not as a code block, not inline, not as a summary."
-            + "\n  The SQL is captured and shown to users separately. Your answer must contain ONLY the business interpretation of the results."
-            + "\n  Any SELECT, WITH, FROM, JOIN, WHERE, GROUP BY, or ORDER BY clause appearing in your final answer is a strict violation."
-            + "\n• NEVER fabricate data, use illustrative values, or produce a table when the tool returned empty."
-
-            + "\n\n=== DATA QUALITY — MANDATORY FILTERS ==="
-            + "\n• SALES INVOICES: ALWAYS exclude voided, cancelled, and reversed invoices:"
-            + "\n  AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')"
-            + "\n  Apply this on EVERY query against FactSalesInvoice — no exceptions."
-            + "\n  Omitting this filter inflates revenue figures with invalid transactions."
-            + "\n• SALES ORDERS: ALWAYS exclude cancelled and voided orders:"
-            + "\n  AND FSO.Status NOT IN (8, 9)   -- 8=Cancel, 9=Void"
-            + "\n• CREDIT MEMOS: ALWAYS exclude voided credit memos:"
-            + "\n  AND FCM.Status <> 9   -- 9=Void"
-            + "\n• VENDOR INVOICES: ALWAYS exclude voided vendor invoices:"
-            + "\n  AND FVI.Status <> 3   -- 3=Void"
-
-            + "\n\n=== MATHEMATICAL / BDMAS RULES (CRITICAL) ==="
-            + "\n• Always follow BDMAS order of operations: Brackets → Division → Multiplication → Addition → Subtraction."
-            + "\n• ALWAYS wrap compound arithmetic expressions in parentheses to make precedence explicit."
-            + "  WRONG:  a + b * c        RIGHT:  a + (b * c)"
-            + "  WRONG:  a - b / c        RIGHT:  a - (b / c)"
-            + "\n• Division — ALWAYS use NULLIF to prevent divide-by-zero errors:"
-            + "  WRONG:  numerator / denominator"
-            + "  RIGHT:  numerator / NULLIF(denominator, 0)"
-            + "\n• Percentage calculations — cast to decimal FIRST, then divide, then multiply:"
-            + "  RIGHT:  ROUND(100.0 * numerator / NULLIF(denominator, 0), 2)"
-            + "\n• Growth rate / change % — always use ABS on denominator to handle negative base values:"
-            + "  RIGHT:  ROUND(100.0 * (current_val - prior_val) / NULLIF(ABS(prior_val), 0), 2)"
-            + "\n• Averages — use NULLIF on COUNT to avoid divide-by-zero:"
-            + "  RIGHT:  SUM(col) / NULLIF(COUNT(*), 0)"
-            + "\n• Never rely on implicit integer division — always multiply by 1.0 or use 100.0 when a decimal result is needed."
-            + "\n• Subtraction for net amounts: always parenthesise: (SalesAmount - CostAmount) AS ProfitAmount"
-            + "\n• When combining SUM and arithmetic, apply SUM before dividing:"
-            + "  RIGHT:  SUM(col1) / NULLIF(SUM(col2), 0)    WRONG:  SUM(col1 / col2)"
-            + "\n• PERCENT_RANK / TOP-X% — DIRECTION RULE:"
-            + "\n  PERCENT_RANK() assigns 0.0 to the first row in the ORDER BY sequence and approaches 1.0 for the last."
-            + "\n  When ORDER BY <metric> DESC (highest first): 0.0 = highest value, ~1.0 = lowest value."
-            + "\n  Therefore — to select the TOP X% of rows by a descending metric: WHERE rank <= X / 100.0"
-            + "\n  To select the BOTTOM X%:                                          WHERE rank >= 1.0 - (X / 100.0)"
-            + "\n  NEVER use >= (1 - threshold) to mean 'top X%' — that selects the BOTTOM of the distribution."
-            + "\n  Safe alternative: NTILE(100) partitions rows into 100 equal buckets; WHERE Tile <= X returns the top X%."
-
-            + "\n\n=== SQL SERVER SYNTAX RESTRICTIONS ==="
-            + "\n• COUNT(DISTINCT expr) OVER (PARTITION BY ...) is NOT valid SQL Server syntax — it raises error 10759."
-            + "\n  NEVER use DISTINCT inside any window function (COUNT, SUM, AVG) combined with OVER()."
-            + "\n  Correct pattern: use a CTE to aggregate distinct values first, then join the result back:"
-            + "\n    Step 1 CTE — SELECT group_col, COUNT(DISTINCT value_col) AS DistinctCount"
-            + "\n                 FROM table GROUP BY group_col"
-            + "\n    Step 2 — JOIN that CTE on group_col in the outer query."
-            + "\n  The same restriction applies to SUM(DISTINCT ...) OVER(...) and AVG(DISTINCT ...) OVER(...)."
-
-            + "\n\n=== KNOWN SCHEMA JOIN RULES ==="
-            + "\n• DimProduct.Vendor stores a VendorID code (e.g. '000027'), NOT a vendor name."
-            + "\n  To join DimProduct to DimVendors: JOIN DimVendors DV ON DP.Vendor = DV.VendorID"
-            + "\n  NEVER join ON DP.Vendor = DV.VendorName — that produces no matches because the column holds IDs."
-            + "\n• FactSalesInvoice.SalesmanKey is sparsely populated (mostly NULL in production data)."
-            + "\n  Do NOT use SalesmanKey to aggregate or attribute revenue/performance to a sales representative."
-            + "\n  For sales rep performance, commission, or revenue attribution queries, use instead:"
-            + "\n    FactSalesCommission  — has SalesRepKey, TotalAmount, AmountForCommission, CommissionRate"
-            + "\n    FactCommissionRates  — has SalesRepKey + per-customer/collection rate configuration"
-            + "\n    FactCommissionInvoice — has SalesRepKey, TotalAmount, PaidAmount"
-            + "\n• FactSalesInvoice.PaymentTermKey is sparsely populated (mostly NULL in production data)."
-            + "\n  Do NOT join FactSalesInvoice to DimPaymentTerms via PaymentTermKey — it returns no results."
-            + "\n  For a customer's default payment terms: use DimCustomer.PaymentTermKey (an INTEGER FK)"
-            + "\n  with JOIN DimPaymentTerms DPT ON DC.PaymentTermKey = DPT.PaymentTermKey."
-            + "\n  NOTE: DimCustomer has NO column called 'PaymentTerm' — the correct column is PaymentTermKey."
-            + "\n  For full payment term details (due days, discount days): use FactSalesOrders.PaymentTermKey"
-            + "\n  with JOIN DimPaymentTerms DPT ON FSO.PaymentTermKey = DPT.PaymentTermKey."
-        )
-        print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
+        # Build the SQL ReAct agent (LangGraph) — bounded tool-call loop over a
+        # minimal tool set, JSON final answer parsed directly (no markdown
+        # table regex-parsing, no callback-handler spying needed).
+        dialect = "mssql"
         try:
-            agent_executor = create_sql_agent(
-                llm=llm,
-                db=sql_db,
-                agent_type="openai-tools",
-                verbose=True,
-                handle_parsing_errors=True,
-                prefix=db_prefix,
-                max_iterations=16,
-                max_execution_time=240.0,
-                top_k=70,
-            )
-        except TypeError:
-            # top_k or prefix may not be supported in some versions
-            try:
-                agent_executor = create_sql_agent(
-                    llm=llm,
-                    db=sql_db,
-                    agent_type="openai-tools",
-                    verbose=True,
-                    handle_parsing_errors=True,
-                    prefix=db_prefix,
-                    max_iterations=16,
-                    max_execution_time=240.0,
-                    top_k=70,
-                )
-            except TypeError:
-                print("[LangChainAgent] prefix not supported, injecting DB context into question")
-                full_question = db_prefix[:2000] + "\n\n---\n\n" + full_question
-                agent_executor = create_sql_agent(
-                    llm=llm,
-                    db=sql_db,
-                    agent_type="openai-tools",
-                    verbose=True,
-                    handle_parsing_errors=True,
-                    max_iterations=16,
-                    max_execution_time=240.0,
-                    top_k=70,
-                )
-        print("[LangChainAgent] SQL agent created, invoking...")
+            dialect = sql_db.dialect or dialect
+        except Exception:
+            pass
+        system_prompt = _build_sql_domain_prompt(role, dialect)
+        tools = _build_sql_tools(sql_db)
+        agent = create_react_agent(model=llm, tools=tools, prompt=system_prompt)
 
-        # Send a "thinking" keepalive so the frontend knows we're working
+        recursion_limit = max(4, settings.SQL_AGENT_MAX_TOOL_CALLS * 2 + 2)
+
+        print("[LangChainAgent] Invoking SQL ReAct agent (LangGraph)...")
         yield f"data: {json.dumps({'type': 'status', 'content': 'Searching the database...'})}\n\n"
 
-        # Run agent synchronously in a thread — wait for final output (no intermediate streaming)
         t0 = _time.time()
-
-        async def run_agent():
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda: agent_executor.invoke(
-                    {"input": full_question},
-                    config={"callbacks": [handler]},
-                ),
-            )
-            output = result.get("output", "") if isinstance(result, dict) else str(result)
-            return output
-
         try:
-            agent_output = await asyncio.wait_for(run_agent(), timeout=300.0)
+            result = await asyncio.wait_for(
+                agent.ainvoke(
+                    {"messages": [HumanMessage(content=full_question)]},
+                    config={"recursion_limit": recursion_limit},
+                ),
+                timeout=settings.SQL_AGENT_TIMEOUT_SECONDS,
+            )
         except asyncio.TimeoutError:
-            print("[LangChainAgent] Agent timed out after 300s")
+            print(f"[LangChainAgent] Agent timed out after {settings.SQL_AGENT_TIMEOUT_SECONDS}s")
             raise RuntimeError("The database query took too long. Please try a simpler question.")
 
         elapsed = _time.time() - t0
-        print(f"[LangChainAgent] Agent invocation complete | output_len={len(agent_output)} | {elapsed:.1f}s")
-        captured_sql = handler._last_sql or ""
-        sql_preview = captured_sql[:200] + ("..." if len(captured_sql) > 200 else "") if captured_sql else "<none>"
-        print(f"[LangChainAgent] Captured SQL: {sql_preview}")
-        qrows = len(handler._query_result_table) if handler._query_result_table else 0
-        print(f"[LangChainAgent] Captured query result: cols={handler._query_result_columns is not None} rows={qrows}")
-        if "illustrative" in agent_output.lower() or "no results" in agent_output.lower():
-            print("[LangChainAgent] WARNING: Agent output may contain fabricated or empty data")
+        messages = result.get("messages", []) if isinstance(result, dict) else []
+        tool_call_count = sum(1 for m in messages if getattr(m, "type", "") == "tool")
 
-        # Extract captured SQL early — used both for cleaning and the done event
-        sql_query = getattr(handler, "_last_sql", None) or ""
-        # Safety net: if the LLM never called the tool (sql_query is empty) but its output
-        # looks like it could be raw SQL, try to execute it directly.  The database engine
-        # acts as the validator — no keyword scanning, no regex heuristics.
-        # If execution succeeds we replace the leaked SQL output with real results.
-        # If execution fails (output is prose, not SQL) we leave everything untouched.
-        if not sql_query:
-            candidate_sql = agent_output.strip()
-            if candidate_sql:
-                try:
-                    print("[LangChainAgent] No tool was called — attempting to auto-execute agent output as SQL")
-                    raw_result = sql_db.run_no_throw(candidate_sql)
-                    if raw_result and not str(raw_result).startswith("Error"):
-                        parsed = _parse_sql_tool_result_to_table(raw_result)
-                        if parsed:
-                            cols, data = parsed
-                            sql_names = _extract_sql_col_names(candidate_sql)
-                            if sql_names and len(sql_names) == len(cols):
-                                data = [{sql_names[j]: row[cols[j]] for j in range(len(cols))} for row in data]
-                                cols = sql_names
-                            handler._last_sql = candidate_sql
-                            handler._query_result_columns = cols
-                            handler._query_result_table = data
-                            agent_output = _build_markdown_table(cols, data)
-                            sql_query = candidate_sql
-                            print(f"[LangChainAgent] Auto-executed LLM output as SQL: {len(data)} rows, {len(cols)} cols")
-                        else:
-                            print("[LangChainAgent] Auto-execute: SQL ran but result could not be parsed (0 rows or bad format)")
-                    else:
-                        print(f"[LangChainAgent] Auto-execute: output is not valid SQL (DB returned error) — treating as text")
-                except Exception as _ae:
-                    print(f"[LangChainAgent] Auto-execute attempt raised exception: {_ae} — treating output as text")
+        final_text = ""
+        for m in reversed(messages):
+            content = getattr(m, "content", None)
+            if isinstance(content, str) and content.strip():
+                final_text = content.strip()
+                break
 
-        # Strip fenced SQL blocks (no regex) then remove any bare SQL that matches
-        # exactly what was executed (verbatim or whitespace-collapsed)
-        full_response = _strip_sql_fences(agent_output)
-        if not full_response:
-            full_response = agent_output
-        if sql_query:
-            full_response = _strip_captured_sql(full_response, sql_query)
+        print(
+            f"[LangChainAgent] SQL ReAct loop complete | {elapsed:.2f}s | "
+            f"tool_calls={tool_call_count} | messages={len(messages)} | output_len={len(final_text)}"
+        )
 
-        print(f"[LangChainAgent] Full response length: {len(full_response)} chars")
+        sql_query, last_row_count = _extract_last_sql_execution(messages)
+        sql_preview = sql_query[:200] + ("..." if len(sql_query) > 200 else "") if sql_query else "<none>"
+        print(f"[LangChainAgent] Captured SQL: {sql_preview} | last_row_count={last_row_count}")
 
-        qcols = getattr(handler, "_query_result_columns", None)
-        qdata = getattr(handler, "_query_result_table", None)
-        qrows = len(qdata) if qdata else 0
-        has_captured_sql = bool((getattr(handler, "_last_sql", None) or "").strip())
+        answer = _parse_json_final_answer(final_text)
+        response_text = str(answer.get("response") or "").strip()
+        has_table = bool(answer.get("has_table"))
+        raw_tables = answer.get("tables")
+        if not raw_tables and (answer.get("table_columns") or answer.get("table_data")):
+            # Tolerate a flattened (non-nested) shape too, in case the LLM drifts from the schema.
+            raw_tables = [{"columns": answer.get("table_columns") or [], "data": answer.get("table_data") or []}]
 
-        # Guard: if the agent's raw output starts with a SQL keyword it almost certainly
-        # leaked raw SQL instead of a natural language response.  Check against agent_output
-        # (before stripping) not against full_response so we are not fooled by prose that
-        # mentions "select" or "from" in ordinary English.
-        # No natural language response ever begins with SELECT / WITH / INSERT / CREATE.
-        _ao_stripped = agent_output.strip()
-        _sql_starters = ("SELECT", "WITH ", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER")
-        _output_is_sql = _ao_stripped.upper().startswith(_sql_starters)
-        if _output_is_sql and qcols and qdata and qrows > 0:
-            full_response = _build_markdown_table(qcols, qdata)
-            print(f"[LangChainAgent] agent_output starts with SQL keyword — replaced with captured table ({qrows} rows)")
+        all_tables: list[dict] = []
+        if isinstance(raw_tables, list):
+            for t in raw_tables:
+                if not isinstance(t, dict):
+                    continue
+                cols = t.get("columns") or []
+                data = t.get("data") or []
+                if isinstance(cols, list) and isinstance(data, list) and cols and data:
+                    all_tables.append({"columns": cols, "data": data})
 
-        # When the DB query returned 0 rows, never show fabricated tables — force no-data message
-        if has_captured_sql and qrows == 0:
-            print("[LangChainAgent] Query ran but returned 0 rows; forcing no-data message (no placeholders)")
-            full_response = (
+        # Safety net: a query that ran and returned 0 rows can never legitimately
+        # produce table data — force an honest no-data message regardless of what
+        # the LLM's JSON claims (same guard the old callback-handler path had).
+        if sql_query and last_row_count == 0:
+            print("[LangChainAgent] Query ran but returned 0 rows; forcing no-data message (no fabricated tables)")
+            response_text = (
                 "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
             )
-        else:
-            # Post-process: detect fabricated data (placeholders or illustrative phrasing) and replace
-            hallucination_phrases = [
-                "values are illustrative",
-                "actual query result was not returned",
-                "illustrative as the actual",
-                "data shown is hypothetical",
-            ]
-            placeholder_pattern = re.compile(r"\[[A-Za-z]+\d+\]")  # e.g. [ProductName1], [WarehouseName2]
-            has_placeholder_cells = bool(placeholder_pattern.search(full_response))
+            has_table = False
+            all_tables = []
 
-            if has_placeholder_cells or any(phrase in full_response.lower() for phrase in hallucination_phrases):
-                print("[LangChainAgent] WARNING: Detected fabricated data or placeholders in agent output, cleaning up")
-                if qcols and qdata and len(qdata) > 0:
-                    full_response = _build_markdown_table(qcols, qdata) + "\n\nHere are the results."
-                    print(f"[LangChainAgent] Replaced with real captured result: {len(qdata)} rows, {len(qcols)} cols")
-                else:
-                    full_response = (
-                        "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
-                    )
-                    print("[LangChainAgent] Replaced with honest no-results message")
+        if not response_text and not all_tables:
+            response_text = "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
 
-        full_response = _sanitize_user_response(full_response)
+        response_text = _sanitize_user_response(response_text)
+        has_table = has_table and bool(all_tables)
 
-        # Fix pipe-in-data: rebuild markdown tables with properly escaped
-        # values from the captured SQL result (immune to embedded pipes).
-        _rc = getattr(handler, "_query_result_columns", None)
-        _rd = getattr(handler, "_query_result_table", None)
-        if _rc and _rd and len(_rd) > 0:
-            full_response = _fix_response_table_pipes(full_response, _rc, _rd)
-
-        # Build structured table data for the UI (save/export/graph).
-        # Moved BEFORE the token streaming so the pre_done event below carries
-        # the complete payload and chat.py can save to MongoDB immediately —
-        # this guarantees persistence even when the client disconnects before
-        # the first token is delivered (e.g. the user reloads mid-query).
-        all_tables = _parse_all_tables_from_markdown(full_response)
-        has_table = len(all_tables) > 0
         table_data = all_tables[0]["data"] if all_tables else []
         table_columns = all_tables[0]["columns"] if all_tables else []
 
-        # If no markdown tables found, fall back to raw captured SQL result
-        if not all_tables:
-            qcols = getattr(handler, "_query_result_columns", None)
-            qdata = getattr(handler, "_query_result_table", None)
-            if qcols and qdata and len(qdata) > 0:
-                all_tables = [{"columns": qcols, "data": qdata}]
-                table_data = qdata
-                table_columns = qcols
-                has_table = True
-                print(f"[LangChainAgent] Using captured query result (fallback): {len(qdata)} rows, {len(qcols)} cols")
+        # Build the unified text blob (narrative + rendered table(s)) that gets
+        # chunk-streamed to the client — the frontend/MongoDB persistence layer
+        # still expects one combined string, same shape as the old markdown path.
+        response_parts = [response_text] if response_text else []
+        for t in all_tables:
+            md = _build_markdown_table(t["columns"], t["data"])
+            if md:
+                response_parts.append(md)
+        full_response = "\n\n".join(p for p in response_parts if p).strip()
+        if not full_response:
+            full_response = "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
+
+        print(f"[LangChainAgent] Full response length: {len(full_response)} chars | has_table={has_table} | tables={len(all_tables)}")
 
         # ── Pre-save signal ─────────────────────────────────────────────────
         # Yield the complete response payload BEFORE any token chunks so that
@@ -1438,6 +1210,127 @@ async def stream_chat_with_database(
             user_msg = str(e)
         error_event = json.dumps({"type": "error", "content": user_msg})
         yield f"data: {error_event}\n\n"
+
+
+async def _run_sql_react_agent(
+    question: str,
+    chat_history: list[dict],
+    role: str = "executive",
+) -> dict:
+    """Run the SQL ReAct subagent and return a structured result dict.
+
+    This is the non-streaming core of stream_chat_with_database(), extracted
+    so that mcp_agent.py can call it directly as the implementation of the
+    `query_sql_database` tool without duplicating any logic.
+
+    Returns a dict with keys:
+        response    (str)  — narrative text
+        has_table   (bool)
+        tables      (list) — list of {columns, data} dicts
+        sql_query   (str)  — last SQL that ran (may be "")
+        full_response (str) — narrative + rendered markdown tables combined
+    """
+    import time as _time
+
+    try:
+        sql_db = _get_sql_db_with_retry(max_retries=2)
+    except Exception as conn_err:
+        if _is_stale_connection_error(conn_err):
+            raise RuntimeError("The database connection is temporarily unavailable. Please try again in a moment.") from conn_err
+        raise
+
+    llm = _create_chat_llm(streaming=False)
+
+    context_prefix = _build_history_prefix(chat_history, max_assistant_chars=1000, include_sql=False)
+    full_question = (context_prefix + question) if context_prefix else question
+
+    dialect = "mssql"
+    try:
+        dialect = sql_db.dialect or dialect
+    except Exception:
+        pass
+
+    system_prompt = _build_sql_domain_prompt(role, dialect)
+    tools = _build_sql_tools(sql_db)
+    agent = create_react_agent(model=llm, tools=tools, prompt=system_prompt)
+    recursion_limit = max(4, settings.SQL_AGENT_MAX_TOOL_CALLS * 2 + 2)
+
+    print("[LangChainAgent] Invoking SQL ReAct subagent (via _run_sql_react_agent)...")
+    t0 = _time.time()
+    try:
+        result = await asyncio.wait_for(
+            agent.ainvoke(
+                {"messages": [HumanMessage(content=full_question)]},
+                config={"recursion_limit": recursion_limit},
+            ),
+            timeout=settings.SQL_AGENT_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError("The database query took too long. Please try a simpler question.")
+
+    elapsed = _time.time() - t0
+    messages = result.get("messages", []) if isinstance(result, dict) else []
+    tool_call_count = sum(1 for m in messages if getattr(m, "type", "") == "tool")
+
+    final_text = ""
+    for m in reversed(messages):
+        content = getattr(m, "content", None)
+        if isinstance(content, str) and content.strip():
+            final_text = content.strip()
+            break
+
+    print(
+        f"[LangChainAgent] SQL ReAct subagent complete | {elapsed:.2f}s | "
+        f"tool_calls={tool_call_count} | messages={len(messages)} | output_len={len(final_text)}"
+    )
+
+    sql_query, last_row_count = _extract_last_sql_execution(messages)
+    answer = _parse_json_final_answer(final_text)
+
+    response_text = str(answer.get("response") or "").strip()
+    has_table = bool(answer.get("has_table"))
+    raw_tables = answer.get("tables")
+    if not raw_tables and (answer.get("table_columns") or answer.get("table_data")):
+        raw_tables = [{"columns": answer.get("table_columns") or [], "data": answer.get("table_data") or []}]
+
+    all_tables: list[dict] = []
+    if isinstance(raw_tables, list):
+        for t in raw_tables:
+            if not isinstance(t, dict):
+                continue
+            cols = t.get("columns") or []
+            data = t.get("data") or []
+            if isinstance(cols, list) and isinstance(data, list) and cols and data:
+                all_tables.append({"columns": cols, "data": data})
+
+    if sql_query and last_row_count == 0:
+        print("[LangChainAgent] SQL subagent: query returned 0 rows; forcing no-data message")
+        response_text = "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
+        has_table = False
+        all_tables = []
+
+    if not response_text and not all_tables:
+        response_text = "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
+
+    response_text = _sanitize_user_response(response_text)
+    has_table = has_table and bool(all_tables)
+
+    response_parts = [response_text] if response_text else []
+    for t in all_tables:
+        md = _build_markdown_table(t["columns"], t["data"])
+        if md:
+            response_parts.append(md)
+    full_response = "\n\n".join(p for p in response_parts if p).strip()
+    if not full_response:
+        full_response = "I couldn't find the relevant data. If you are sure that data is available, please try rephrasing your query."
+
+    return {
+        "response": response_text,
+        "has_table": has_table,
+        "tables": all_tables,
+        "sql_query": sql_query or "",
+        "full_response": full_response,
+    }
 
 
 def _build_history_prefix(
