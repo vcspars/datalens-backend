@@ -457,6 +457,88 @@ async def get_chat_history(
     )
 
 
+# ---------------------------------------------------------------------------
+# Background jobs for Overview generation (summary / questions / report)
+# ---------------------------------------------------------------------------
+# Like chat generation, these run in their own task so they survive reloads.
+
+_overview_jobs: dict[tuple, dict] = {}
+
+
+def _get_overview_job(user_id: str, kind: str) -> Optional[dict]:
+    job = _overview_jobs.get((user_id, kind))
+    if job and job["task"] is not None and job["task"].done():
+        _overview_jobs.pop((user_id, kind), None)
+        return None
+    return job
+
+
+async def _overview_worker(job: dict, queue: "asyncio.Queue", make_stream, save_fn) -> None:
+    full_content = ""
+    key = (job["user_id"], job["kind"])
+    try:
+        async for chunk in make_stream():
+            await queue.put(chunk)
+            try:
+                raw = chunk.strip()
+                if raw.startswith("data: "):
+                    payload = json.loads(raw[6:])
+                    if payload.get("type") == "done":
+                        full_content = payload.get("full_report", full_content)
+                    elif payload.get("type") == "token":
+                        full_content += payload.get("content", "")
+                        job["partial"] = full_content
+            except Exception:
+                pass
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        print(f"[ChatRoute] overview job {job['kind']} error: {e}")
+        await queue.put(_sse({"type": "error", "content": str(e)}))
+    finally:
+        try:
+            if full_content:
+                await save_fn(full_content)
+        except Exception as e:
+            print(f"[ChatRoute] overview job {job['kind']} save failed: {e}")
+        await queue.put(None)
+        if _overview_jobs.get(key) is job:
+            _overview_jobs.pop(key, None)
+
+
+def _start_overview_job(user_id: str, kind: str, make_stream, save_fn) -> StreamingResponse:
+    if _get_overview_job(user_id, kind):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{kind} is already being generated")
+    queue: asyncio.Queue = asyncio.Queue()
+    job = {"user_id": user_id, "kind": kind, "partial": "", "task": None}
+    _overview_jobs[(user_id, kind)] = job
+    job["task"] = asyncio.create_task(_overview_worker(job, queue, make_stream, save_fn))
+
+    async def event_generator():
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/db/status")
+async def get_db_generation_status(current_user: User = Depends(get_current_user)):
+    """Which overview items (summary/questions/report) are currently generating."""
+    user_id = str(current_user._id)
+    out = {}
+    for kind in ("summary", "questions", "report"):
+        job = _get_overview_job(user_id, kind)
+        out[kind] = {"active": bool(job), "partial": (job or {}).get("partial", "") if kind != "questions" else ""}
+    return out
+
+
 @router.get("/db/overview")
 async def get_db_overview(current_user: User = Depends(get_current_user)):
     """
@@ -493,110 +575,99 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
     user_role = getattr(current_user, "role", "executive") or "executive"
     print(f"[ChatRoute] /db/summary called | user={user_id} | role={user_role}")
 
-    from app.services.langchain_agent import stream_generate_report, get_table_row_counts
-    from app.services.db_snapshot import get_snapshot_context
+    async def _make_stream():
+        from app.services.langchain_agent import stream_generate_report, get_table_row_counts
+        from app.services.db_snapshot import get_snapshot_context
 
-    # --- Build context: snapshot KPIs (role-specific, real numbers) + row counts ---
-    print(f"[ChatRoute] Loading snapshot context for role={user_role}...")
-    snapshot_context = await get_snapshot_context(user_role)
-    print(f"[ChatRoute] Snapshot context loaded | chars={len(snapshot_context)}")
+        # --- Build context: snapshot KPIs (role-specific, real numbers) + row counts ---
+        print(f"[ChatRoute] Loading snapshot context for role={user_role}...")
+        snapshot_context = await get_snapshot_context(user_role)
+        print(f"[ChatRoute] Snapshot context loaded | chars={len(snapshot_context)}")
 
-    try:
-        row_counts_context = get_table_row_counts()
-        print(f"[ChatRoute] Row counts loaded | chars={len(row_counts_context)}")
-    except Exception as e:
-        print(f"[ChatRoute] get_table_row_counts failed: {e}")
-        row_counts_context = ""
+        try:
+            # ~99 sequential COUNT(*) queries: run off the event loop so other
+            # requests (history, pending, overview) stay responsive.
+            row_counts_context = await asyncio.get_event_loop().run_in_executor(
+                None, get_table_row_counts
+            )
+            print(f"[ChatRoute] Row counts loaded | chars={len(row_counts_context)}")
+        except Exception as e:
+            print(f"[ChatRoute] get_table_row_counts failed: {e}")
+            row_counts_context = ""
 
-    # Merge both context sources
-    combined_context_parts = []
-    if snapshot_context:
-        combined_context_parts.append(snapshot_context)
-    if row_counts_context:
-        combined_context_parts.append(row_counts_context)
-    combined_context = "\n\n".join(combined_context_parts)
+        # Merge both context sources
+        combined_context_parts = []
+        if snapshot_context:
+            combined_context_parts.append(snapshot_context)
+        if row_counts_context:
+            combined_context_parts.append(row_counts_context)
+        combined_context = "\n\n".join(combined_context_parts)
 
-    # Role-specific scope note for the prompt
-    _role_scope = {
-        "executive": (
-            "You are writing for the executive leadership team. Cover ALL business areas: "
-            "sales performance, profitability, procurement, inventory, customer and vendor relationships, "
-            "returns, payments, and backorders."
-        ),
-        "sales": (
-            "You are writing for the sales team. Focus on: sales revenue, customer activity, "
-            "inventory availability for sales, discounts, customer returns, and payment status. "
-            "Do not include vendor analytics, cost data, or profitability margins."
-        ),
-        "operations": (
-            "You are writing for the operations team. Focus on: inventory levels, stock availability, "
-            "reorder alerts, warehouse activity, backorders, and picking/reservation status. "
-            "Do not include sales revenue, customer details, or vendor financials."
-        ),
-    }
-    role_instruction = _role_scope.get(user_role, _role_scope["executive"])
+        # Role-specific scope note for the prompt
+        _role_scope = {
+            "executive": (
+                "You are writing for the executive leadership team. Cover ALL business areas: "
+                "sales performance, profitability, procurement, inventory, customer and vendor relationships, "
+                "returns, payments, and backorders."
+            ),
+            "sales": (
+                "You are writing for the sales team. Focus on: sales revenue, customer activity, "
+                "inventory availability for sales, discounts, customer returns, and payment status. "
+                "Do not include vendor analytics, cost data, or profitability margins."
+            ),
+            "operations": (
+                "You are writing for the operations team. Focus on: inventory levels, stock availability, "
+                "reorder alerts, warehouse activity, backorders, and picking/reservation status. "
+                "Do not include sales revenue, customer details, or vendor financials."
+            ),
+        }
+        role_instruction = _role_scope.get(user_role, _role_scope["executive"])
 
-    prompt = (
-        f"{role_instruction} "
-        "Using the real business figures in the Data Context, write a clear one-page summary. "
-        "Whenever you reference a figure, explicitly state the year it belongs to "
-        "(e.g. 'In 2025, total revenue was...' or 'As of 2025, inventory value stands at...'). "
-        "Highlight the most important numbers — revenue, volumes, inventory health, outstanding items — "
-        "and explain what they mean for the business in plain language. "
-        "Use markdown (##, ###). Do not use technical terms, table names, or column names. "
-        "Use only the figures from the Data Context; never invent numbers. "
-        "Do not mention data gaps, missing records, or unavailable areas."
-    )
+        prompt = (
+            f"{role_instruction} "
+            "Using the real business figures in the Data Context, write a clear one-page summary. "
+            "Whenever you reference a figure, explicitly state the year it belongs to "
+            "(e.g. 'In 2025, total revenue was...' or 'As of 2025, inventory value stands at...'). "
+            "Highlight the most important numbers — revenue, volumes, inventory health, outstanding items — "
+            "and explain what they mean for the business in plain language. "
+            "Use markdown (##, ###). Do not use technical terms, table names, or column names. "
+            "Use only the figures from the Data Context; never invent numbers. "
+            "Do not mention data gaps, missing records, or unavailable areas."
+        )
 
-    _summary_system = (
-        "You are a business analyst writing a data summary for leadership. "
-        "Start directly with the first section header (e.g. ## Business Performance Overview). "
-        "Do NOT add a document title. Format as clean markdown with headers and bullet points. "
-        "Do NOT wrap output in code fences. "
-        "Tone: clear, confident, business-focused. "
-        "Always include the specific year when citing any figure (e.g. 'In 2025...' or 'Year 2025:'). "
-        "Always reference actual numbers from the Data Context to support your statements. "
-        "Never mention data gaps, missing data, or technical terms. "
-        "NEVER add footnote markers, reference numbers, or citations like (1), (2), [1], [2] anywhere in the output."
-    )
+        _summary_system = (
+            "You are a business analyst writing a data summary for leadership. "
+            "Start directly with the first section header (e.g. ## Business Performance Overview). "
+            "Do NOT add a document title. Format as clean markdown with headers and bullet points. "
+            "Do NOT wrap output in code fences. "
+            "Tone: clear, confident, business-focused. "
+            "Always include the specific year when citing any figure (e.g. 'In 2025...' or 'Year 2025:'). "
+            "Always reference actual numbers from the Data Context to support your statements. "
+            "Never mention data gaps, missing data, or technical terms. "
+            "NEVER add footnote markers, reference numbers, or citations like (1), (2), [1], [2] anywhere in the output."
+        )
 
-    print(f"[ChatRoute] Starting summary stream | role={user_role} | context_chars={len(combined_context)}")
+        print(f"[ChatRoute] Starting summary stream | role={user_role} | context_chars={len(combined_context)}")
+
+        async for chunk in stream_generate_report(
+            prompt=prompt,
+            items_context=combined_context,
+            template="summary",
+            custom_system_prompt=_summary_system,
+        ):
+            yield chunk
+
     db = get_database()
 
-    async def event_generator():
-        full_content = ""
-        try:
-            async for chunk in stream_generate_report(
-                prompt=prompt,
-                items_context=combined_context,
-                template="summary",
-                custom_system_prompt=_summary_system,
-            ):
-                yield chunk
-                try:
-                    raw = chunk.strip()
-                    if raw.startswith("data: "):
-                        payload = json.loads(raw[6:])
-                        if payload.get("type") == "done":
-                            full_content = payload.get("full_report", full_content)
-                        elif payload.get("type") == "token":
-                            full_content += payload.get("content", "")
-                except Exception:
-                    pass
-        finally:
-            if full_content:
-                await db.chat_sessions.update_one(
-                    {"user_id": user_id},
-                    {"$set": {"db_summary": full_content, "updated_at": datetime.utcnow()}},
-                    upsert=True,
-                )
-                print(f"[ChatRoute] Saved db_summary | user={user_id} | role={user_role} | len={len(full_content)}")
+    async def _save(full_content: str):
+        await db.chat_sessions.update_one(
+            {"user_id": user_id},
+            {"$set": {"db_summary": full_content, "updated_at": datetime.utcnow()}},
+            upsert=True,
+        )
+        print(f"[ChatRoute] Saved db_summary | user={user_id} | role={user_role} | len={len(full_content)}")
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
+    return _start_overview_job(user_id, "summary", _make_stream, _save)
 
 
 @router.post("/db/questions")
@@ -616,113 +687,98 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
     user_role = getattr(current_user, "role", "executive") or "executive"
     print(f"[ChatRoute] /db/questions called | user={user_id} | role={user_role}")
 
-    from app.services.langchain_agent import stream_generate_report
-    from app.services.db_snapshot import get_snapshot_context, get_schema_summary_for_role
+    async def _make_stream():
+        from app.services.langchain_agent import stream_generate_report
+        from app.services.db_snapshot import get_snapshot_context, get_schema_summary_for_role
 
-    print(f"[ChatRoute] Loading snapshot + schema for questions | role={user_role}...")
-    snapshot_context = await get_snapshot_context(user_role)
-    schema_summary = get_schema_summary_for_role(user_role)
-    print(f"[ChatRoute] Questions context ready | snapshot_chars={len(snapshot_context)} | schema_chars={len(schema_summary)}")
+        print(f"[ChatRoute] Loading snapshot + schema for questions | role={user_role}...")
+        snapshot_context = await get_snapshot_context(user_role)
+        schema_summary = get_schema_summary_for_role(user_role)
+        print(f"[ChatRoute] Questions context ready | snapshot_chars={len(snapshot_context)} | schema_chars={len(schema_summary)}")
 
-    # Role-specific persona for the question generator
-    _role_persona = {
-        "executive": "a CEO or executive leadership team member",
-        "sales": "a sales manager or sales team leader",
-        "operations": "an operations manager or warehouse team leader",
-    }
-    persona = _role_persona.get(user_role, "a business manager")
+        # Role-specific persona for the question generator
+        _role_persona = {
+            "executive": "a CEO or executive leadership team member",
+            "sales": "a sales manager or sales team leader",
+            "operations": "an operations manager or warehouse team leader",
+        }
+        persona = _role_persona.get(user_role, "a business manager")
 
-    questions_context = (
-        f"Data Scope (what information is available to analyze):\n{schema_summary}"
-        + (f"\n\n{snapshot_context}" if snapshot_context else "")
-    )
+        questions_context = (
+            f"Data Scope (what information is available to analyze):\n{schema_summary}"
+            + (f"\n\n{snapshot_context}" if snapshot_context else "")
+        )
 
-    prompt = (
-        f"Generate exactly 10 suggested questions for {persona} to quickly query business performance. "
-        "STRICT RULES — follow every rule exactly:\n"
-        "1. FORMAT: Every question must be a proper, complete question ending with a question mark. "
-        "   Write it as a sentence, NOT a heading or phrase. "
-        "   WRONG: 'Total sales last month'  RIGHT: 'What were the total sales last month?'\n"
-        "2. SHORT: Keep each question concise — one clear ask, no compound questions.\n"
-        "3. TIGHT SCOPE — CRITICAL: Every question must return a SMALL, SUMMARISED result (a single number, "
-        "   a short list, or a grouped summary). NEVER ask for raw lists of all records. "
-        "   - ALWAYS use a tight time window: last month, last week, or last quarter — NOT 'this year' or 'all time' "
-        "     because those can span millions of rows.\n"
-        "   - If asking for a ranked list, limit to TOP 5 only.\n"
-        "4. NO BIG SCANS: NEVER ask questions whose answer requires listing all customers, all products, "
-        "   all transactions, all orders, or all-time totals without aggregation. "
-        "   Examples of BANNED questions: 'Who are my best customers?', 'What is total revenue all time?', "
-        "   'List all sales this year', 'How many units were sold this year?'\n"
-        "5. GROUNDED: Base all questions ONLY on the data topics in the Data Context below.\n"
-        "6. LANGUAGE: Plain business English — no SQL, no table names, no technical terms, no column names.\n"
-        "7. NO FIGURES: Do not embed any numbers, dollar amounts, or percentages inside the question.\n"
-        "\n"
-        "Good examples:\n"
-        "  'What were the total sales last month?'\n"
-        "  'How did sales perform month by month last quarter?'\n"
-        "  'What are the top 5 products by sales last month?'\n"
-        "  'What is the current inventory value by category?'\n"
-        "  'Which 5 customers had the highest purchases last month?'\n"
-        "  'What were the total collections received last week?'\n"
-        "  'How much gross profit was made last month?'\n"
-        "\n"
-        "Return ONLY a numbered list: 1. ... 2. ... 10. ..."
-    )
+        prompt = (
+            f"Generate exactly 10 suggested questions for {persona} to quickly query business performance. "
+            "STRICT RULES — follow every rule exactly:\n"
+            "1. FORMAT: Every question must be a proper, complete question ending with a question mark. "
+            "   Write it as a sentence, NOT a heading or phrase. "
+            "   WRONG: 'Total sales last month'  RIGHT: 'What were the total sales last month?'\n"
+            "2. SHORT: Keep each question concise — one clear ask, no compound questions.\n"
+            "3. TIGHT SCOPE — CRITICAL: Every question must return a SMALL, SUMMARISED result (a single number, "
+            "   a short list, or a grouped summary). NEVER ask for raw lists of all records. "
+            "   - ALWAYS use a tight time window: last month, last week, or last quarter — NOT 'this year' or 'all time' "
+            "     because those can span millions of rows.\n"
+            "   - If asking for a ranked list, limit to TOP 5 only.\n"
+            "4. NO BIG SCANS: NEVER ask questions whose answer requires listing all customers, all products, "
+            "   all transactions, all orders, or all-time totals without aggregation. "
+            "   Examples of BANNED questions: 'Who are my best customers?', 'What is total revenue all time?', "
+            "   'List all sales this year', 'How many units were sold this year?'\n"
+            "5. GROUNDED: Base all questions ONLY on the data topics in the Data Context below.\n"
+            "6. LANGUAGE: Plain business English — no SQL, no table names, no technical terms, no column names.\n"
+            "7. NO FIGURES: Do not embed any numbers, dollar amounts, or percentages inside the question.\n"
+            "\n"
+            "Good examples:\n"
+            "  'What were the total sales last month?'\n"
+            "  'How did sales perform month by month last quarter?'\n"
+            "  'What are the top 5 products by sales last month?'\n"
+            "  'What is the current inventory value by category?'\n"
+            "  'Which 5 customers had the highest purchases last month?'\n"
+            "  'What were the total collections received last week?'\n"
+            "  'How much gross profit was made last month?'\n"
+            "\n"
+            "Return ONLY a numbered list: 1. ... 2. ... 10. ..."
+        )
 
-    _questions_system = (
-        "You are a business intelligence assistant generating suggested quick questions for a business owner dashboard. "
-        "Return ONLY a plain numbered list of exactly 10 questions — nothing else. "
-        "No title, no preamble, no explanation, no closing remarks. "
-        "Format:\n1. <question>\n2. <question>\n...\n10. <question>\n"
-        "Each question must be a proper complete sentence ending with a question mark — NOT a heading or phrase. "
-        "Each question must have a tight scope (last month / last week / last quarter, or TOP 5 limit) "
-        "so it returns a small summarised result, never millions of raw rows. "
-        "Never write broad or all-time questions. Never include numbers or amounts in the question text."
-    )
+        _questions_system = (
+            "You are a business intelligence assistant generating suggested quick questions for a business owner dashboard. "
+            "Return ONLY a plain numbered list of exactly 10 questions — nothing else. "
+            "No title, no preamble, no explanation, no closing remarks. "
+            "Format:\n1. <question>\n2. <question>\n...\n10. <question>\n"
+            "Each question must be a proper complete sentence ending with a question mark — NOT a heading or phrase. "
+            "Each question must have a tight scope (last month / last week / last quarter, or TOP 5 limit) "
+            "so it returns a small summarised result, never millions of raw rows. "
+            "Never write broad or all-time questions. Never include numbers or amounts in the question text."
+        )
 
-    print(f"[ChatRoute] Starting questions stream | role={user_role} | context_chars={len(questions_context)}")
+        print(f"[ChatRoute] Starting questions stream | role={user_role} | context_chars={len(questions_context)}")
+
+        async for chunk in stream_generate_report(
+            prompt=prompt,
+            items_context=questions_context,
+            template="summary",
+            custom_system_prompt=_questions_system,
+        ):
+            yield chunk
+
     db = get_database()
 
-    async def event_generator():
-        full_content = ""
-        try:
-            async for chunk in stream_generate_report(
-                prompt=prompt,
-                items_context=questions_context,
-                template="summary",
-                custom_system_prompt=_questions_system,
-            ):
-                yield chunk
-                try:
-                    raw = chunk.strip()
-                    if raw.startswith("data: "):
-                        payload = json.loads(raw[6:])
-                        if payload.get("type") == "done":
-                            full_content = payload.get("full_report", full_content)
-                        elif payload.get("type") == "token":
-                            full_content += payload.get("content", "")
-                except Exception:
-                    pass
-        finally:
-            if full_content:
-                questions = [
-                    line.strip().lstrip("0123456789.)- ").strip()
-                    for line in full_content.split("\n")
-                    if line.strip() and len(line.strip()) > 10
-                ]
-                questions = [q for q in questions if q][:10]
-                await db.chat_sessions.update_one(
-                    {"user_id": user_id},
-                    {"$set": {"db_questions": questions, "updated_at": datetime.utcnow()}},
-                    upsert=True,
-                )
-                print(f"[ChatRoute] Saved {len(questions)} db_questions | user={user_id} | role={user_role}")
+    async def _save(full_content: str):
+        questions = [
+            line.strip().lstrip("0123456789.)- ").strip()
+            for line in full_content.split("\n")
+            if line.strip() and len(line.strip()) > 10
+        ]
+        questions = [q for q in questions if q][:10]
+        await db.chat_sessions.update_one(
+            {"user_id": user_id},
+            {"$set": {"db_questions": questions, "updated_at": datetime.utcnow()}},
+            upsert=True,
+        )
+        print(f"[ChatRoute] Saved {len(questions)} db_questions | user={user_id} | role={user_role}")
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
+    return _start_overview_job(user_id, "questions", _make_stream, _save)
 
 
 @router.post("/db/report")
@@ -738,92 +794,77 @@ async def stream_db_report(current_user: User = Depends(get_current_user)):
     user_role = getattr(current_user, "role", "executive") or "executive"
     print(f"[ChatRoute] /db/report called | user={user_id} | role={user_role}")
 
-    from app.services.langchain_agent import stream_generate_report
-    from app.services.db_snapshot import get_snapshot_context
+    async def _make_stream():
+        from app.services.langchain_agent import stream_generate_report
+        from app.services.db_snapshot import get_snapshot_context
 
-    print(f"[ChatRoute] Loading snapshot context for report | role={user_role}...")
-    snapshot_context = await get_snapshot_context(user_role)
-    print(f"[ChatRoute] Snapshot context loaded | chars={len(snapshot_context)}")
+        print(f"[ChatRoute] Loading snapshot context for report | role={user_role}...")
+        snapshot_context = await get_snapshot_context(user_role)
+        print(f"[ChatRoute] Snapshot context loaded | chars={len(snapshot_context)}")
 
-    # Role-specific section guidance
-    _role_sections = {
-        "executive": (
-            "Include these sections: Business Overview; Sales & Revenue Performance; "
-            "Profitability & Margins; Procurement & Vendor Activity; Inventory Health; "
-            "Customer & Vendor Relationships; Returns & Payments; Decision Support Highlights."
-        ),
-        "sales": (
-            "Include these sections: Sales Performance Overview; Customer Activity; "
-            "Discount & Pricing Overview; Inventory Availability for Sales; "
-            "Customer Returns Summary; Payment Status; Key Opportunities."
-        ),
-        "operations": (
-            "Include these sections: Inventory Health Overview; Stock Availability; "
-            "Reorder & Low-Stock Alerts; Warehouse Activity; Backorder Status; "
-            "Operational Action Points."
-        ),
-    }
-    section_guide = _role_sections.get(user_role, _role_sections["executive"])
+        # Role-specific section guidance
+        _role_sections = {
+            "executive": (
+                "Include these sections: Business Overview; Sales & Revenue Performance; "
+                "Profitability & Margins; Procurement & Vendor Activity; Inventory Health; "
+                "Customer & Vendor Relationships; Returns & Payments; Decision Support Highlights."
+            ),
+            "sales": (
+                "Include these sections: Sales Performance Overview; Customer Activity; "
+                "Discount & Pricing Overview; Inventory Availability for Sales; "
+                "Customer Returns Summary; Payment Status; Key Opportunities."
+            ),
+            "operations": (
+                "Include these sections: Inventory Health Overview; Stock Availability; "
+                "Reorder & Low-Stock Alerts; Warehouse Activity; Backorder Status; "
+                "Operational Action Points."
+            ),
+        }
+        section_guide = _role_sections.get(user_role, _role_sections["executive"])
 
-    prompt = (
-        f"Write a detailed business report for {user_role}-level readers using the real figures in the Data Context. "
-        f"{section_guide} "
-        "For each section, reference the actual numbers from the Data Context and explain what they mean. "
-        "Use markdown (##, ###) with bullet points. "
-        "Write in clear business language — no technical terms, table names, or column names. "
-        "Never invent numbers. Do not mention data gaps or missing records."
-    )
+        prompt = (
+            f"Write a detailed business report for {user_role}-level readers using the real figures in the Data Context. "
+            f"{section_guide} "
+            "For each section, reference the actual numbers from the Data Context and explain what they mean. "
+            "Use markdown (##, ###) with bullet points. "
+            "Write in clear business language — no technical terms, table names, or column names. "
+            "Never invent numbers. Do not mention data gaps or missing records."
+        )
 
-    _report_system = (
-        "You are a business analyst writing a structured report for leadership. "
-        "Start directly with the first section header — do NOT add a document title. "
-        "Use markdown headers (##, ###), bullet points, and spacing between sections. "
-        "Do NOT wrap the output in code fences. "
-        "Anchor every claim to a number from the Data Context. "
-        "Always include the specific year when citing any figure (e.g. 'In 2025...' or 'Year 2025:'). "
-        "Keep the tone professional and business-focused. "
-        "Never mention missing data, data gaps, or technical/database terminology. "
-        "NEVER add footnote markers, reference numbers, superscripts, or inline citations like "
-        "(1), (2), (1, 2), [1], [2], ^1, ^2, or any similar numbering — they must not appear anywhere in the output."
-    )
+        _report_system = (
+            "You are a business analyst writing a structured report for leadership. "
+            "Start directly with the first section header — do NOT add a document title. "
+            "Use markdown headers (##, ###), bullet points, and spacing between sections. "
+            "Do NOT wrap the output in code fences. "
+            "Anchor every claim to a number from the Data Context. "
+            "Always include the specific year when citing any figure (e.g. 'In 2025...' or 'Year 2025:'). "
+            "Keep the tone professional and business-focused. "
+            "Never mention missing data, data gaps, or technical/database terminology. "
+            "NEVER add footnote markers, reference numbers, superscripts, or inline citations like "
+            "(1), (2), (1, 2), [1], [2], ^1, ^2, or any similar numbering — they must not appear anywhere in the output."
+        )
 
-    print(f"[ChatRoute] Starting report stream | role={user_role} | context_chars={len(snapshot_context)}")
+        print(f"[ChatRoute] Starting report stream | role={user_role} | context_chars={len(snapshot_context)}")
+
+        async for chunk in stream_generate_report(
+            prompt=prompt,
+            items_context=snapshot_context,
+            template="technical",
+            custom_system_prompt=_report_system,
+        ):
+            yield chunk
+
     db = get_database()
 
-    async def event_generator():
-        full_content = ""
-        try:
-            async for chunk in stream_generate_report(
-                prompt=prompt,
-                items_context=snapshot_context,
-                template="technical",
-                custom_system_prompt=_report_system,
-            ):
-                yield chunk
-                try:
-                    raw = chunk.strip()
-                    if raw.startswith("data: "):
-                        payload = json.loads(raw[6:])
-                        if payload.get("type") == "done":
-                            full_content = payload.get("full_report", full_content)
-                        elif payload.get("type") == "token":
-                            full_content += payload.get("content", "")
-                except Exception:
-                    pass
-        finally:
-            if full_content:
-                await db.chat_sessions.update_one(
-                    {"user_id": user_id},
-                    {"$set": {"db_report": full_content, "updated_at": datetime.utcnow()}},
-                    upsert=True,
-                )
-                print(f"[ChatRoute] Saved db_report | user={user_id} | role={user_role} | len={len(full_content)}")
+    async def _save(full_content: str):
+        await db.chat_sessions.update_one(
+            {"user_id": user_id},
+            {"$set": {"db_report": full_content, "updated_at": datetime.utcnow()}},
+            upsert=True,
+        )
+        print(f"[ChatRoute] Saved db_report | user={user_id} | role={user_role} | len={len(full_content)}")
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
-    )
+    return _start_overview_job(user_id, "report", _make_stream, _save)
 
 
 @router.get("/db/report/pdf")
