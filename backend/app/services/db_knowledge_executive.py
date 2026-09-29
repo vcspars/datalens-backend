@@ -145,7 +145,7 @@ Purpose: (This table contains the Customer's master data used for sales and rece
   TaxRate             (Default tax rate applied to the customer.)
   CreditLimit         (Maximum credit amount allowed for this customer account.)
   CurrentBalance      (Current Balance of the Customer.)
-  Status              (Current account status of the customer. Possible values: Active (0), Sales Hold (1), Credit Hold (2).)
+  Status              (Current account status of the customer. Possible values: Active, Sales Hold, Credit Hold.)
   IsDropShipOnly      (Drop-ship only flag.)
   IsSpecialPricing    (Flag indicating if special pricing rules apply.)
   CreatedDate         (Record creation timestamp.)
@@ -201,7 +201,7 @@ Purpose: (This table contains the master data of Vendors for procurement analyti
   Category            (Business category of the respective vendor.)
   Class               (Priority or quality class.)
   Region              (Geographic region.)
-  Status              (Status of the vendor. Possible values: Active (0), Purchase Hold (1), Payment Hold (2).)
+  Status              (Status of the vendor. Possible values: Active, Purchase Hold, Payment Hold.)
   City                (Vendor city.)
   State               (Vendor state.)
   Country             (Vendor country.)
@@ -259,7 +259,7 @@ Purpose: (This table contains the information (Definitions) of the Payment terms
   DueDays             (Number of days until payment is due.)
   DiscountDays        (Days within which early payment discount applies.)
   PaymentDiscount     (Discount percentage if paid early.)
-  CreditCardTerms     (It's a Flag for credit card terms. If this flag will be enabled (1), then this payment term will be used for Credit Card payments as well. Otherwise if it will be disabled (0), then the respective payment term record will not be used for credit card payments.)
+  CreditCardTerms     (It's a Flag for credit card terms. It has only value only [0 and 1]. If this flag will be enabled (1), then this payment term will be used for Credit Card payments as well. Otherwise if it will be disabled (0), then the respective payment term record will not be used for credit card payments.)
 
 Table: DimPriceCategory
 Purpose: (This table contains the definitions of the Price Category definitions.)
@@ -536,7 +536,7 @@ Purpose: (This table contains the master (header level) information of the Vendo
   VendorKey             (Vendor reference key. Resolved from DimVendors.)
   InvoiceType           (Code classifying the invoice type. Possible values: P = Purchase Invoice, T = Transfer Invoice.)
   PaymentTermKey        (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this vendor invoice.)
-  Status                (Current invoice status. Possible values: Close (0), Open (1), Partially Paid (2), Void (3).)
+  Status                (VARCHAR. Current invoice status. Actual stored string values: 'Open', 'Close', 'Partially Paid', 'Void'. ALWAYS filter using string literals e.g. <> 'Void' — NEVER use integer codes.)
   VendorInvoiceRef      (Vendor's own reference or invoice number as provided by the vendor.)
   VendorInvoiceDateKey  (Date reference key from DimDate Table. It refers to the date on the vendor's original invoice.)
   DueDateKey            (Date reference key from DimDate Table. It refers to the payment due date of this vendor invoice.)
@@ -626,7 +626,7 @@ Purpose: (This table contains the master (header level) information of the Credi
   SalesDiscount            (Discount amount applied to this credit memo.)
   PaymentDiscountAmount    (Payment discount amount deducted at the time of credit settlement.)
   AppliedAmount            (Amount of credit that has already been applied against outstanding balances.)
-  Status                   (Current status of the credit memo. Possible values: Open (0), Partially Paid (1), Close (2), Void (9).)
+  Status                   (VARCHAR. Current status of the credit memo. Actual stored string values: 'Open', 'Partially Paid', 'Close', 'Void'. ALWAYS filter using string literals e.g. <> 'Void' — NEVER use integer codes.)
   PriceCategoryKey         (Price category reference key from DimPriceCategory Table. It refers to the pricing tier that was applied to this credit memo.)
   PaymentTermKey           (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to any outstanding balance on this credit memo.)
 
@@ -712,7 +712,7 @@ Purpose: (This table contains the summary level information of Customer Credit M
   OpenCredit              (The remaining balance of this credit that has not yet been applied to any outstanding invoice.)
   AppliedAmount           (The amount of this credit that has already been applied against outstanding customer invoices.)
   CreditApplied           (Flag or amount indicating the total credit that has been applied from this document.)
-  Status                  (Current status of this debit or credit adjustment record. Possible values: Open (0), Partially Paid (1), Close (2), Void (9).)
+  Status                  (Current status of this debit or credit adjustment record. Possible values: Open, Partially Paid, Close, Void.)
   InvoiceType             (Internal document type code classifying the nature of this adjustment.)
   SalesType               (Sales classification code identifying the type of sale associated with this adjustment (e.g., SO = Sales Order).)
 
@@ -723,7 +723,7 @@ Purpose: (This table contains the summary (header level) information of Vendor R
   VendorKey             (Vendor reference key from DimVendors Table. It refers to the vendor to whom the goods are being returned.)
   PaymentTermKey        (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this vendor return transaction.)
   InvoiceType           (Code classifying the type of this vendor return document. Value will always be D (Debit Memo / Vendor Return) for all records in this table.)
-  Status                (Current status of the vendor return record. Possible values: Close (0), Approved (1), Partially Paid (2), Void (3).)
+  Status                (Current status of the vendor return record. Possible values: Close, Approved, Partially Paid, Void.)
   VendorInvoiceRef      (The vendor's own reference or invoice number associated with this return transaction, as provided by the vendor.)
   VendorReturnDateKey   (Date reference key from DimDate Table. It refers to the date of the vendor return document.)
   WarehouseKey          (Warehouse reference key from DimWarehouse Table. It refers to the warehouse from which the goods are being returned to the vendor.)
@@ -767,10 +767,10 @@ Purpose: (This table contains the summary (header level) information of the Sale
   PriceCategoryKey    (Price category reference key from DimPriceCategory Table. It refers to the pricing tier applied to this sales order.)
   PaymentTermKey      (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this sales order.)
   OrderDateKey        (Date reference key from DimDate Table. It refers to the date when this sales order was placed by the customer.)
-  ShippingDateKey     (Date reference key from DimDate Table. It refers to the expected or actual shipping date of this sales order.)
+  ShippingDateKey     (Date reference key from DimDate Table. IMPORTANT: stores the ACTUAL ship date — only populated AFTER an order is physically shipped. It is NULL for open/unshipped orders. Do NOT use this to filter for "orders due to ship today" or "orders ready to ship". For due/overdue shipment queries use RequiredDateKey from FactSalesOrderDetail instead.)
   CancelDateKey       (Date reference key from DimDate Table. It refers to the date by which this sales order must be cancelled if not fulfilled.)
   SalesType           (Sales classification code identifying the type of this sales order transaction.)
-  Status              (Current status of the sales order. Possible values: Open (1), Partially Paid (2), Close (0), Cancel (8), Void (9).)
+  Status              (VARCHAR. Current status of the sales order. Actual stored string values: 'Open', 'Close', 'Cancel', 'Void', 'Partially Paid'. ALWAYS filter using string literals e.g. NOT IN ('Cancel', 'Void') — NEVER use integer codes.)
   SpecialOrder        (Flag indicating whether this is a special order placed specifically for a customer rather than from regular stock. Possible values: 1 = Yes, 0 = No.)
   TotalQty            (Total quantity of all items included on this sales order.)
   TotalQtyShipped     (Total quantity of items that have been physically shipped against this sales order.)
@@ -821,7 +821,7 @@ Purpose: (This table contains the summary (header level) information of the Pack
   DatePrintedKey      (Date reference key from DimDate Table. It refers to the date when this packing slip was physically printed for shipment processing.)
   SalesInvoiceNo      (The Sales Invoice number associated with this packing slip. It links the packing slip to the corresponding sales invoice in FactSalesInvoice.)
   SaleType            (Sales classification code identifying the type of sale associated with this packing slip.)
-  Status              (Current status of the packing slip. Possible values: Open (1), In Shipping (2), Close (0), Void (9).)
+  Status              (Current status of the packing slip. Possible values: Open , In Shipping, Close , Void .)
   TotalQty            (Total quantity of all items included on this packing slip.)
   TotalBales          (Total number of bales or packages included in this packing slip shipment, primarily used for rugs and large bundled items.)
   TotalWeight         (Total weight of all items included in this packing slip shipment.)
@@ -864,7 +864,7 @@ Purpose: (This table contains the summary (header level) information of the Vend
   TotalAmount         (Total monetary value of all items included on this vendor packing slip shipment.)
   Received            (Flag indicating whether the goods on this vendor packing slip have been physically received at the warehouse. Possible values: 1 = Received, 0 = Not Yet Received.)
   WarehouseKey        (Warehouse reference key from DimWarehouse Table. It refers to the destination warehouse where the vendor shipment is to be received.)
-  Status              (Current status of the vendor packing slip. Possible values: Received (2), New (0).)
+  Status              (Current status of the vendor packing slip. Possible values: Received, New.)
   PeriodID            (Accounting period identifier associated with this vendor packing slip.)
 
 Table: FactVendorPackingSlipDetail
@@ -914,7 +914,7 @@ Purpose: (This table contains the summary (header level) information of the Comm
   CommissionInvoiceNo       (A unique identification number of the Commission Invoice used in SPARS.)
   SalesRepKey               (Sales Representative reference key from DimSalesRep Table. It refers to the sales representative to whom this commission invoice was issued.)
   PaymentTermKey            (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this commission invoice.)
-  Status                    (Current status of the commission invoice record. Possible values: Close (0), Open (1), Partially Paid (2), Void (3).)
+  Status                    (Current status of the commission invoice record. Possible values: Close, Open, Partially Paid, Void.)
   CommissionInvoiceRef      (The reference number or identifier associated with this commission invoice, as provided by the sales representative.)
   CommissionInvoiceDateKey  (Date reference key from DimDate Table. It refers to the date on the commission invoice document.)
   InvoiceDateKey            (Date reference key from DimDate Table. It refers to the entry date when this commission invoice was recorded into SPARS.)
@@ -948,7 +948,7 @@ Purpose: (This table contains the summary (header level) information of the Cons
   PaymentTermKey      (Payment term reference key from DimPaymentTerms Table. It refers to the payment terms applicable to this consignment document.)
   SalesType           (Sales classification code identifying the type of this consignment transaction. Value will always be CO0 (Consignment Invoice) for all records in this table.)
   InvoiceType         (Document type code specifying the invoice category of this consignment document.)
-  Status              (Current status of the consignment record. Possible values: Open (0), Partially Paid (1), Close (2), Void (9).)
+  Status              (Current status of the consignment record. Possible values: Open, Partially Paid, Close, Void.)
   TotalQuantity       (Total quantity of all items included in this consignment document.)
   TotalAmount         (Total monetary value of this consignment including all merchandise, services and charges.)
   TaxAmount           (Total tax amount applied to this consignment document.)
@@ -1122,7 +1122,14 @@ o	NEVER use DateKey on FactInventorySnapshot — that column does NOT exist.
 o	Query FactInventorySnapshot directly without date filters.
 
 AP5: 
-o	NEVER use >= YEAR(GETDATE())-N for "last N years" — it includes future data. instead Use: WHERE DD.Year BETWEEN YEAR(GETDATE())-N AND YEAR(GETDATE())
+o	NEVER use >= YEAR(GETDATE())-N for "last N years" — it includes future data.
+o	"Last N years" means exactly N calendar years including the current year.
+    Formula: WHERE DD.Year BETWEEN YEAR(GETDATE())-(N-1) AND YEAR(GETDATE())
+    Examples:
+      "last 3 years"  → BETWEEN YEAR(GETDATE())-2 AND YEAR(GETDATE())   (e.g. 2023,2024,2025)
+      "last 5 years"  → BETWEEN YEAR(GETDATE())-4 AND YEAR(GETDATE())   (e.g. 2021,2022,2023,2024,2025)
+      "last 10 years" → BETWEEN YEAR(GETDATE())-9 AND YEAR(GETDATE())
+    NEVER write YEAR(GETDATE())-N directly for "last N years" — that gives N+1 years.
 
 AP6: 
 o	NEVER query the wrong fact table for a domain:
@@ -1136,6 +1143,124 @@ o	NEVER omit Status filters when computing totals (see DEFAULT FILTERS above).
 AP8: 
 o	Table name accuracy: FactVendorPayments (with 's'), FactVendorInvoices (with 's').
 
+AP9 — CRITICAL: NEVER JOIN TWO FACT TABLES TO THE SAME DIMENSION IN ONE CTE.
+o	Joining FactSalesInvoice AND FactCustomerPayment to DimCustomer in the same CTE
+    causes a CARTESIAN EXPLOSION: every invoice row × every payment row per customer.
+    A customer with 1,000 invoices and 200 payments = 200,000 rows before MAX() collapses them.
+    With millions of rows across all customers this query will run for hours or time out.
+o	MANDATORY PATTERN for any query that needs activity from multiple fact tables per entity:
+    Step 1 — One CTE per fact table, GROUP BY the key column first:
+        SalesActivity AS (
+            SELECT CustomerKey, MAX(DD.FullDate) AS LastSaleDate
+            FROM FactSalesInvoice FSI
+            JOIN DimDate DD ON FSI.DateKey = DD.DateKey
+            WHERE FSI.Status NOT IN ('Void','Cancelled','Reversed')
+            GROUP BY CustomerKey
+        ),
+        PaymentActivity AS (
+            SELECT CustomerKey, MAX(DD.FullDate) AS LastPaymentDate
+            FROM FactCustomerPayment FCP
+            JOIN DimDate DD ON FCP.PaymentDateKey = DD.DateKey
+            GROUP BY CustomerKey
+        )
+    Step 2 — Join the pre-aggregated CTEs to the dimension:
+        SELECT DC.CustomerKey, SA.LastSaleDate, PA.LastPaymentDate
+        FROM DimCustomer DC
+        LEFT JOIN SalesActivity   SA ON DC.CustomerKey = SA.CustomerKey
+        LEFT JOIN PaymentActivity PA ON DC.CustomerKey = PA.CustomerKey
+o	This rule applies to ANY entity (Customer, Vendor, Product, Warehouse) and
+    ANY combination of fact tables (invoices + payments, invoices + returns, sales + credit memos, etc.).
+o	NEVER collapse two fact-table joins into one CTE. Always one CTE per fact table.
+
+AP10 — NEVER REFERENCE A CTE COMPUTED COLUMN IN ORDER BY WITHOUT REPEATING THE EXPRESSION.
+o	SQL Server does not allow ORDER BY to reference a column alias computed in a CTE or sub-query
+    that is not present in the outer GROUP BY.
+o	WRONG:  ORDER BY LastActivityDate            ← alias from inner CTE, not in outer GROUP BY
+o	CORRECT: Repeat the full CASE expression in ORDER BY, or add a numeric sort column:
+            ORDER BY CASE WHEN ... THEN 1 WHEN ... THEN 2 ELSE 3 END
+
+AP11 — NEVER SELECT SURROGATE KEYS OR INTERNAL ID COLUMNS IN THE FINAL OUTPUT.
+o	Columns ending in 'Key' (CustomerKey, ProductKey, DateKey, VendorKey, WarehouseKey,
+    PriceCategoryKey, RegionKey, PaymentTermKey, BillOfLadingKey, RugKey, AddressesKey, etc.)
+    are internal database surrogate integers — they are meaningless to a business user.
+o	These columns MAY ONLY be used internally for JOINs, GROUP BY, or WHERE clauses.
+o	NEVER include any *Key column in the final SELECT list that is shown to the user.
+o	WRONG:  SELECT DC.CustomerKey, DC.CustomerName, SUM(FSI.MerchandiseAmount) AS Revenue ...
+o	CORRECT: SELECT DC.CustomerName, SUM(FSI.MerchandiseAmount) AS Revenue ...
+o	This applies to ALL surrogate/foreign keys across ALL tables regardless of the query type.
+o	Exception: Only include a Key column if the user EXPLICITLY asks for it
+    (e.g. "show me the customer key/ID", "include the product key").
+
+AP12 — NEVER JOIN FactSalesOrders DIRECTLY TO FactSalesOrderDetail FOR HEADER-LEVEL QUERIES.
+o	FactSalesOrders is the ORDER HEADER (one row per order).
+    FactSalesOrderDetail is the ORDER DETAIL (many rows per order — one per product line).
+    Joining them directly causes the same fan-out explosion as AP1:
+    an order with 20 lines becomes 20 rows, multiplied across thousands of orders = millions of rows.
+o	FactSalesOrders already contains header-level totals: TotalQty, TotalQtyShipped,
+    TotalMerchandise, TotalAmount, Status, ShippingDateKey — use these for order-level queries.
+o	Only join FactSalesOrderDetail when you SPECIFICALLY need line-level product detail
+    (e.g. "show each product line on the order", "which items are on backorder per order").
+o	If you need a date from FactSalesOrderDetail (e.g. RequiredDate) for a header-level query,
+    PRE-AGGREGATE it in a CTE first (one row per SalesOrderNo), then join the CTE:
+    CORRECT:
+        RequiredDates AS (
+            SELECT FSOD.SalesOrderNo, MIN(DD.FullDate) AS MinRequiredDate
+            FROM   FactSalesOrderDetail FSOD
+            JOIN   DimDate DD ON FSOD.RequiredDateKey = DD.DateKey
+            GROUP BY FSOD.SalesOrderNo
+        )
+        ...
+        LEFT JOIN RequiredDates RD ON FSO.SalesOrderNo = RD.SalesOrderNo
+    WRONG: LEFT JOIN FactSalesOrderDetail FSOD ON FSO.SalesOrderNo = FSOD.SalesOrderNo
+o	STATUS REMINDER: FactSalesOrders.Status is VARCHAR — always use NOT IN ('Cancel', 'Void'),
+    NEVER integer codes.
+o	SHIPPING DATE REMINDER: FactSalesOrders.ShippingDateKey is the ACTUAL (post-shipment) date.
+    For "orders due to ship / can ship today" queries, filter on RequiredDateKey from
+    FactSalesOrderDetail (via pre-aggregated CTE), not on ShippingDateKey.
+    Pattern: WHERE RD.MinRequiredDate <= CAST(GETDATE() AS DATE)
+             AND FSO.TotalQty > ISNULL(FSO.TotalQtyShipped, 0)
+
+================================================================
+  QUERY PERFORMANCE RULES  (prevent long-running / timed-out queries)
+================================================================
+These rules must be applied to EVERY query. A slow query that times out is worse than no answer.
+
+PERF1 — PRE-AGGREGATE EACH FACT TABLE IN ITS OWN CTE BEFORE JOINING (aggregation/summary queries only).
+  When the goal is to compute a summary metric per entity (e.g. last activity date, total spend,
+  total payments per customer), never join two or more fact tables to the same dimension in a
+  single FROM/JOIN block. Reduce each fact table to one row per key in its own CTE first, then
+  join the pre-aggregated CTEs to the dimension.
+  This rule applies to aggregation/summary queries. It does NOT apply to row-level detail queries
+  where you need individual matching rows from two tables (e.g. "show each invoice with its
+  payment", "list all credit memos with their original invoice").
+
+PERF2 — NEVER USE SELECT * OR RETRIEVE ALL COLUMNS FROM LARGE TABLES.
+  FactSalesDetail (3.4M rows), FactSalesInvoice (1M+ rows), FactCustomerPayment, FactCreditMemo
+  are all large tables. Always project only the columns you need and always apply TOP N.
+
+PERF3 — FILTER EARLY, NOT LATE.
+  Apply date filters, Status filters, and WHERE clauses inside CTEs (as close to the table scan
+  as possible), never only in the outermost SELECT. This lets SQL Server use index seeks.
+  GOOD: CTE with WHERE DD.Year = 2025  →  small intermediate result
+  BAD:  Join everything then WHERE Year = 2025 in the outer SELECT  →  full table scan
+
+PERF4 — PREFER DATEADD RANGE COMPARISONS OVER DATEDIFF FOR DATE FILTERING.
+  When filtering rows by a date range, prefer range comparisons over DATEDIFF where both
+  approaches give the same result — range comparisons are SARG-able (index-friendly):
+    PREFER:  col >= DATEADD(MONTH, -12, GETDATE())
+    AVOID:   DATEDIFF(MONTH, col, GETDATE()) <= 12  (scans every row, cannot use index)
+  DATEDIFF is still acceptable when you genuinely need an exact month-count value in a
+  SELECT or CASE expression (e.g. computing "X months overdue" as a display column).
+  Do not change existing working DATEDIFF logic unless rewriting the query from scratch.
+
+PERF5 — AVOID CORRELATED SUB-QUERIES INSIDE SELECT OR WHERE.
+  A sub-query like SELECT (SELECT MAX(...) FROM Fact WHERE key = outer.key) runs once per row.
+  Replace with a pre-aggregated CTE joined once.
+
+PERF6 — LIMIT SCHEMA INSPECTION CALLS.
+  Do not call sql_db_schema repeatedly for tables whose schema you already know from
+  the current conversation or from the DB knowledge provided in this prompt.
+  Look up schema only when you genuinely need an unfamiliar table.
 
 ================================================================
   CONSISTENCY RULES
@@ -1193,7 +1318,7 @@ BALANCE SHEET — VERIFIED column mapping (confirmed by live DB test):
   (Main >= 2000 = Liabilities & Equity accounts — flip sign for correct BS presentation)
 
 CRITICAL — column-to-template level mapping (verified against live data):
-  BalanceSheet_MainGroups  → line items inside "Main Grouped" template (Current Assets, Non Current Assets, Current Liabilities, Long Term Liabilities, Stockholder Equity)
+  BalanceSheet_MainGroups  → line items inside "Main Grouped" template (Current Assets, Non Current Assets, Current Liabilities, Non Current Liabilities, Equity, Retained Earnings, Contribution, Distributions, Profit & Loss)
   BalanceSheet_SubGroups   → line items inside "Sub Grouped" template (Accounts Receivable, Cash and Cash Equivalents, Accounts Payable, Short Term Loans, etc.)
   BalanceSheet_Details     → line items inside "Detailed" template (individual account names, e.g. ACCOUNT RECEIVABLE, PETTY CASH, ACCOUNT PAYABLE-VENDOR, etc.)
 
@@ -1220,7 +1345,7 @@ P&L STATEMENT — VERIFIED column mapping (confirmed by live DB test):
   NEVER use YTD_Net for P&L — always use PTD_Net.
 
 - Main Grouped   : GROUP BY CM.PLStatementMainGroups → returns [Group, Amount], 6 possible rows:
-    SALES, COST OF SALES, GENERAL & ADMINISTRATIVE, SELLING EXPENSES, OTHER INCOME, INCOME TAXES
+    Sales, Cost Of Goods Sold, Operating Expenses, Other Income/Expenses, Interest Expenses, Taxes
     Filter: AND CM.PLStatementMainGroups IS NOT NULL AND LEN(CM.PLStatementMainGroups) > 0
 
 - Sub Grouped    : GROUP BY CM.PLStatementMainGroups, CM.PLStatementSubGroups → returns [Main Group, Sub Group, Amount]
@@ -1230,10 +1355,10 @@ P&L STATEMENT — VERIFIED column mapping (confirmed by live DB test):
     Filter: AND CM.PLStatementDetails IS NOT NULL AND LEN(CM.PLStatementDetails) > 0
 
 COMPUTED P&L LINES (NOT from DB — derive from query results and insert into the formatted output):
-  Gross Profit/(Loss)     = SALES amount - COST OF SALES amount
-  Total Operating Cost    = GENERAL & ADMINISTRATIVE amount + SELLING EXPENSES amount
-  Operating Profit/(Loss) = Gross Profit/(Loss) - Total Operating Cost
-  Net Profit/(Loss)       = Operating Profit/(Loss) + OTHER INCOME amount - INCOME TAXES amount
+  Gross Profit/(Loss)     = Sales amount + Cost Of Goods Sold amount  (COGS is stored as negative)
+  Operating Profit/(Loss) = Gross Profit/(Loss) + Operating Expenses amount  (expenses stored as negative)
+  Net Profit/(Loss)       = Operating Profit/(Loss) + Other Income/Expenses + Interest Expenses + Taxes
+                            (all expense groups stored as negative; add all values directly)
   If a group has no data for the period, treat its amount as 0.00.
   For Sub Grouped / Detailed: compute section totals as SUM of all line items in that section.
 
@@ -1251,7 +1376,11 @@ NO TOP LIMIT on financial statements — always return ALL rows (no TOP N).
 ================================================================
 - For time-based filtering: JOIN to DimDate on DateKey and filter on Year, Month, Quarter, MonthName.
 - For current period: use YEAR(GETDATE()), MONTH(GETDATE()), DATEPART(QUARTER, GETDATE()).
-- For last N years: WHERE DD.Year BETWEEN YEAR(GETDATE())-N AND YEAR(GETDATE()).
+- For last N years: WHERE DD.Year BETWEEN YEAR(GETDATE())-(N-1) AND YEAR(GETDATE()).
+   "Last N years" = N calendar years INCLUDING the current year.
+   Examples: last 5 years → BETWEEN YEAR(GETDATE())-4 AND YEAR(GETDATE())
+             last 3 years → BETWEEN YEAR(GETDATE())-2 AND YEAR(GETDATE())
+   NEVER use YEAR(GETDATE())-N for "last N years" — that gives N+1 years total.
    NOT >= YEAR(GETDATE())-N which includes future data.
 - For last N months: WHERE DD.FullDate >= DATEADD(MONTH, -N, GETDATE()) AND DD.FullDate <= GETDATE().
 - CRITICAL — LAG/LEAD/ROW_NUMBER monthly sort: ORDER BY (Year * 100 + Month), never (Year, Month) separately.
@@ -1285,12 +1414,91 @@ NO TOP LIMIT on financial statements — always return ALL rows (no TOP N).
 ================================================================
   SQL QUALITY RULES (CRITICAL)
 ================================================================
-- MANDATORY STATUS FILTERS — apply on every query, no exceptions:
+================================================================
+  STATUS VALUES & INTENT-BASED FILTER RULES  (part of SQL QUALITY RULES)
+================================================================
+All Status columns listed below are VARCHAR. NEVER use integer codes.
+
+── A. STATUS VALUE CATALOG ─────────────────────────────────────────────
+  FactSalesOrders.Status    : 'Open' | 'Partially Paid' | 'Close' | 'Cancel' | 'Void'
+  FactSalesInvoice.Status   : 'Open' | 'Partially Paid' | 'Close' | 'Void' | 'Cancelled' | 'Reversed'
+  FactCreditMemo.Status     : 'Open' | 'Partially Paid' | 'Close' | 'Void'
+  FactVendorInvoice.Status  : 'Open' | 'Partially Paid' | 'Close' | 'Void'
+  FactVendorPayments        : No Status column — voided = VoidDateKey IS NOT NULL
+                              Default exclude: WHERE FVP.VoidDateKey IS NULL
+  FactCustomerPayment       : No Status column — use as-is (no exclusion filter needed)
+  FactCustomerReturn        : No Status column — use as-is
+  FactConsignments          : No Status column — use as-is
+
+── B. INTENT DETECTION — classify BEFORE writing any WHERE clause ───────
+  Read the user's question and assign ONE of these intents:
+
+  INTENT-1 [ANALYTICS]   — keywords: revenue, sales, total, profit, trend, summary,
+                            comparison, forecast, how much, how many (total count),
+                            YoY, monthly, quarterly, annual, report, statement, margin
+                            → Exclude only invalidated records (Void / Cancelled / Reversed).
+                              Include Open, Partially Paid, and Close.
+
+  INTENT-2 [OPERATIONAL] — keywords: open, pending, ready, can be shipped, due,
+                            outstanding, unpaid, not yet shipped, backlog, awaiting,
+                            current, today, what needs to, actionable, active orders
+                            → Include ONLY 'Open' and 'Partially Paid'.
+                              Exclude Close, Cancel, Void entirely.
+
+  INTENT-3 [COMPLETED]   — keywords: closed, fulfilled, completed, shipped, paid,
+                            delivered, settled, done, processed, finalized
+                            → Include ONLY 'Close'.
+                              Exclude Open, Partially Paid, Cancel, Void.
+
+  INTENT-4 [INVALID]     — keywords: cancelled, voided, reversed, rejected,
+                            how many were cancelled, cancellation rate
+                            → Include ONLY Cancel / Void / Reversed as relevant.
+                              Exclude all active and completed records.
+
+  INTENT-5 [FULL HISTORY] — keywords: all, every, including cancelled, full history,
+                             regardless of status, even voided
+                             → Apply NO status filter. Fetch everything.
+
+  AMBIGUOUS RULE: If intent is unclear (no keywords match), default to INTENT-1
+  [ANALYTICS] — exclude only Void/Cancelled/Reversed. NEVER default to INTENT-2
+  or INTENT-3 unless the user's question clearly indicates active/open or completed.
+
+── C. FILTER TEMPLATES ──────────────────────────────────────────────────
+
+  INTENT-1 [ANALYTICS] — default for most queries:
+    FactSalesOrders   → AND FSO.Status NOT IN ('Cancel', 'Void')
     FactSalesInvoice  → AND FSI.Status NOT IN ('Void', 'Cancelled', 'Reversed')
-    FactSalesOrders   → AND FSO.Status NOT IN (8, 9)         -- 8=Cancel, 9=Void
-    FactCreditMemo    → AND FCM.Status <> 9                  -- 9=Void
-    FactVendorInvoice → AND FVI.Status <> 3                  -- 3=Void
-  Omitting these filters includes invalid transactions and inflates revenue/cost figures.
+    FactCreditMemo    → AND FCM.Status <> 'Void'
+    FactVendorInvoice → AND FVI.Status <> 'Void'
+    FactVendorPayments → AND FVP.VoidDateKey IS NULL
+
+  INTENT-2 [OPERATIONAL] — open/pending/active/ready-to-ship queries:
+    FactSalesOrders   → AND FSO.Status IN ('Open', 'Partially Paid')
+    FactSalesInvoice  → AND FSI.Status IN ('Open', 'Partially Paid')
+    FactCreditMemo    → AND FCM.Status IN ('Open', 'Partially Paid')
+    FactVendorInvoice → AND FVI.Status IN ('Open', 'Partially Paid')
+    FactVendorPayments → AND FVP.VoidDateKey IS NULL
+
+  INTENT-3 [COMPLETED] — closed/fulfilled/paid queries:
+    FactSalesOrders   → AND FSO.Status = 'Close'
+    FactSalesInvoice  → AND FSI.Status = 'Close'
+    FactCreditMemo    → AND FCM.Status = 'Close'
+    FactVendorInvoice → AND FVI.Status = 'Close'
+
+  INTENT-4 [INVALID] — cancelled/voided/reversed queries:
+    FactSalesOrders   → AND FSO.Status IN ('Cancel', 'Void')
+    FactSalesInvoice  → AND FSI.Status IN ('Void', 'Cancelled', 'Reversed')
+    FactCreditMemo    → AND FCM.Status = 'Void'
+    FactVendorInvoice → AND FVI.Status = 'Void'
+    FactVendorPayments → AND FVP.VoidDateKey IS NOT NULL
+
+  INTENT-5 [FULL HISTORY]: No status filter applied.
+
+── D. OVERRIDE RULE ─────────────────────────────────────────────────────
+  If the user explicitly names a status value in their question
+  (e.g. "show Void invoices", "only Open orders", "all Cancelled transactions"),
+  use that exact value directly — override all intent detection above.
+  The user's explicit mention ALWAYS takes priority over the default intent filter.
 - NULL-SAFE EXCLUSIONS: NEVER use NOT IN with a subquery. Use LEFT JOIN ... WHERE key IS NULL instead.
 - ALWAYS COMPUTE WHAT IS ASKED: growth/trend/comparison → use LAG/LEAD window functions with both absolute and % change.
 - PRODUCT ANALYSIS: Exclude discontinued (IsDiscontinued=0), cross-check inventory, include revenue/profit context.
@@ -1338,7 +1546,7 @@ output the statement as a TWO-COLUMN markdown table preserving the exact hierarc
 
 TABLE FORMAT RULES:
 - Two columns only: | Description | Amount ($) |
-- Header rows (Assets, Liabilities & Equity, Operating Cost, etc.) → bold text, no amount: | **Assets** | |
+- Header rows (Assets, Liabilities & Equity, Operating Expenses, etc.) → bold text, no amount: | **Assets** | |
 - Sub-group rows (Current Assets, Property And Equipment, etc.) → bold text, no amount: | **Current Assets** | |
 - Line item rows → indented with 4 spaces: |     Accounts Receivable | 1,234.56 |
 - Total rows → bold text with amount: | **Total Assets** | 1,234,567.89 |
@@ -1366,8 +1574,12 @@ Balance Sheet Templates:-
 | | |
 | **Liabilities & Equity** | |
 |     Current Liabilities | [value] |
-|     Long Term Liabilities | [value] |
-|     Stockholder Equity | [value] |
+|     Non Current Liabilities | [value] |
+|     Equity | [value] |
+|     Retained Earnings | [value] |
+|     Contribution | [value] |
+|     Distributions | [value] |
+|     Profit & Loss | [value] |
 | **Total Liabilities & Equity** | [value] |
 
 *Balance Sheet Main Grouped — Multi-Month (2+ months requested)*
@@ -1382,8 +1594,12 @@ Balance Sheet Templates:-
 | | | |
 | **Liabilities & Equity** | | |
 |     Current Liabilities | [value] | [value] |
-|     Long Term Liabilities | [value] | [value] |
-|     Stockholder Equity | [value] | [value] |
+|     Non Current Liabilities | [value] | [value] |
+|     Equity | [value] | [value] |
+|     Retained Earnings | [value] | [value] |
+|     Contribution | [value] | [value] |
+|     Distributions | [value] | [value] |
+|     Profit & Loss | [value] | [value] |
 | **Total Liabilities & Equity** | [computed] | [computed] |
 
 
@@ -1396,14 +1612,26 @@ Balance Sheet Templates:-
 | **Current Assets** | |
 |     Accounts Receivable | [value] |
 |     Cash and Cash Equivalents | [value] |
+|     Intercompanies | [value] |
 |     Inventory | [value] |
+|     Loans Payable - Related Parties | [value] |
+|     Management Fees Receivable | [value] |
 |     Other Receivables | [value] |
-| **Total Current Assets** | [value] |
+|     Prepaid Expenses | [value] |
+| **Current Assets Total** | [value] |
 | | |
 | **Non Current Assets** | |
-|     Other Non Current Assets | [value] |
-|     Property Plant & Equipments | [value] |
-| **Total Non Current Assets** | [value] |
+|     Furniture & Equipment | [value] |
+|     Intangible & Other Assets | [value] |
+|     Investments | [value] |
+|     Leasehold Improvements | [value] |
+|     Loans Receivable - Related Parties | [value] |
+|     Loans Receivable Members and Former Members | [value] |
+|     Long term notes receivable | [value] |
+|     Other Receivables | [value] |
+|     ROU Assets - Operating | [value] |
+|     Transportations Equipment | [value] |
+| **Non Current Assets Total** | [value] |
 | | |
 | **Total Assets** | [value] |
 | | |
@@ -1411,21 +1639,39 @@ Balance Sheet Templates:-
 | **Current Liabilities** | |
 |     Accounts Payable | [value] |
 |     Accrued Expenses | [value] |
-|     Other Payables | [value] |
-|     Short Term Loans | [value] |
-| **Total Current Liabilities** | [value] |
+|     Contract Liabilities | [value] |
+|     Current Lease Liabilities | [value] |
+|     Loans Payable - Related Parties | [value] |
+|     Loans Receivable - Related Parties | [value] |
+|     Loans Receivable Members and Former Members | [value] |
+|     Management Fees Payable | [value] |
+|     Short Term Note Payable - Related Party | [value] |
+| **Current Liabilities Total** | [value] |
 | | |
-| **Long Term Liabilities** | |
-|     Long Term Liabilities | [value] |
-| **Total Long Term Liabilities** | [value] |
-| | |
-| **Stockholder Equity** | |
-|     Common Stock | [value] |
+| **Non Current Liabilities** | |
+|     Accrued Expenses | [value] |
 |     Distributions | [value] |
-|     Profit/(Loss) | [value] |
+|     Lease Liabilities - Non Current | [value] |
+|     Loans Receivable - Related Parties | [value] |
+| **Non Current Liabilities Total** | [value] |
+| | |
+| **Equity** | |
+|     Additional Paid-in Capital | [value] |
+|     Common Stock | [value] |
+|     Loans Payable - Related Parties | [value] |
+|     Member's Equity | [value] |
+| **Equity Total** | [value] |
+| | |
+| **Retained Earnings** | |
 |     Retained Earnings | [value] |
-|     Stockholder Equity | [value] |
-| **Total Stockholder Equity** | [value] |
+|     Unrealized Gain on Available for Sale Securities | [value] |
+| **Retained Earnings Total** | [value] |
+| | |
+| **Contribution** | |
+|     Loans Payable - Related Parties | [value] |
+|     Distributions | [value] |
+|     Profit & Loss | [value] |
+| **Contribution Total** | [value] |
 | | |
 | **Total Liabilities & Equity** | [value] |
 
@@ -1438,14 +1684,26 @@ Balance Sheet Templates:-
 | **Current Assets** | | |
 |     Accounts Receivable | [value] | [value] |
 |     Cash and Cash Equivalents | [value] | [value] |
+|     Intercompanies | [value] | [value] |
 |     Inventory | [value] | [value] |
+|     Loans Payable - Related Parties | [value] | [value] |
+|     Management Fees Receivable | [value] | [value] |
 |     Other Receivables | [value] | [value] |
-| **Total Current Assets** | [computed] | [computed] |
+|     Prepaid Expenses | [value] | [value] |
+| **Current Assets Total** | [computed] | [computed] |
 | | | |
 | **Non Current Assets** | | |
-|     Other Non Current Assets | [value] | [value] |
-|     Property Plant & Equipments | [value] | [value] |
-| **Total Non Current Assets** | [computed] | [computed] |
+|     Furniture & Equipment | [value] | [value] |
+|     Intangible & Other Assets | [value] | [value] |
+|     Investments | [value] | [value] |
+|     Leasehold Improvements | [value] | [value] |
+|     Loans Receivable - Related Parties | [value] | [value] |
+|     Loans Receivable Members and Former Members | [value] | [value] |
+|     Long term notes receivable | [value] | [value] |
+|     Other Receivables | [value] | [value] |
+|     ROU Assets - Operating | [value] | [value] |
+|     Transportations Equipment | [value] | [value] |
+| **Non Current Assets Total** | [computed] | [computed] |
 | | | |
 | **Total Assets** | [computed] | [computed] |
 | | | |
@@ -1453,160 +1711,369 @@ Balance Sheet Templates:-
 | **Current Liabilities** | | |
 |     Accounts Payable | [value] | [value] |
 |     Accrued Expenses | [value] | [value] |
-|     Other Payables | [value] | [value] |
-|     Short Term Loans | [value] | [value] |
-| **Total Current Liabilities** | [computed] | [computed] |
+|     Contract Liabilities | [value] | [value] |
+|     Current Lease Liabilities | [value] | [value] |
+|     Loans Payable - Related Parties | [value] | [value] |
+|     Loans Receivable - Related Parties | [value] | [value] |
+|     Loans Receivable Members and Former Members | [value] | [value] |
+|     Management Fees Payable | [value] | [value] |
+|     Short Term Note Payable - Related Party | [value] | [value] |
+| **Current Liabilities Total** | [computed] | [computed] |
 | | | |
-| **Long Term Liabilities** | | |
-|     Long Term Liabilities | [value] | [value] |
-| **Total Long Term Liabilities** | [computed] | [computed] |
-| | | |
-| **Stockholder Equity** | | |
-|     Common Stock | [value] | [value] |
+| **Non Current Liabilities** | | |
+|     Accrued Expenses | [value] | [value] |
 |     Distributions | [value] | [value] |
-|     Profit/(Loss) | [value] | [value] |
+|     Lease Liabilities - Non Current | [value] | [value] |
+|     Loans Receivable - Related Parties | [value] | [value] |
+| **Non Current Liabilities Total** | [computed] | [computed] |
+| | | |
+| **Equity** | | |
+|     Additional Paid-in Capital | [value] | [value] |
+|     Common Stock | [value] | [value] |
+|     Loans Payable - Related Parties | [value] | [value] |
+|     Member's Equity | [value] | [value] |
+| **Equity Total** | [computed] | [computed] |
+| | | |
+| **Retained Earnings** | | |
 |     Retained Earnings | [value] | [value] |
-|     Stockholder Equity | [value] | [value] |
-| **Total Stockholder Equity** | [computed] | [computed] |
+|     Unrealized Gain on Available for Sale Securities | [value] | [value] |
+| **Retained Earnings Total** | [computed] | [computed] |
+| | | |
+| **Contribution** | | |
+|     Loans Payable - Related Parties | [value] | [value] |
+|     Distributions | [value] | [value] |
+|     Profit & Loss | [value] | [value] |
+| **Contribution Total** | [computed] | [computed] |
 | | | |
 | **Total Liabilities & Equity** | [computed] | [computed] |
 
 
 *Balance Sheet Detailed*
+(4-level nesting — individual accounts listed under each Sub Group section)
 
-Assets                                          Amount
-
-Current Assets
-  Account Receivable                            [value]
-  Accrued Insurance Expense                     [value]
-  Accrued Lease-Toshiba Printer                 [value]
-  Accrued Not Due Interest Payab                [value]
-  Advances - Deposits                           [value]
-  Amexp Cc                                      [value]
-  Cash Account                                  [value]
-  Cash In Hand                                  [value]
-  Credit Card Ar-Receipts                       [value]
-  First Bank Ppp Checking A/C                   [value]
-  First Bank Tn                                 [value]
-  Inter Bank Transfer                           [value]
-  Inventory Adj.                                [value]
-  Inventory Asset                               [value]
-  Inventory Change                              [value]
-  Inventory Control                             [value]
-  Inventory On Consignment                      [value]
-  Inventory Transfer                            [value]
-  Inventory-Prepaid Import Costs                [value]
-  Loan & Adv. Employees                         [value]
-  Petty Cash                                    [value]
-  Prepaid Expenses                              [value]
-  Raw Material                                  [value]
-  Refund To Customer                            [value]
-  Regions                                       [value]
-  Reserve For Doubtful Debts                    [value]
-  Tax Refundable                                [value]
-  Trade-Am                                      [value]
-  Truist                                        [value]
-  Vendors - Advances                            [value]
-  Warehouse Sale Credit Card                    [value]
-  Work In Progress                              [value]
-Total Current Assets                            [value]
-
-Non Current Assets
-  Building                                      [value]
-  Cell Phone                                    [value]
-  Customer Claim Disputes                       [value]
-  Customer List                                 [value]
-  Deffered Exp.(Sample)Rug                      [value]
-  Deposits                                      [value]
-  Design & Art Work (Atlanta)                   [value]
-  Electronics                                   [value]
-  Free To Use                                   [value]
-  Furniture                                     [value]
-  Intangible Assets                             [value]
-  Land                                          [value]
-  Leasehold Improvements                        [value]
-  Loan Fee                                      [value]
-  Rack                                          [value]
-  Sample Rugs                                   [value]
-  Samples At Warehouse                          [value]
-  Scanner                                       [value]
-  Sienna-2015                                   [value]
-  Undeposited Funds                             [value]
-  Vehicles                                      [value]
-  Warehouse Equipment-Racks                     [value]
-  Warehouse Vehicles                            [value]
-  Webspars Software System                      [value]
-  Accum. Amortization-Cust List                 [value]
-  Accum. Depreciation                           [value]
-  Accumulated Amortization                      [value]
-Total Non Current Assets                        [value]
-
-Total Assets                                    [value]
-
-
-Liabilities & Equity
-
-Current Liabilities
-  401K Contribution Payable                     [value]
-  ACCOUNT PAYABLE-AMEX                          [value]
-  Account Payable-Cash                          [value]
-  Account Payable-Expenses                      [value]
-  Account Payable-Rent                          [value]
-  Account Payable-Vendor                        [value]
-  ACCOUNT PAYABLE-VISA                          [value]
-  Accrued Insurance Expense                     [value]
-  Accrued Lease-Toshiba Printer                 [value]
-  Accured Expenses                              [value]
-  Advance From Customer                         [value]
-  Allowance For Doubtful Debts                  [value]
-  Ap- Other                                     [value]
-  BB&T                                          [value]
-  Bills Payable                                 [value]
-  Drip Capital Control A/C                      [value]
-  Employee Benefits Plan Payable                [value]
-  Firstbank Loan A/C 2570107680                 [value]
-  Free Bank A/C To Use                          [value]
-  Free To Use                                   [value]
-  Fsg Bank-Credit Line                          [value]
-  Futa Payable                                  [value]
-  Garnishment-Child Support                     [value]
-  Intrest Accrued                               [value]
-  Loan                                          [value]
-  Loan On Equity                                [value]
-  Not To Use Accrued Lease                      [value]
-  Note Payable                                  [value]
-  Payroll                                       [value]
-  Payroll Tax                                   [value]
-  Ppp 2Nd Draw                                  [value]
-  Ppp Loan - First Bank                         [value]
-  Ransomware Recovery Claim                     [value]
-  Regions Bank - Line Of Credit                 [value]
-  Sales Tax                                     [value]
-  SBA-EIDL Loan                                 [value]
-  State W/H Payable                             [value]
-  SUTA PAYABLE                                  [value]
-  Unsecured Loan                                [value]
-Total Current Liabilities                       [value]
-
-Long Term Liabilities
-  Clark Order Picker 042117 Loan                [value]
-  LINE OF CREDIT                                [value]
-  LONG TERM LIABILITIES                         [value]
-  NOTE PAYABLE                                  [value]
-  Obligation under Capital Lease                [value]
-  STOCKHOLDER LOAN                              [value]
-Total Long Term Liabilities                     [value]
-
-Stockholder Equity
-  COMMON STOCK                                  [value]
-  DISTRIBUTIONS                                 [value]
-  OWNERS                                        [value]
-  Profit/(Loss)                                 [value]
-  REALITY                                       [value]
-  RETAINED EARNING                              [value]
-Total Stockholder Equity                        [value]
-
-Total Liabilities & Equity                      [value]
+| Description | Amount ($) |
+|:---|---:|
+| **Assets** | |
+| **Current Assets** | |
+|     1173279 B.C. LTD. (SAFAVIEH HO | [value] |
+|     68 Campbell St, Inc | [value] |
+|     Accounts Receivable | [value] |
+|     Accounts Receivable - Pacific | [value] |
+|     Accounts Receivable - Related Entities | [value] |
+|     Accounts Receivable (NAV) | [value] |
+|     Accounts Receivable (Top-Line) | [value] |
+|     Accrued Customs & Duties | [value] |
+|     Accrued Freight-In | [value] |
+|     Allowance for Bad Debt | [value] |
+|     AR - Before Acquisition | [value] |
+|     AUGUSTA HOME CC PAYMENT | [value] |
+|     Cash-Citibank | [value] |
+|     Cash-Citibank CD | [value] |
+|     Cash-Citibank Payroll | [value] |
+|     Cash-Peoples Bank | [value] |
+|     Cash-Peoples Bank CD | [value] |
+|     Cash-Santander Bank | [value] |
+|     Cash-Signature Bank | [value] |
+|     Cash-TD Bank | [value] |
+|     Citibank | [value] |
+|     Citibank - Payroll | [value] |
+|     Citibank #2 (7652) | [value] |
+|     DECOR MARCHE LLC CITIBANK | [value] |
+|     Employee Loans Receivable | [value] |
+|     Exchange | [value] |
+|     Inv Control - Cons to Cust | [value] |
+|     Inv Control - Cost Change | [value] |
+|     Inv Control - Cust Return | [value] |
+|     Inv Control - Inventory Adj | [value] |
+|     Inv Control - Physical Count | [value] |
+|     Inv Control - Purchase | [value] |
+|     Inv Control - Sale to Cust | [value] |
+|     Inv Control - Vendor Return | [value] |
+|     Inv Control - WHS Transfer | [value] |
+|     Inventory | [value] |
+|     Inventory Adjustment | [value] |
+|     Inventory Non Rug | [value] |
+|     Inventory Rug | [value] |
+|     inventory write-down | [value] |
+|     Investment Account - Cash | [value] |
+|     LUXE LIVING SHOP LLC CITIBANK | [value] |
+|     Management Fees Receivable | [value] |
+|     Other Receivable | [value] |
+|     Petty Cash | [value] |
+|     Prepaid Expenses | [value] |
+|     Prepaid Insurance | [value] |
+|     Prepaid Inventory | [value] |
+|     Prepaid NJ Corp Tax | [value] |
+|     RETAIL DECOR MARCHE CITIBANK | [value] |
+|     SAFAVIEH INC. - CREDIT CARD | [value] |
+|     Safavieh Int Visa | [value] |
+|     SAFAVIEH INT'L - CREDIT CARD | [value] |
+|     Safavieh LTD (CAD) | [value] |
+|     Safavieh LTD USD | [value] |
+|     Safavieh Toronto | [value] |
+|     SEI (AUGUSTA HOME) | [value] |
+|     Shipment Clearing | [value] |
+|     Transfers | [value] |
+|     WHS CC PAYMENTS | [value] |
+|     YARAGHI LLC - AMEX CARD | [value] |
+|     YARAGHI LLC - CREDIT CARD | [value] |
+|     YARAGHI LLC - PEOPLE'S BANK | [value] |
+|     YARAGHI LLC - PEOPLE'S BANK CHECKING | [value] |
+|     Yaraghi LLC - Santander Bank | [value] |
+|     Yaraghi LLC - Signature Bank | [value] |
+|     YARAGHI LLC - TD BANK | [value] |
+| **Current Assets Total** | [value] |
+| | |
+| **Non Current Assets** | |
+|     102 Norwest Court | [value] |
+|     1073 Northern Blvd | [value] |
+|     110 East Rt 4 | [value] |
+|     110 Route 110 | [value] |
+|     111 Cokesbury LLC | [value] |
+|     1170 Northern Blvd | [value] |
+|     1200 Route 523 | [value] |
+|     125 Commerce Way | [value] |
+|     150 Knowlton Way | [value] |
+|     150 Thompson St LLC | [value] |
+|     18 School Street | [value] |
+|     1950 Benton Blvd. LLC | [value] |
+|     1991 Northampton Street | [value] |
+|     2 Channel Drive | [value] |
+|     200 Atlantic Street LLC | [value] |
+|     210 Atlantic | [value] |
+|     2410 Northampton | [value] |
+|     252 Atlantic | [value] |
+|     2695 Plainfield Road LLC | [value] |
+|     28 Washington St. | [value] |
+|     3200 Baytown LLC | [value] |
+|     380 Bloomsbury | [value] |
+|     393 Oyster Bay Road | [value] |
+|     442 Mt Pleasant | [value] |
+|     45 Hartsdale | [value] |
+|     455 Jimmy DeLoach | [value] |
+|     605 Jimmy Deloach | [value] |
+|     64 Nardozzi | [value] |
+|     7580 Cherry Avenue | [value] |
+|     76 Highlands Blvd | [value] |
+|     7630 Cherry Avenue | [value] |
+|     Accrued Interest Receivable | [value] |
+|     Accum Deprec-Equipment | [value] |
+|     Accum Deprec-LHI | [value] |
+|     Accum Deprec-Office Furniture & Fixtures | [value] |
+|     Accum Deprec-Transportation | [value] |
+|     Allpoints LLC | [value] |
+|     Atlantic (CT3) | [value] |
+|     Atlantic Realty | [value] |
+|     Augusta Home LLC | [value] |
+|     Augusta Home LLC - SEI | [value] |
+|     Brand ROU Asset | [value] |
+|     Broadway LLC | [value] |
+|     Contribution Receivable | [value] |
+|     Danbury | [value] |
+|     Decor Marche | [value] |
+|     Decor Market | [value] |
+|     Distributions Receivable | [value] |
+|     Do not use | [value] |
+|     Due From Saf Home Furn Ltd. | [value] |
+|     Due to Hong Kong | [value] |
+|     Due to/from India | [value] |
+|     Due to/from Jonathan Y Designs | [value] |
+|     Due to/from Safavieh Holding | [value] |
+|     Due to/from Yaraghi Studios LLC | [value] |
+|     Equipment | [value] |
+|     Equipment-Do not use | [value] |
+|     Farmingdale (LI) | [value] |
+|     Glen Cove (LI-other3) | [value] |
+|     Harbor Park | [value] |
+|     Hartsdale (NY) | [value] |
+|     Home Trends | [value] |
+|     Home Trends LLC | [value] |
+|     Intercompanies | [value] |
+|     Investments | [value] |
+|     Isfahan | [value] |
+|     Leasehold Improvements | [value] |
+|     Lindsay Market | [value] |
+|     Livingston | [value] |
+|     Loan - Safavieh Limited | [value] |
+|     Loan-David Shalbaf | [value] |
+|     LOAN-FARZAD RAHMANAN | [value] |
+|     Loan-Safavieh Turkey | [value] |
+|     LT Note Receivable Yaraghi Realty | [value] |
+|     Luxe Living | [value] |
+|     Madison | [value] |
+|     New Rochelle LLC | [value] |
+|     Note Receivable - Augusta Home | [value] |
+|     Notes Receivable LT | [value] |
+|     Notes Receivable ST | [value] |
+|     Office Furniture & Fixtures | [value] |
+|     Other deposits | [value] |
+|     Pacific | [value] |
+|     Paramus | [value] |
+|     Rogers Road LLC | [value] |
+|     ROU Asset - Operating Leases | [value] |
+|     Safavieh 59 (Soho) | [value] |
+|     Safavieh Group | [value] |
+|     Safavieh Home | [value] |
+|     Safavieh INC | [value] |
+|     Safavieh International | [value] |
+|     Safavieh Turkey | [value] |
+|     Savannah Intl Trade | [value] |
+|     Security Deposits | [value] |
+|     Stamford Town Center LLC | [value] |
+|     Subscription Receivable | [value] |
+|     Tradeport East LLC | [value] |
+|     Tradeport West LLC | [value] |
+|     Transportation Equipment | [value] |
+|     Whitestown 500 South LLC | [value] |
+|     Yaraghi Holdings LLC | [value] |
+|     Yaraghi LLC | [value] |
+|     Yaraghi Realty | [value] |
+| **Non Current Assets Total** | [value] |
+| | |
+| **Total Assets** | [value] |
+| | |
+| **Liabilities & Equity** | |
+| **Current Liabilities** | |
+|     Accounts Payable | [value] |
+|     Accounts Payable - Related Entities | [value] |
+|     Accounts Payable - Yaraghi LLC | [value] |
+|     Accrued Expenses | [value] |
+|     Accrued Interest Payable | [value] |
+|     Accrued Inventory Purchase | [value] |
+|     Accrued P/R | [value] |
+|     Customer Deposits (Intl) | [value] |
+|     Due to Alexander | [value] |
+|     Due to Amanda | [value] |
+|     Due to Andrew Sasan | [value] |
+|     Due to Ashley Parvin | [value] |
+|     Due to Brandon Chase | [value] |
+|     Due to Darioush | [value] |
+|     Due to Jacqueline | [value] |
+|     Due to Jason M. | [value] |
+|     Due to Katayoun | [value] |
+|     Due to Kavon Christian | [value] |
+|     Due to Kianoush/Jonathan | [value] |
+|     Due to Kids (Loans) | [value] |
+|     Due to Koorosh | [value] |
+|     Due to Ryan | [value] |
+|     Due to Tiffany | [value] |
+|     Federal Taxes Withholding Payable | [value] |
+|     L/P Ahmad | [value] |
+|     L/P Arash | [value] |
+|     L/P Cyrus | [value] |
+|     L/P Majid | [value] |
+|     L/P Moshen | [value] |
+|     Loans Payable-Members | [value] |
+|     Management Fees Payable | [value] |
+|     Note Payable - Yaraghi LLC | [value] |
+|     Note Payable ST - SCS Hong Kong | [value] |
+|     NYS Transit Payable | [value] |
+|     Operating Lease Liability - ST | [value] |
+|     Payable Clearing | [value] |
+|     Refund Liability | [value] |
+|     Royalty Liability - ST | [value] |
+|     Sales Tax Payable | [value] |
+|     Subscription Payable | [value] |
+| **Current Liabilities Total** | [value] |
+| | |
+| **Non Current Liabilities** | |
+|     Distributions Payable | [value] |
+|     Loan | [value] |
+|     Loan-Ahmad | [value] |
+|     Operating Lease Liability - LT | [value] |
+|     Royalty Liability - LT | [value] |
+| **Non Current Liabilities Total** | [value] |
+| | |
+| **Equity** | |
+|     Accum Adjustments Account | [value] |
+|     Capital Stock | [value] |
+|     Members Equity | [value] |
+|     Paid In Capital | [value] |
+| **Equity Total** | [value] |
+| | |
+| **Retained Earnings** | |
+|     Retained Earnings | [value] |
+|     Unrealized Gain/Loss on Investment | [value] |
+| **Retained Earnings Total** | [value] |
+| | |
+| **Contribution** | |
+|     Contribution (Y.F. Trust) | [value] |
+|     Contribution (Y.F. Trust) - Alexander | [value] |
+|     Contribution (Y.F. Trust) - Amanda | [value] |
+|     Contribution (Y.F. Trust) - Andrew | [value] |
+|     Contribution (Y.F. Trust) - Ashley | [value] |
+|     Contribution (Y.F. Trust) - Brandon | [value] |
+|     Contribution (Y.F. Trust) - Darioush | [value] |
+|     Contribution (Y.F. Trust) - Jacqueline | [value] |
+|     Contribution (Y.F. Trust) - Jason | [value] |
+|     Contribution (Y.F. Trust) - Jonathan | [value] |
+|     Contribution (Y.F. Trust) - Katayoun | [value] |
+|     Contribution (Y.F. Trust) - Kavon | [value] |
+|     Contribution (Y.F. Trust) - Koorosh | [value] |
+|     Contribution (Y.F. Trust) - Ryan | [value] |
+|     Contribution (Y.F. Trust) - Tiffany | [value] |
+|     Contributions | [value] |
+|     Contributions - Ahmad | [value] |
+|     Contributions - Arash | [value] |
+|     Contributions - Cyrus | [value] |
+|     Contributions - Majid | [value] |
+|     Contributions - Mohsen | [value] |
+|     Contributions-Ahmad | [value] |
+|     Contributions-Arash | [value] |
+|     Contributions-Cyrus | [value] |
+|     Contributions-Majid | [value] |
+|     Contributions-Mohsen | [value] |
+| **Contribution Total** | [value] |
+| | |
+| **Distributions** | |
+|     Distributions | [value] |
+|     Distributions-Ahmad | [value] |
+|     Distributions-Ahmad Trust | [value] |
+|     Distributions-Alexander | [value] |
+|     Distributions-Alexander Trust | [value] |
+|     Distributions-Amanda | [value] |
+|     Distributions-Amanda Trust | [value] |
+|     Distributions-Andrew | [value] |
+|     Distributions-Andrew Trust | [value] |
+|     Distributions-Arash | [value] |
+|     Distributions-Arash Trust | [value] |
+|     Distributions-Ashley | [value] |
+|     Distributions-Ashley Trust | [value] |
+|     Distributions-Brandon | [value] |
+|     Distributions-Brandon Trust | [value] |
+|     Distributions-Cyrus | [value] |
+|     Distributions-Cyrus Trust | [value] |
+|     Distributions-Darioush | [value] |
+|     Distributions-Darioush Trust | [value] |
+|     Distributions-DO NOT USE | [value] |
+|     Distributions-Jacqueline | [value] |
+|     Distributions-Jacqueline Trust | [value] |
+|     Distributions-Jason | [value] |
+|     Distributions-Jason Trust | [value] |
+|     Distributions-Jonathan | [value] |
+|     Distributions-Jonathan Trust | [value] |
+|     Distributions-Katayoun | [value] |
+|     Distributions-Katayoun Trust | [value] |
+|     Distributions-Kavon | [value] |
+|     Distributions-Kavon Trust | [value] |
+|     Distributions-Koorosh | [value] |
+|     Distributions-Koorosh Trust | [value] |
+|     Distributions-Majid | [value] |
+|     Distributions-Majid Trust | [value] |
+|     Distributions-Mohsen | [value] |
+|     Distributions-Mohsen Trust | [value] |
+|     Distributions-Ryan | [value] |
+|     Distributions-Ryan Trust | [value] |
+|     Distributions-Tiffany | [value] |
+|     Distributions-Tiffany Trust | [value] |
+|     Distributions-Trust | [value] |
+| **Distributions Total** | [value] |
+| | |
+| **Profit & Loss** | |
+|     Profit & Loss | [value] |
+| **Profit & Loss Total** | [value] |
+| | |
+| **Total Liabilities & Equity** | [value] |
 
 *Balance Sheet Detailed — Multi-Month (2+ months requested)*
 (Same account-level structure but one amount column per month, side-by-side. Use SQL Example 9.)
@@ -1615,132 +2082,323 @@ Total Liabilities & Equity                      [value]
 |:---|---:|---:|
 | **Assets** | | |
 | **Current Assets** | | |
-|     Account Receivable | [value] | [value] |
-|     Accrued Insurance Expense | [value] | [value] |
-|     Accrued Lease-Toshiba Printer | [value] | [value] |
-|     Accrued Not Due Interest Payab | [value] | [value] |
-|     Advances - Deposits | [value] | [value] |
-|     Amexp Cc | [value] | [value] |
-|     Cash Account | [value] | [value] |
-|     Cash In Hand | [value] | [value] |
-|     Credit Card Ar-Receipts | [value] | [value] |
-|     First Bank Ppp Checking A/C | [value] | [value] |
-|     First Bank Tn | [value] | [value] |
-|     Inter Bank Transfer | [value] | [value] |
-|     Inventory Adj. | [value] | [value] |
-|     Inventory Asset | [value] | [value] |
-|     Inventory Change | [value] | [value] |
-|     Inventory Control | [value] | [value] |
-|     Inventory On Consignment | [value] | [value] |
-|     Inventory Transfer | [value] | [value] |
-|     Inventory-Prepaid Import Costs | [value] | [value] |
-|     Loan & Adv. Employees | [value] | [value] |
+|     1173279 B.C. LTD. (SAFAVIEH HO | [value] | [value] |
+|     68 Campbell St, Inc | [value] | [value] |
+|     Accounts Receivable | [value] | [value] |
+|     Accounts Receivable - Pacific | [value] | [value] |
+|     Accounts Receivable - Related Entities | [value] | [value] |
+|     Accounts Receivable (NAV) | [value] | [value] |
+|     Accounts Receivable (Top-Line) | [value] | [value] |
+|     Accrued Customs & Duties | [value] | [value] |
+|     Accrued Freight-In | [value] | [value] |
+|     Allowance for Bad Debt | [value] | [value] |
+|     AR - Before Acquisition | [value] | [value] |
+|     AUGUSTA HOME CC PAYMENT | [value] | [value] |
+|     Cash-Citibank | [value] | [value] |
+|     Cash-Citibank CD | [value] | [value] |
+|     Cash-Citibank Payroll | [value] | [value] |
+|     Cash-Peoples Bank | [value] | [value] |
+|     Cash-Peoples Bank CD | [value] | [value] |
+|     Cash-Santander Bank | [value] | [value] |
+|     Cash-Signature Bank | [value] | [value] |
+|     Cash-TD Bank | [value] | [value] |
+|     Citibank | [value] | [value] |
+|     Citibank - Payroll | [value] | [value] |
+|     Citibank #2 (7652) | [value] | [value] |
+|     DECOR MARCHE LLC CITIBANK | [value] | [value] |
+|     Employee Loans Receivable | [value] | [value] |
+|     Exchange | [value] | [value] |
+|     Inv Control - Cons to Cust | [value] | [value] |
+|     Inv Control - Cost Change | [value] | [value] |
+|     Inv Control - Cust Return | [value] | [value] |
+|     Inv Control - Inventory Adj | [value] | [value] |
+|     Inv Control - Physical Count | [value] | [value] |
+|     Inv Control - Purchase | [value] | [value] |
+|     Inv Control - Sale to Cust | [value] | [value] |
+|     Inv Control - Vendor Return | [value] | [value] |
+|     Inv Control - WHS Transfer | [value] | [value] |
+|     Inventory | [value] | [value] |
+|     Inventory Adjustment | [value] | [value] |
+|     Inventory Non Rug | [value] | [value] |
+|     Inventory Rug | [value] | [value] |
+|     inventory write-down | [value] | [value] |
+|     Investment Account - Cash | [value] | [value] |
+|     LUXE LIVING SHOP LLC CITIBANK | [value] | [value] |
+|     Management Fees Receivable | [value] | [value] |
+|     Other Receivable | [value] | [value] |
 |     Petty Cash | [value] | [value] |
 |     Prepaid Expenses | [value] | [value] |
-|     Raw Material | [value] | [value] |
-|     Refund To Customer | [value] | [value] |
-|     Regions | [value] | [value] |
-|     Reserve For Doubtful Debts | [value] | [value] |
-|     Tax Refundable | [value] | [value] |
-|     Trade-Am | [value] | [value] |
-|     Truist | [value] | [value] |
-|     Vendors - Advances | [value] | [value] |
-|     Warehouse Sale Credit Card | [value] | [value] |
-|     Work In Progress | [value] | [value] |
-| **Total Current Assets** | [computed] | [computed] |
+|     Prepaid Insurance | [value] | [value] |
+|     Prepaid Inventory | [value] | [value] |
+|     Prepaid NJ Corp Tax | [value] | [value] |
+|     RETAIL DECOR MARCHE CITIBANK | [value] | [value] |
+|     SAFAVIEH INC. - CREDIT CARD | [value] | [value] |
+|     Safavieh Int Visa | [value] | [value] |
+|     SAFAVIEH INT'L - CREDIT CARD | [value] | [value] |
+|     Safavieh LTD (CAD) | [value] | [value] |
+|     Safavieh LTD USD | [value] | [value] |
+|     Safavieh Toronto | [value] | [value] |
+|     SEI (AUGUSTA HOME) | [value] | [value] |
+|     Shipment Clearing | [value] | [value] |
+|     Transfers | [value] | [value] |
+|     WHS CC PAYMENTS | [value] | [value] |
+|     YARAGHI LLC - AMEX CARD | [value] | [value] |
+|     YARAGHI LLC - CREDIT CARD | [value] | [value] |
+|     YARAGHI LLC - PEOPLE'S BANK | [value] | [value] |
+|     YARAGHI LLC - PEOPLE'S BANK CHECKING | [value] | [value] |
+|     Yaraghi LLC - Santander Bank | [value] | [value] |
+|     Yaraghi LLC - Signature Bank | [value] | [value] |
+|     YARAGHI LLC - TD BANK | [value] | [value] |
+| **Current Assets Total** | [computed] | [computed] |
 | | | |
 | **Non Current Assets** | | |
-|     Building | [value] | [value] |
-|     Cell Phone | [value] | [value] |
-|     Customer Claim Disputes | [value] | [value] |
-|     Customer List | [value] | [value] |
-|     Deffered Exp.(Sample)Rug | [value] | [value] |
-|     Deposits | [value] | [value] |
-|     Design & Art Work (Atlanta) | [value] | [value] |
-|     Electronics | [value] | [value] |
-|     Free To Use | [value] | [value] |
-|     Furniture | [value] | [value] |
-|     Intangible Assets | [value] | [value] |
-|     Land | [value] | [value] |
+|     102 Norwest Court | [value] | [value] |
+|     1073 Northern Blvd | [value] | [value] |
+|     110 East Rt 4 | [value] | [value] |
+|     110 Route 110 | [value] | [value] |
+|     111 Cokesbury LLC | [value] | [value] |
+|     1170 Northern Blvd | [value] | [value] |
+|     1200 Route 523 | [value] | [value] |
+|     125 Commerce Way | [value] | [value] |
+|     150 Knowlton Way | [value] | [value] |
+|     150 Thompson St LLC | [value] | [value] |
+|     18 School Street | [value] | [value] |
+|     1950 Benton Blvd. LLC | [value] | [value] |
+|     1991 Northampton Street | [value] | [value] |
+|     2 Channel Drive | [value] | [value] |
+|     200 Atlantic Street LLC | [value] | [value] |
+|     210 Atlantic | [value] | [value] |
+|     2410 Northampton | [value] | [value] |
+|     252 Atlantic | [value] | [value] |
+|     2695 Plainfield Road LLC | [value] | [value] |
+|     28 Washington St. | [value] | [value] |
+|     3200 Baytown LLC | [value] | [value] |
+|     380 Bloomsbury | [value] | [value] |
+|     393 Oyster Bay Road | [value] | [value] |
+|     442 Mt Pleasant | [value] | [value] |
+|     45 Hartsdale | [value] | [value] |
+|     455 Jimmy DeLoach | [value] | [value] |
+|     605 Jimmy Deloach | [value] | [value] |
+|     64 Nardozzi | [value] | [value] |
+|     7580 Cherry Avenue | [value] | [value] |
+|     76 Highlands Blvd | [value] | [value] |
+|     7630 Cherry Avenue | [value] | [value] |
+|     Accrued Interest Receivable | [value] | [value] |
+|     Accum Deprec-Equipment | [value] | [value] |
+|     Accum Deprec-LHI | [value] | [value] |
+|     Accum Deprec-Office Furniture & Fixtures | [value] | [value] |
+|     Accum Deprec-Transportation | [value] | [value] |
+|     Allpoints LLC | [value] | [value] |
+|     Atlantic (CT3) | [value] | [value] |
+|     Atlantic Realty | [value] | [value] |
+|     Augusta Home LLC | [value] | [value] |
+|     Augusta Home LLC - SEI | [value] | [value] |
+|     Brand ROU Asset | [value] | [value] |
+|     Broadway LLC | [value] | [value] |
+|     Contribution Receivable | [value] | [value] |
+|     Danbury | [value] | [value] |
+|     Decor Marche | [value] | [value] |
+|     Decor Market | [value] | [value] |
+|     Distributions Receivable | [value] | [value] |
+|     Do not use | [value] | [value] |
+|     Due From Saf Home Furn Ltd. | [value] | [value] |
+|     Due to Hong Kong | [value] | [value] |
+|     Due to/from India | [value] | [value] |
+|     Due to/from Jonathan Y Designs | [value] | [value] |
+|     Due to/from Safavieh Holding | [value] | [value] |
+|     Due to/from Yaraghi Studios LLC | [value] | [value] |
+|     Equipment | [value] | [value] |
+|     Equipment-Do not use | [value] | [value] |
+|     Farmingdale (LI) | [value] | [value] |
+|     Glen Cove (LI-other3) | [value] | [value] |
+|     Harbor Park | [value] | [value] |
+|     Hartsdale (NY) | [value] | [value] |
+|     Home Trends | [value] | [value] |
+|     Home Trends LLC | [value] | [value] |
+|     Intercompanies | [value] | [value] |
+|     Investments | [value] | [value] |
+|     Isfahan | [value] | [value] |
 |     Leasehold Improvements | [value] | [value] |
-|     Loan Fee | [value] | [value] |
-|     Rack | [value] | [value] |
-|     Sample Rugs | [value] | [value] |
-|     Samples At Warehouse | [value] | [value] |
-|     Scanner | [value] | [value] |
-|     Sienna-2015 | [value] | [value] |
-|     Undeposited Funds | [value] | [value] |
-|     Vehicles | [value] | [value] |
-|     Warehouse Equipment-Racks | [value] | [value] |
-|     Warehouse Vehicles | [value] | [value] |
-|     Webspars Software System | [value] | [value] |
-|     Accum. Amortization-Cust List | [value] | [value] |
-|     Accum. Depreciation | [value] | [value] |
-|     Accumulated Amortization | [value] | [value] |
-| **Total Non Current Assets** | [computed] | [computed] |
+|     Lindsay Market | [value] | [value] |
+|     Livingston | [value] | [value] |
+|     Loan - Safavieh Limited | [value] | [value] |
+|     Loan-David Shalbaf | [value] | [value] |
+|     LOAN-FARZAD RAHMANAN | [value] | [value] |
+|     Loan-Safavieh Turkey | [value] | [value] |
+|     LT Note Receivable Yaraghi Realty | [value] | [value] |
+|     Luxe Living | [value] | [value] |
+|     Madison | [value] | [value] |
+|     New Rochelle LLC | [value] | [value] |
+|     Note Receivable - Augusta Home | [value] | [value] |
+|     Notes Receivable LT | [value] | [value] |
+|     Notes Receivable ST | [value] | [value] |
+|     Office Furniture & Fixtures | [value] | [value] |
+|     Other deposits | [value] | [value] |
+|     Pacific | [value] | [value] |
+|     Paramus | [value] | [value] |
+|     Rogers Road LLC | [value] | [value] |
+|     ROU Asset - Operating Leases | [value] | [value] |
+|     Safavieh 59 (Soho) | [value] | [value] |
+|     Safavieh Group | [value] | [value] |
+|     Safavieh Home | [value] | [value] |
+|     Safavieh INC | [value] | [value] |
+|     Safavieh International | [value] | [value] |
+|     Safavieh Turkey | [value] | [value] |
+|     Savannah Intl Trade | [value] | [value] |
+|     Security Deposits | [value] | [value] |
+|     Stamford Town Center LLC | [value] | [value] |
+|     Subscription Receivable | [value] | [value] |
+|     Tradeport East LLC | [value] | [value] |
+|     Tradeport West LLC | [value] | [value] |
+|     Transportation Equipment | [value] | [value] |
+|     Whitestown 500 South LLC | [value] | [value] |
+|     Yaraghi Holdings LLC | [value] | [value] |
+|     Yaraghi LLC | [value] | [value] |
+|     Yaraghi Realty | [value] | [value] |
+| **Non Current Assets Total** | [computed] | [computed] |
 | | | |
 | **Total Assets** | [computed] | [computed] |
 | | | |
 | **Liabilities & Equity** | | |
 | **Current Liabilities** | | |
-|     401K Contribution Payable | [value] | [value] |
-|     ACCOUNT PAYABLE-AMEX | [value] | [value] |
-|     Account Payable-Cash | [value] | [value] |
-|     Account Payable-Expenses | [value] | [value] |
-|     Account Payable-Rent | [value] | [value] |
-|     Account Payable-Vendor | [value] | [value] |
-|     ACCOUNT PAYABLE-VISA | [value] | [value] |
-|     Accrued Insurance Expense | [value] | [value] |
-|     Accrued Lease-Toshiba Printer | [value] | [value] |
-|     Accured Expenses | [value] | [value] |
-|     Advance From Customer | [value] | [value] |
-|     Allowance For Doubtful Debts | [value] | [value] |
-|     Ap- Other | [value] | [value] |
-|     BB&T | [value] | [value] |
-|     Bills Payable | [value] | [value] |
-|     Drip Capital Control A/C | [value] | [value] |
-|     Employee Benefits Plan Payable | [value] | [value] |
-|     Firstbank Loan A/C 2570107680 | [value] | [value] |
-|     Free Bank A/C To Use | [value] | [value] |
-|     Free To Use | [value] | [value] |
-|     Fsg Bank-Credit Line | [value] | [value] |
-|     Futa Payable | [value] | [value] |
-|     Garnishment-Child Support | [value] | [value] |
-|     Intrest Accrued | [value] | [value] |
+|     Accounts Payable | [value] | [value] |
+|     Accounts Payable - Related Entities | [value] | [value] |
+|     Accounts Payable - Yaraghi LLC | [value] | [value] |
+|     Accrued Expenses | [value] | [value] |
+|     Accrued Interest Payable | [value] | [value] |
+|     Accrued Inventory Purchase | [value] | [value] |
+|     Accrued P/R | [value] | [value] |
+|     Customer Deposits (Intl) | [value] | [value] |
+|     Due to Alexander | [value] | [value] |
+|     Due to Amanda | [value] | [value] |
+|     Due to Andrew Sasan | [value] | [value] |
+|     Due to Ashley Parvin | [value] | [value] |
+|     Due to Brandon Chase | [value] | [value] |
+|     Due to Darioush | [value] | [value] |
+|     Due to Jacqueline | [value] | [value] |
+|     Due to Jason M. | [value] | [value] |
+|     Due to Katayoun | [value] | [value] |
+|     Due to Kavon Christian | [value] | [value] |
+|     Due to Kianoush/Jonathan | [value] | [value] |
+|     Due to Kids (Loans) | [value] | [value] |
+|     Due to Koorosh | [value] | [value] |
+|     Due to Ryan | [value] | [value] |
+|     Due to Tiffany | [value] | [value] |
+|     Federal Taxes Withholding Payable | [value] | [value] |
+|     L/P Ahmad | [value] | [value] |
+|     L/P Arash | [value] | [value] |
+|     L/P Cyrus | [value] | [value] |
+|     L/P Majid | [value] | [value] |
+|     L/P Moshen | [value] | [value] |
+|     Loans Payable-Members | [value] | [value] |
+|     Management Fees Payable | [value] | [value] |
+|     Note Payable - Yaraghi LLC | [value] | [value] |
+|     Note Payable ST - SCS Hong Kong | [value] | [value] |
+|     NYS Transit Payable | [value] | [value] |
+|     Operating Lease Liability - ST | [value] | [value] |
+|     Payable Clearing | [value] | [value] |
+|     Refund Liability | [value] | [value] |
+|     Royalty Liability - ST | [value] | [value] |
+|     Sales Tax Payable | [value] | [value] |
+|     Subscription Payable | [value] | [value] |
+| **Current Liabilities Total** | [computed] | [computed] |
+| | | |
+| **Non Current Liabilities** | | |
+|     Distributions Payable | [value] | [value] |
 |     Loan | [value] | [value] |
-|     Loan On Equity | [value] | [value] |
-|     Not To Use Accrued Lease | [value] | [value] |
-|     Note Payable | [value] | [value] |
-|     Payroll | [value] | [value] |
-|     Payroll Tax | [value] | [value] |
-|     Ppp 2Nd Draw | [value] | [value] |
-|     Ppp Loan - First Bank | [value] | [value] |
-|     Ransomware Recovery Claim | [value] | [value] |
-|     Regions Bank - Line Of Credit | [value] | [value] |
-|     Sales Tax | [value] | [value] |
-|     SBA-EIDL Loan | [value] | [value] |
-|     State W/H Payable | [value] | [value] |
-|     SUTA PAYABLE | [value] | [value] |
-|     Unsecured Loan | [value] | [value] |
-| **Total Current Liabilities** | [computed] | [computed] |
+|     Loan-Ahmad | [value] | [value] |
+|     Operating Lease Liability - LT | [value] | [value] |
+|     Royalty Liability - LT | [value] | [value] |
+| **Non Current Liabilities Total** | [computed] | [computed] |
 | | | |
-| **Long Term Liabilities** | | |
-|     Clark Order Picker 042117 Loan | [value] | [value] |
-|     LINE OF CREDIT | [value] | [value] |
-|     LONG TERM LIABILITIES | [value] | [value] |
-|     NOTE PAYABLE | [value] | [value] |
-|     Obligation under Capital Lease | [value] | [value] |
-|     STOCKHOLDER LOAN | [value] | [value] |
-| **Total Long Term Liabilities** | [computed] | [computed] |
+| **Equity** | | |
+|     Accum Adjustments Account | [value] | [value] |
+|     Capital Stock | [value] | [value] |
+|     Members Equity | [value] | [value] |
+|     Paid In Capital | [value] | [value] |
+| **Equity Total** | [computed] | [computed] |
 | | | |
-| **Stockholder Equity** | | |
-|     COMMON STOCK | [value] | [value] |
-|     DISTRIBUTIONS | [value] | [value] |
-|     OWNERS | [value] | [value] |
-|     Profit/(Loss) | [value] | [value] |
-|     REALITY | [value] | [value] |
-|     RETAINED EARNING | [value] | [value] |
-| **Total Stockholder Equity** | [computed] | [computed] |
+| **Retained Earnings** | | |
+|     Retained Earnings | [value] | [value] |
+|     Unrealized Gain/Loss on Investment | [value] | [value] |
+| **Retained Earnings Total** | [computed] | [computed] |
+| | | |
+| **Contribution** | | |
+|     Contribution (Y.F. Trust) | [value] | [value] |
+|     Contribution (Y.F. Trust) - Alexander | [value] | [value] |
+|     Contribution (Y.F. Trust) - Amanda | [value] | [value] |
+|     Contribution (Y.F. Trust) - Andrew | [value] | [value] |
+|     Contribution (Y.F. Trust) - Ashley | [value] | [value] |
+|     Contribution (Y.F. Trust) - Brandon | [value] | [value] |
+|     Contribution (Y.F. Trust) - Darioush | [value] | [value] |
+|     Contribution (Y.F. Trust) - Jacqueline | [value] | [value] |
+|     Contribution (Y.F. Trust) - Jason | [value] | [value] |
+|     Contribution (Y.F. Trust) - Jonathan | [value] | [value] |
+|     Contribution (Y.F. Trust) - Katayoun | [value] | [value] |
+|     Contribution (Y.F. Trust) - Kavon | [value] | [value] |
+|     Contribution (Y.F. Trust) - Koorosh | [value] | [value] |
+|     Contribution (Y.F. Trust) - Ryan | [value] | [value] |
+|     Contribution (Y.F. Trust) - Tiffany | [value] | [value] |
+|     Contributions | [value] | [value] |
+|     Contributions - Ahmad | [value] | [value] |
+|     Contributions - Arash | [value] | [value] |
+|     Contributions - Cyrus | [value] | [value] |
+|     Contributions - Majid | [value] | [value] |
+|     Contributions - Mohsen | [value] | [value] |
+|     Contributions-Ahmad | [value] | [value] |
+|     Contributions-Arash | [value] | [value] |
+|     Contributions-Cyrus | [value] | [value] |
+|     Contributions-Majid | [value] | [value] |
+|     Contributions-Mohsen | [value] | [value] |
+| **Contribution Total** | [computed] | [computed] |
+| | | |
+| **Distributions** | | |
+|     Distributions | [value] | [value] |
+|     Distributions-Ahmad | [value] | [value] |
+|     Distributions-Ahmad Trust | [value] | [value] |
+|     Distributions-Alexander | [value] | [value] |
+|     Distributions-Alexander Trust | [value] | [value] |
+|     Distributions-Amanda | [value] | [value] |
+|     Distributions-Amanda Trust | [value] | [value] |
+|     Distributions-Andrew | [value] | [value] |
+|     Distributions-Andrew Trust | [value] | [value] |
+|     Distributions-Arash | [value] | [value] |
+|     Distributions-Arash Trust | [value] | [value] |
+|     Distributions-Ashley | [value] | [value] |
+|     Distributions-Ashley Trust | [value] | [value] |
+|     Distributions-Brandon | [value] | [value] |
+|     Distributions-Brandon Trust | [value] | [value] |
+|     Distributions-Cyrus | [value] | [value] |
+|     Distributions-Cyrus Trust | [value] | [value] |
+|     Distributions-Darioush | [value] | [value] |
+|     Distributions-Darioush Trust | [value] | [value] |
+|     Distributions-DO NOT USE | [value] | [value] |
+|     Distributions-Jacqueline | [value] | [value] |
+|     Distributions-Jacqueline Trust | [value] | [value] |
+|     Distributions-Jason | [value] | [value] |
+|     Distributions-Jason Trust | [value] | [value] |
+|     Distributions-Jonathan | [value] | [value] |
+|     Distributions-Jonathan Trust | [value] | [value] |
+|     Distributions-Katayoun | [value] | [value] |
+|     Distributions-Katayoun Trust | [value] | [value] |
+|     Distributions-Kavon | [value] | [value] |
+|     Distributions-Kavon Trust | [value] | [value] |
+|     Distributions-Koorosh | [value] | [value] |
+|     Distributions-Koorosh Trust | [value] | [value] |
+|     Distributions-Majid | [value] | [value] |
+|     Distributions-Majid Trust | [value] | [value] |
+|     Distributions-Mohsen | [value] | [value] |
+|     Distributions-Mohsen Trust | [value] | [value] |
+|     Distributions-Ryan | [value] | [value] |
+|     Distributions-Ryan Trust | [value] | [value] |
+|     Distributions-Tiffany | [value] | [value] |
+|     Distributions-Tiffany Trust | [value] | [value] |
+|     Distributions-Trust | [value] | [value] |
+| **Distributions Total** | [computed] | [computed] |
+| | | |
+| **Profit & Loss** | | |
+|     Profit & Loss | [value] | [value] |
+| **Profit & Loss Total** | [computed] | [computed] |
 | | | |
 | **Total Liabilities & Equity** | [computed] | [computed] |
 
@@ -1750,13 +2408,14 @@ P&L Statement Templates:-
 ------------------------
 
 *P&L Statement / Income Statement Main Grouped*
-(SQL returns [Group, Amount]. Bot computes Gross Profit, Total Operating Cost, Operating Profit, Net Profit.)
+(SQL returns [Group, Amount]. Bot computes Gross Profit, Operating Profit, Net Profit.)
 
 CRITICAL LABEL RULES — NEVER rename or substitute any group name from the SQL result:
-  - "Cost Of Goods Sold" → NEVER write as "Cost Of Sales", "COGS", or any other alias
-  - "Finance Charges"   → NEVER omit or merge into another line
-  - "Other Income/Expense" → NEVER write as "Other Income", "Other Income/Expenses", or any variation
-  - "Taxes"             → NEVER write as "Income Taxes", "Tax Expense", or any other alias
+  - "Cost Of Goods Sold"   → NEVER write as "Cost Of Sales", "COGS", or any other alias
+  - "Operating Expenses"   → NEVER split into sub-lines or rename; show as a single bold line
+  - "Interest Expenses"    → NEVER write as "Finance Charges", "Interest Expense", or any other alias
+  - "Other Income/Expenses"→ NEVER write as "Other Income", "Other Income/Expense", or any variation
+  - "Taxes"                → NEVER write as "Income Taxes", "Tax Expense", or any other alias
   - Use the EXACT string returned by SQL for every row. If a group has no data (0 or absent), still show the row as 0.00.
 
 | Description | Amount ($) |
@@ -1765,16 +2424,13 @@ CRITICAL LABEL RULES — NEVER rename or substitute any group name from the SQL 
 | **Cost Of Goods Sold** | [value] |
 | **Gross Profit/(Loss)** | [Sales minus Cost Of Goods Sold] |
 | | |
-| **Operating Cost** | |
-|     General & Administrative | [value] |
-|     Selling Expenses | [value] |
-| **Total Operating Cost** | [G&A plus Selling Expenses] |
-| **Operating Profit/(Loss)** | [Gross Profit minus Total Operating Cost] |
+| **Operating Expenses** | [value] |
+| **Operating Profit/(Loss)** | [Gross Profit minus Operating Expenses] |
 | | |
-| **Finance Charges** | [value] |
-| **Other Income/Expense** | [value] |
+| **Other Income/Expenses** | [value] |
+| **Interest Expenses** | [value] |
 | **Taxes** | [value] |
-| **Net Profit/(Loss)** | [Operating Profit minus Finance Charges plus Other Income/Expense minus Taxes] |
+| **Net Profit/(Loss)** | [Operating Profit plus Other Income/Expenses minus Interest Expenses minus Taxes] |
 
 *P&L Main Grouped — Multi-Month (2+ months requested)*
 (Same structure but one amount column per month, side-by-side. Use SQL Example 10.)
@@ -1785,14 +2441,11 @@ CRITICAL LABEL RULES — NEVER rename or substitute any group name from the SQL 
 | **Cost Of Goods Sold** | [value] | [value] |
 | **Gross Profit/(Loss)** | [computed] | [computed] |
 | | | |
-| **Operating Cost** | | |
-|     General & Administrative | [value] | [value] |
-|     Selling Expenses | [value] | [value] |
-| **Total Operating Cost** | [computed] | [computed] |
+| **Operating Expenses** | [value] | [value] |
 | **Operating Profit/(Loss)** | [computed] | [computed] |
 | | | |
-| **Finance Charges** | [value] | [value] |
-| **Other Income/Expense** | [value] | [value] |
+| **Other Income/Expenses** | [value] | [value] |
+| **Interest Expenses** | [value] | [value] |
 | **Taxes** | [value] | [value] |
 | **Net Profit/(Loss)** | [computed] | [computed] |
 
@@ -1804,79 +2457,78 @@ CRITICAL LABEL RULES — NEVER rename or substitute any group name from the SQL 
 |:---|---:|
 | **Sales** | |
 |     Gross Sales | [value] |
-|     Deduction Reversal | [value] |
-|     Discount | [value] |
-|     CHARGE BACK | [value] |
-|     Price Differences | [value] |
+|     Intercompany Sales/Purchases | [value] |
 |     Returns | [value] |
-|     Services | [value] |
-|     SHIPPING & HANDLING | [value] |
-|     Short Shipments | [value] |
-| **Total Sales** | [sum of Sales sub-groups] |
-| | |
-| **Cost Of Goods Sold** | |
-|     Cost of Goods Sold | [value] |
-|     Fees | [value] |
-|     Freight | [value] |
-|     Import Clearing And Forwarding | [value] |
-|     INSURANCE | [value] |
-|     Inventory Adjustment Account | [value] |
-|     Others | [value] |
-|     Packing Expense | [value] |
-|     Rent | [value] |
-|     RUG CLEANING | [value] |
-|     RUG Serging Fees | [value] |
-|     Shipping Expense | [value] |
-|     Short Shipment | [value] |
-| **Total Cost Of Goods Sold** | [sum of Cost Of Goods Sold sub-groups] |
-| | |
-| **Gross Profit/(Loss)** | [Total Sales minus Total Cost Of Goods Sold] |
-| | |
-| **Operating Cost** | |
-| **General & Administrative** | |
-|     Automobile Expenses | [value] |
+|     Discount | [value] |
+|     Advertising & Promotion | [value] |
 |     Bad Debt | [value] |
-|     Cash Discounts | [value] |
-|     Charge Back | [value] |
-|     Commercial Insurances | [value] |
+|     Cash Receipt Transfer | [value] |
 |     Commission | [value] |
-|     Communication Expenses | [value] |
-|     Dues And Subscriptions | [value] |
+|     Defective | [value] |
+| **Sales Total** | [sum of Sales sub-groups] |
+| | |
+| **Cost of Goods Sold** | |
+|     Cost of Goods Sold | [value] |
+|     Customs and Duties | [value] |
+|     Freight-In | [value] |
+|     Intercompany Sales/Purchases | [value] |
 |     Inventory Adjustment | [value] |
-|     Office Expenses | [value] |
-| **Total General & Administrative** | [sum of G&A sub-groups] |
+|     Inventory Valuation Adjustment | [value] |
+|     Management Fee Expense/Income | [value] |
+|     Wash & Repairs | [value] |
+| **Cost of Goods Sold Total** | [sum of Cost of Goods Sold sub-groups] |
 | | |
-| **Selling Expenses** | |
-|     Advertising Expenses | [value] |
-|     Amortization | [value] |
-|     Depreciation Expense | [value] |
-|     Loss On Sale Of Assets | [value] |
-|     Marketing Expenses | [value] |
-|     Payroll | [value] |
-|     Provisional Expenses | [value] |
-|     Rent | [value] |
-|     Software Monthly Fee | [value] |
-|     Traveling Expenses | [value] |
-| **Total Selling Expenses** | [sum of Selling Expenses sub-groups] |
+| **Gross Profit/(Loss)** | [Sales Total minus Cost of Goods Sold Total] |
 | | |
-| **Total Operating Cost** | [Total G&A plus Total Selling Expenses] |
-| **Operating Profit/(Loss)** | [Gross Profit minus Total Operating Cost] |
+| **Operating Expenses** | |
+|     401k - Retirement Expense | [value] |
+|     Advertising and Promotion Expenses | [value] |
+|     Bad Debt Expense | [value] |
+|     Bank Charges, License & Permits and Misc | [value] |
+|     Commissions Expense | [value] |
+|     Computer Expense | [value] |
+|     Credit Card Charges | [value] |
+|     Delivery Expenses | [value] |
+|     Depreciation and Amortization Expense | [value] |
+|     Entertainment & Meals Expense | [value] |
+|     Health Insurance | [value] |
+|     Income Tax and Filing Fees Expense | [value] |
+|     Insurance | [value] |
+|     Light Heat Power | [value] |
+|     Office Expense | [value] |
+|     Postage | [value] |
+|     Professional Fees | [value] |
+|     Rent Expense | [value] |
+|     Repairs and Maintenance Expense | [value] |
+|     Royalties | [value] |
+|     Salaries and Wages | [value] |
+|     Security Expense | [value] |
+|     Telephone Expense | [value] |
+|     Travel Expense | [value] |
+|     Warehouse Supplies and Expense | [value] |
+| **Operating Expenses Total** | [sum of Operating Expenses sub-groups] |
 | | |
-| **Finance Charges** | |
-|     Finance Charges | [value] |
-| **Total Finance Charges** | [sum of Finance Charges sub-groups] |
+| **Operating Profit/(Loss)** | [Gross Profit minus Operating Expenses Total] |
 | | |
-| **Other Income/Expense** | |
-|     Abnormal Income | [value] |
+| **Other Income/Expenses** | |
+|     Dividend Income | [value] |
+|     Gain/Loss on Investment | [value] |
 |     Interest Income | [value] |
-|     OTHER INCOME | [value] |
-| **Total Other Income/Expense** | [sum of Other Income/Expense sub-groups] |
+|     Management Fee Expense/Income | [value] |
+|     Other Income | [value] |
+|     Realized Gain/Loss on Investments | [value] |
+|     Unrealized Gains/Losses | [value] |
+| **Other Income/Expenses Total** | [sum of Other Income/Expenses sub-groups] |
+| | |
+| **Interest Expenses** | |
+|     Interest Expense | [value] |
+| **Interest Expenses Total** | [sum of Interest Expenses sub-groups] |
 | | |
 | **Taxes** | |
-|     Taxes | [value] |
-| **Total Taxes** | [sum of Taxes sub-groups] |
+|     Income Tax and Filing Fees Expense | [value] |
+| **Taxes Total** | [sum of Taxes sub-groups] |
 | | |
-| **Net Profit/(Loss)** | [Operating Profit minus Finance Charges plus Other Income/Expense minus Taxes] |
+| **Net Profit/(Loss)** | [Operating Profit plus Other Income/Expenses Total plus Interest Expenses Total plus Taxes Total] |
 
 *P&L Sub Grouped — Multi-Month (2+ months requested)*
 (Same structure but one amount column per month, side-by-side. Use SQL Example 11.)
@@ -1885,42 +2537,76 @@ CRITICAL LABEL RULES — NEVER rename or substitute any group name from the SQL 
 |:---|---:|---:|
 | **Sales** | | |
 |     Gross Sales | [value] | [value] |
-|     Discount | [value] | [value] |
+|     Intercompany Sales/Purchases | [value] | [value] |
 |     Returns | [value] | [value] |
-|     SHIPPING & HANDLING | [value] | [value] |
-|     (... other Sales sub-groups ...) | [value] | [value] |
-| **Total Sales** | [computed] | [computed] |
+|     Discount | [value] | [value] |
+|     Advertising & Promotion | [value] | [value] |
+|     Bad Debt | [value] | [value] |
+|     Cash Receipt Transfer | [value] | [value] |
+|     Commission | [value] | [value] |
+|     Defective | [value] | [value] |
+| **Sales Total** | [computed] | [computed] |
 | | | |
-| **Cost Of Goods Sold** | | |
+| **Cost of Goods Sold** | | |
 |     Cost of Goods Sold | [value] | [value] |
-|     (... other COGS sub-groups ...) | [value] | [value] |
-| **Total Cost Of Goods Sold** | [computed] | [computed] |
+|     Customs and Duties | [value] | [value] |
+|     Freight-In | [value] | [value] |
+|     Intercompany Sales/Purchases | [value] | [value] |
+|     Inventory Adjustment | [value] | [value] |
+|     Inventory Valuation Adjustment | [value] | [value] |
+|     Management Fee Expense/Income | [value] | [value] |
+|     Wash & Repairs | [value] | [value] |
+| **Cost of Goods Sold Total** | [computed] | [computed] |
 | | | |
 | **Gross Profit/(Loss)** | [computed] | [computed] |
 | | | |
-| **Operating Cost** | | |
-| **General & Administrative** | | |
-|     (... G&A sub-groups ...) | [value] | [value] |
-| **Total General & Administrative** | [computed] | [computed] |
+| **Operating Expenses** | | |
+|     401k - Retirement Expense | [value] | [value] |
+|     Advertising and Promotion Expenses | [value] | [value] |
+|     Bad Debt Expense | [value] | [value] |
+|     Bank Charges, License & Permits and Misc | [value] | [value] |
+|     Commissions Expense | [value] | [value] |
+|     Computer Expense | [value] | [value] |
+|     Credit Card Charges | [value] | [value] |
+|     Delivery Expenses | [value] | [value] |
+|     Depreciation and Amortization Expense | [value] | [value] |
+|     Entertainment & Meals Expense | [value] | [value] |
+|     Health Insurance | [value] | [value] |
+|     Income Tax and Filing Fees Expense | [value] | [value] |
+|     Insurance | [value] | [value] |
+|     Light Heat Power | [value] | [value] |
+|     Office Expense | [value] | [value] |
+|     Postage | [value] | [value] |
+|     Professional Fees | [value] | [value] |
+|     Rent Expense | [value] | [value] |
+|     Repairs and Maintenance Expense | [value] | [value] |
+|     Royalties | [value] | [value] |
+|     Salaries and Wages | [value] | [value] |
+|     Security Expense | [value] | [value] |
+|     Telephone Expense | [value] | [value] |
+|     Travel Expense | [value] | [value] |
+|     Warehouse Supplies and Expense | [value] | [value] |
+| **Operating Expenses Total** | [computed] | [computed] |
 | | | |
-| **Selling Expenses** | | |
-|     (... Selling sub-groups ...) | [value] | [value] |
-| **Total Selling Expenses** | [computed] | [computed] |
-| | | |
-| **Total Operating Cost** | [computed] | [computed] |
 | **Operating Profit/(Loss)** | [computed] | [computed] |
 | | | |
-| **Finance Charges** | | |
-|     Finance Charges | [value] | [value] |
-| **Total Finance Charges** | [computed] | [computed] |
+| **Other Income/Expenses** | | |
+|     Dividend Income | [value] | [value] |
+|     Gain/Loss on Investment | [value] | [value] |
+|     Interest Income | [value] | [value] |
+|     Management Fee Expense/Income | [value] | [value] |
+|     Other Income | [value] | [value] |
+|     Realized Gain/Loss on Investments | [value] | [value] |
+|     Unrealized Gains/Losses | [value] | [value] |
+| **Other Income/Expenses Total** | [computed] | [computed] |
 | | | |
-| **Other Income/Expense** | | |
-|     (... sub-groups ...) | [value] | [value] |
-| **Total Other Income/Expense** | [computed] | [computed] |
+| **Interest Expenses** | | |
+|     Interest Expense | [value] | [value] |
+| **Interest Expenses Total** | [computed] | [computed] |
 | | | |
 | **Taxes** | | |
-|     Taxes | [value] | [value] |
-| **Total Taxes** | [computed] | [computed] |
+|     Income Tax and Filing Fees Expense | [value] | [value] |
+| **Taxes Total** | [computed] | [computed] |
 | | | |
 | **Net Profit/(Loss)** | [computed] | [computed] |
 
@@ -1928,421 +2614,418 @@ CRITICAL LABEL RULES — NEVER rename or substitute any group name from the SQL 
 *P&L Statement / Income Statement Detailed*
 (SQL returns [Main Group, Sub Group, Account, Amount]. Bot computes section totals and Gross/Operating/Net Profit lines.)
 
-Sales                                                   Amount
-  Sales                                                 [value]
-  Sales Discount                                        [value]
-  Sales Discount - Albertsons                           [value]
-  Sales Discount - Amz Marketplace                      [value]
-  Sales Discount - Bison Commerce                       [value]
-  Sales Discount - Bob'S Discount Ecomm A/C             [value]
-  Sales Discount - Gordon Co                            [value]
-  Sales Discount - Home Depot Pr                        [value]
-  Sales Discount - Jc Penny                             [value]
-  Sales Discount - Lowe'S                               [value]
-  Sales Discount - Nebraska / Home Maker                [value]
-  Sales Discount - Pier 1                               [value]
-  Sales Discount - Rugs Direct                          [value]
-  Sales Discount - Wayfair Ca                           [value]
-  Sales Discount - Wm Marketplace                       [value]
-  Sales Discount - Zulily                               [value]
-  Sales Discount -Rug& Home Group                       [value]
-  Sales Discount -Weekends Only                         [value]
-  Sales Discount-Amazon                                 [value]
-  Sales Discount-Amazon Ca                              [value]
-  Sales Discount-Ashley Furnit                          [value]
-  Sales Discount-Bealls                                 [value]
-  Sales Discount-Bed Bath & Beyo                        [value]
-  Sales Discount-Cost Plus Wor                          [value]
-  Sales Discount-Faire                                  [value]
-  Sales Discount-Groupon                                [value]
-  Sales Discount-Hayneedle                              [value]
-  Sales Discount-Home Depot                             [value]
-  Sales Discount-Home Roots                             [value]
-  Sales Discount-Kirkland                               [value]
-  Sales Discount-Macys                                  [value]
-  Sales Discount-Menards                                [value]
-  Sales Discount-Mink & Sons                            [value]
-  Sales Discount-Old Time Potte                         [value]
-  Sales Discount-Others                                 [value]
-  Sales Discount-Overstock                              [value]
-  Sales Discount-Plush Rugs                             [value]
-  Sales Discount-Pottery Barn                           [value]
-  Sales Discount-Qvc                                    [value]
-  Sales Discount-Walmart                                [value]
-  Sales Discount-Wayfair                                [value]
-  Sales Returns (Not Received)                          [value]
-  Sales-Price Differences                               [value]
-  Sales-Short Shipment Deduction                        [value]
-  Serv-Drop Ship Fees                                   [value]
-  Services & Other Charges                              [value]
-  Shipping & Handling                                   [value]
-  Charge Back                                           [value]
-  Claim Receipts From Customers                         [value]
-  Claim Receipts-Home Depot                             [value]
-  Prior Sales Returns                                   [value]
-  Returns On Sales                                      [value]
-  Returns Shipping & Service Cha                        [value]
-Total Sales                                             [value]
+| Description | Amount ($) |
+|:---|---:|
+| **Sales** | |
+|     Sales | [value] |
+|     Sales Discount | [value] |
+|     Sales Discount - Albertsons | [value] |
+|     Sales Discount - Amz Marketplace | [value] |
+|     Sales Discount - Bison Commerce | [value] |
+|     Sales Discount - Bob'S Discount Ecomm A/C | [value] |
+|     Sales Discount - Gordon Co | [value] |
+|     Sales Discount - Home Depot Pr | [value] |
+|     Sales Discount - Jc Penny | [value] |
+|     Sales Discount - Lowe'S | [value] |
+|     Sales Discount - Nebraska / Home Maker | [value] |
+|     Sales Discount - Pier 1 | [value] |
+|     Sales Discount - Rugs Direct | [value] |
+|     Sales Discount - Wayfair Ca | [value] |
+|     Sales Discount - Wm Marketplace | [value] |
+|     Sales Discount - Zulily | [value] |
+|     Sales Discount -Rug& Home Group | [value] |
+|     Sales Discount -Weekends Only | [value] |
+|     Sales Discount-Amazon | [value] |
+|     Sales Discount-Amazon Ca | [value] |
+|     Sales Discount-Ashley Furnit | [value] |
+|     Sales Discount-Bealls | [value] |
+|     Sales Discount-Bed Bath & Beyo | [value] |
+|     Sales Discount-Cost Plus Wor | [value] |
+|     Sales Discount-Faire | [value] |
+|     Sales Discount-Groupon | [value] |
+|     Sales Discount-Hayneedle | [value] |
+|     Sales Discount-Home Depot | [value] |
+|     Sales Discount-Home Roots | [value] |
+|     Sales Discount-Kirkland | [value] |
+|     Sales Discount-Macys | [value] |
+|     Sales Discount-Menards | [value] |
+|     Sales Discount-Mink & Sons | [value] |
+|     Sales Discount-Old Time Potte | [value] |
+|     Sales Discount-Others | [value] |
+|     Sales Discount-Overstock | [value] |
+|     Sales Discount-Plush Rugs | [value] |
+|     Sales Discount-Pottery Barn | [value] |
+|     Sales Discount-Qvc | [value] |
+|     Sales Discount-Walmart | [value] |
+|     Sales Discount-Wayfair | [value] |
+|     Sales Returns (Not Received) | [value] |
+|     Sales-Price Differences | [value] |
+|     Sales-Short Shipment Deduction | [value] |
+|     Serv-Drop Ship Fees | [value] |
+|     Services & Other Charges | [value] |
+|     Shipping & Handling | [value] |
+|     Charge Back | [value] |
+|     Claim Receipts From Customers | [value] |
+|     Claim Receipts-Home Depot | [value] |
+|     Prior Sales Returns | [value] |
+|     Returns On Sales | [value] |
+|     Returns Shipping & Service Cha | [value] |
+| **Total Sales** | [computed] |
+| | |
+| **Cost Of Goods Sold** | |
+|     Cost Of Goods Sold | [value] |
+|     Box Program Job Work Costs | [value] |
+|     Damaged-Discarded Inventory | [value] |
+|     Designing & Development Expens | [value] |
+|     Dhl-Sample Mailing Expense | [value] |
+|     Domestic Trucking Line Freight | [value] |
+|     Domestic Trucking Line Freight - Lvt | [value] |
+|     Fab Floors-Clearing & Forwarding Expense | [value] |
+|     Fedex/Ups Additional Handling | [value] |
+|     Fedex/Ups Shipping Expense | [value] |
+|     Freight - Pillow-Poufs | [value] |
+|     Freight Cap Promotions Expense | [value] |
+|     Freight Costs-Replacements Etc | [value] |
+|     Freight Damage Loss/Gain A/C | [value] |
+|     Freight Discount On Lr | [value] |
+|     Import - Prepaid Import Costs | [value] |
+|     Import Clearing And Forwarding | [value] |
+|     Import-Air Freight | [value] |
+|     Import-Cargo Insurance | [value] |
+|     Import-Container Storage -Detention Chgs | [value] |
+|     Import-Container Truck Freight | [value] |
+|     Import-Customs Clearance Cost | [value] |
+|     Import-Customs Documents Chgs | [value] |
+|     Import-Ocean Freight | [value] |
+|     Import-State Custom Duty | [value] |
+|     Import-Tariffs | [value] |
+|     Insert - Pillow | [value] |
+|     Insert Materials Cost | [value] |
+|     Insert-Pouf / Pet Beds Filling | [value] |
+|     Inventory Adjustment Account | [value] |
+|     Labelling & Ticketing Expense | [value] |
+|     Merchandising&Inspection Fee | [value] |
+|     Obsolete Inventory | [value] |
+|     Packing Expense | [value] |
+|     Processing Charge | [value] |
+|     Purchase Discount | [value] |
+|     Rug Cleaning | [value] |
+|     Rug Surging, Cutting,Repairng | [value] |
+|     Temporary Labor Expenses | [value] |
+|     Third Party Warehouse Charges | [value] |
+|     Truck-Trailer Rent Costs | [value] |
+|     Upc Code Purchase | [value] |
+|     Us Customs Bond Fee | [value] |
+|     Use 5051-004 Import  Duty | [value] |
+|     Vendor Defective Reimbursement | [value] |
+| **Total Cost Of Goods Sold** | [computed] |
+| | |
+| **Gross Profit/(Loss)** | [computed] |
+| | |
+| **Operating Expenses** | |
+| **General & Administrative** | |
+|     Auto Expenses | [value] |
+|     Auto Expenses-Auto Insurance | [value] |
+|     Auto Expenses-Fuel | [value] |
+|     Auto Expenses-Repairs & Maint. | [value] |
+|     Auto Expenses-Tag Fees Etc. | [value] |
+|     Auto Reimbursement Exp ?? | [value] |
+|     Car Insurance | [value] |
+|     Cash Discounts | [value] |
+|     Cb Compliance-Amazon | [value] |
+|     Cb Compliance-Big Lots | [value] |
+|     Cb Compliance-Home Depot | [value] |
+|     Cb Compliance-Kirklands | [value] |
+|     Cb Compliance-Overstock | [value] |
+|     Cb Compliance-Walmart | [value] |
+|     Cb-Bealls Compliance Charge Back | [value] |
+|     Cb-Compliance - Zulily | [value] |
+|     Cb-Compliance -Others | [value] |
+|     Cb-Compliance-Amazon Ca | [value] |
+|     Cb-Compliance-Bed Bath | [value] |
+|     Cb-Customer Compliance - Nfm | [value] |
+|     Cb-Customer Compliance - Pottery Barn | [value] |
+|     Cb-Damage Allowance | [value] |
+|     Cb-Damage Allownace-Amazon | [value] |
+|     Cb-Shipping Allowance | [value] |
+|     Cb-Shipping Allowance-Amazon | [value] |
+|     Cell Phone | [value] |
+|     Charge Back | [value] |
+|     Chargeback Customer Compliance | [value] |
+|     Comm - Amy Bruce | [value] |
+|     Comm - Ashutosh Laddha | [value] |
+|     Comm - Bill Robertson | [value] |
+|     Comm - Billy Waynerich | [value] |
+|     Comm - Black Goswick | [value] |
+|     Comm - Bridget Favaloro | [value] |
+|     Comm - Charless Reason | [value] |
+|     Comm - Christine Reagon | [value] |
+|     Comm - Dan Statuto | [value] |
+|     Comm - Daren Kozlowski | [value] |
+|     Comm - David Mceleven | [value] |
+|     Comm - Eric Fleat | [value] |
+|     Comm - Jeanin Maxey | [value] |
+|     Comm - Jim Caserio | [value] |
+|     Comm - Jim Swan | [value] |
+|     Comm - John Mccaul | [value] |
+|     Comm - Joseph Gray | [value] |
+|     Comm - Kim Susan White | [value] |
+|     Comm - M K Inc. | [value] |
+|     Comm - Marvin Junior | [value] |
+|     Comm - Mike V. Kehnast | [value] |
+|     Comm - Natalie Smith | [value] |
+|     Comm  Peyton Gay | [value] |
+|     Comm - Ramona D Myrick | [value] |
+|     Comm - Reverse Atlanta | [value] |
+|     Comm - Richard Leckbee | [value] |
+|     Comm - Robin Grassi | [value] |
+|     Comm - Russell Givens | [value] |
+|     Comm - Taylor Malore | [value] |
+|     Comm - Teressa Huff | [value] |
+|     Comm - Tony Speirs | [value] |
+|     Comm - Victor Hugo | [value] |
+|     Comm- Emil Qirilla | [value] |
+|     Comm -Mike Thomson | [value] |
+|     Comm-Dointe Tyree Johnson | [value] |
+|     Commi  - V-Von Sales | [value] |
+|     Commi - Joe Barkley | [value] |
+|     Commission | [value] |
+|     Commission -Stacy Garcia | [value] |
+|     Computer Accessories & Supplie | [value] |
+|     Computer Server Restoration | [value] |
+|     Designing And Development | [value] |
+|     Donations | [value] |
+|     Dues And Subscriptions | [value] |
+|     Employee Benefit Plan Contribu | [value] |
+|     Employee Insurances | [value] |
+|     Employees Holiday Celeberation | [value] |
+|     Fab Floors-Dues & Subscriptions | [value] |
+|     General Expenses | [value] |
+|     Insurance Administrative Fees | [value] |
+|     Insurance-Auto | [value] |
+|     Insurance-Commercial | [value] |
+|     Insurance-Commercial Policies | [value] |
+|     Insurance-Dental & Vision | [value] |
+|     Insurance-Medical | [value] |
+|     Insurance-Receivables Credit Coverage | [value] |
+|     Insurance-Workmen'S Comp. | [value] |
+|     Insurnace-Workmens Compensatio | [value] |
+|     Internet & Cable | [value] |
+|     Inventory Adjustment | [value] |
+|     Misscellaneous | [value] |
+|     Office Expenses | [value] |
+|     Office Supplies | [value] |
+|     Postage & Delivery | [value] |
+|     Printing & Stationary | [value] |
+|     Recruitment & Training | [value] |
+|     Repairs & Maintance | [value] |
+|     Royalties | [value] |
+|     Royalties - Stacy Garcia | [value] |
+|     Royalties -Evette Rios | [value] |
+|     Royalties-London Fog | [value] |
+|     Sample Mailing Charges | [value] |
+|     Security Expenses | [value] |
+|     Service Charge | [value] |
+|     Small Balances Written Off | [value] |
+|     Software Monthly Fees | [value] |
+|     Software Upgrade & Maintainanc | [value] |
+|     Supplement Insurance | [value] |
+|     Telephone Expenses | [value] |
+|     Use 6000-004 -Car Tag Renewal | [value] |
+|     Use 8002-Bad Debt | [value] |
+|     Use A/C 6020-000 Ware. Eqp Rep | [value] |
+|     Utilities | [value] |
+|     Utilities - Electricity, Gas & Water | [value] |
+|     Utilities - Lawn Maintenance | [value] |
+|     Utilities - Office Cleaning | [value] |
+|     Utilities - Pest Control | [value] |
+|     Utilities - Propane Gas Tanks | [value] |
+|     Utilities - Security Monitoring | [value] |
+|     Utilities - Trash Removal & Recycling | [value] |
+|     Warehouse Equipment Repairs | [value] |
+|     Warehouse Insurance | [value] |
+|     404-749-4832 | [value] |
+|     706-218-8089 -Cell Phone Vbl | [value] |
+|     706-259-0155 -Lr Office | [value] |
+|     706-280-4301-Chris | [value] |
+|     706-280-5055 - Cell Phone Skl | [value] |
+|     706-459-8358 -Cell Phone Rl | [value] |
+|     706-483-1673 -Cell Phone Colle | [value] |
+|     706-847-4479 -Vonage Office | [value] |
+|     Edi Services | [value] |
+|     Ele-.Equipment Lease Expenses | [value] |
+|     Ele-Linde V15 Lease Expense | [value] |
+|     Ele-Toshiba Printer Lease Expe | [value] |
+|     Ele-Y2020 Servers Lease Expens | [value] |
+|     Ele-Yale Picker Lease Expenses | [value] |
+| **Total General & Administrative** | [computed] |
 
-Cost Of Goods Sold
-  Cost Of Goods Sold                                    [value]
-  Box Program Job Work Costs                            [value]
-  Damaged-Discarded Inventory                           [value]
-  Designing & Development Expens                        [value]
-  Dhl-Sample Mailing Expense                            [value]
-  Domestic Trucking Line Freight                        [value]
-  Domestic Trucking Line Freight - Lvt                  [value]
-  Fab Floors-Clearing & Forwarding Expense              [value]
-  Fedex/Ups Additional Handling                         [value]
-  Fedex/Ups Shipping Expense                            [value]
-  Freight - Pillow-Poufs                                [value]
-  Freight Cap Promotions Expense                        [value]
-  Freight Costs-Replacements Etc                        [value]
-  Freight Damage Loss/Gain A/C                          [value]
-  Freight Discount On Lr                                [value]
-  Import - Prepaid Import Costs                         [value]
-  Import Clearing And Forwarding                        [value]
-  Import-Air Freight                                    [value]
-  Import-Cargo Insurance                                [value]
-  Import-Container Storage -Detention Chgs              [value]
-  Import-Container Truck Freight                        [value]
-  Import-Customs Clearance Cost                         [value]
-  Import-Customs Documents Chgs                         [value]
-  Import-Ocean Freight                                  [value]
-  Import-State Custom Duty                              [value]
-  Import-Tariffs                                        [value]
-  Insert - Pillow                                       [value]
-  Insert Materials Cost                                 [value]
-  Insert-Pouf / Pet Beds Filling                        [value]
-  Inventory Adjustment Account                          [value]
-  Labelling & Ticketing Expense                         [value]
-  Merchandising&Inspection Fee                          [value]
-  Obsolete Inventory                                    [value]
-  Packing Expense                                       [value]
-  Processing Charge                                     [value]
-  Purchase Discount                                     [value]
-  Rug Cleaning                                          [value]
-  Rug Surging, Cutting,Repairng                         [value]
-  Temporary Labor Expenses                              [value]
-  Third Party Warehouse Charges                         [value]
-  Truck-Trailer Rent Costs                              [value]
-  Upc Code Purchase                                     [value]
-  Us Customs Bond Fee                                   [value]
-  Use 5051-004 Import  Duty                             [value]
-  Vendor Defective Reimbursement                        [value]
-Total Cost Of Goods Sold                                [value]
-
-Gross Profit/(Loss)                                     [value]
-
-
-Operating Cost
-
-General & Administrative
-  Auto Expenses                                         [value]
-  Auto Expenses-Auto Insurance                          [value]
-  Auto Expenses-Fuel                                    [value]
-  Auto Expenses-Repairs & Maint.                        [value]
-  Auto Expenses-Tag Fees Etc.                           [value]
-  Auto Reimbursement Exp ??                             [value]
-  Car Insurance                                         [value]
-  Cash Discounts                                        [value]
-  Cb Compliance-Amazon                                  [value]
-  Cb Compliance-Big Lots                                [value]
-  Cb Compliance-Home Depot                              [value]
-  Cb Compliance-Kirklands                               [value]
-  Cb Compliance-Overstock                               [value]
-  Cb Compliance-Walmart                                 [value]
-  Cb-Bealls Compliance Charge Back                      [value]
-  Cb-Compliance - Zulily                                [value]
-  Cb-Compliance -Others                                 [value]
-  Cb-Compliance-Amazon Ca                               [value]
-  Cb-Compliance-Bed Bath                                [value]
-  Cb-Customer Compliance - Nfm                          [value]
-  Cb-Customer Compliance - Pottery Barn                 [value]
-  Cb-Damage Allowance                                   [value]
-  Cb-Damage Allownace-Amazon                            [value]
-  Cb-Shipping Allowance                                 [value]
-  Cb-Shipping Allowance-Amazon                          [value]
-  Cell Phone                                            [value]
-  Charge Back                                           [value]
-  Chargeback Customer Compliance                        [value]
-  Comm - Amy Bruce                                      [value]
-  Comm - Ashutosh Laddha                                [value]
-  Comm - Bill Robertson                                 [value]
-  Comm - Billy Waynerich                                [value]
-  Comm - Black Goswick                                  [value]
-  Comm - Bridget Favaloro                               [value]
-  Comm - Charless Reason                                [value]
-  Comm - Christine Reagon                               [value]
-  Comm - Dan Statuto                                    [value]
-  Comm - Daren Kozlowski                                [value]
-  Comm - David Mceleven                                 [value]
-  Comm - Eric Fleat                                     [value]
-  Comm - Jeanin Maxey                                   [value]
-  Comm - Jim Caserio                                    [value]
-  Comm - Jim Swan                                       [value]
-  Comm - John Mccaul                                    [value]
-  Comm - Joseph Gray                                    [value]
-  Comm - Kim Susan White                                [value]
-  Comm - M K Inc.                                       [value]
-  Comm - Marvin Junior                                  [value]
-  Comm - Mike V. Kehnast                                [value]
-  Comm - Natalie Smith                                  [value]
-  Comm  Peyton Gay                                      [value]
-  Comm - Ramona D Myrick                                [value]
-  Comm - Reverse Atlanta                                [value]
-  Comm - Richard Leckbee                                [value]
-  Comm - Robin Grassi                                   [value]
-  Comm - Russell Givens                                 [value]
-  Comm - Taylor Malore                                  [value]
-  Comm - Teressa Huff                                   [value]
-  Comm - Tony Speirs                                    [value]
-  Comm - Victor Hugo                                    [value]
-  Comm- Emil Qirilla                                    [value]
-  Comm -Mike Thomson                                    [value]
-  Comm-Dointe Tyree Johnson                             [value]
-  Commi  - V-Von Sales                                  [value]
-  Commi - Joe Barkley                                   [value]
-  Commission                                            [value]
-  Commission -Stacy Garcia                              [value]
-  Computer Accessories & Supplie                        [value]
-  Computer Server Restoration                           [value]
-  Designing And Development                             [value]
-  Donations                                             [value]
-  Dues And Subscriptions                                [value]
-  Employee Benefit Plan Contribu                        [value]
-  Employee Insurances                                   [value]
-  Employees Holiday Celeberation                        [value]
-  Fab Floors-Dues & Subscriptions                       [value]
-  General Expenses                                      [value]
-  Insurance Administrative Fees                         [value]
-  Insurance-Auto                                        [value]
-  Insurance-Commercial                                  [value]
-  Insurance-Commercial Policies                         [value]
-  Insurance-Dental & Vision                             [value]
-  Insurance-Medical                                     [value]
-  Insurance-Receivables Credit Coverage                 [value]
-  Insurance-Workmen'S Comp.                             [value]
-  Insurnace-Workmens Compensatio                        [value]
-  Internet & Cable                                      [value]
-  Inventory Adjustment                                  [value]
-  Misscellaneous                                        [value]
-  Office Expenses                                       [value]
-  Office Supplies                                       [value]
-  Postage & Delivery                                    [value]
-  Printing & Stationary                                 [value]
-  Recruitment & Training                                [value]
-  Repairs & Maintance                                   [value]
-  Royalties                                             [value]
-  Royalties - Stacy Garcia                              [value]
-  Royalties -Evette Rios                                [value]
-  Royalties-London Fog                                  [value]
-  Sample Mailing Charges                                [value]
-  Security Expenses                                     [value]
-  Service Charge                                        [value]
-  Small Balances Written Off                            [value]
-  Software Monthly Fees                                 [value]
-  Software Upgrade & Maintainanc                        [value]
-  Supplement Insurance                                  [value]
-  Telephone Expenses                                    [value]
-  Use 6000-004 -Car Tag Renewal                         [value]
-  Use 8002-Bad Debt                                     [value]
-  Use A/C 6020-000 Ware. Eqp Rep                        [value]
-  Utilities                                             [value]
-  Utilities - Electricity, Gas & Water                  [value]
-  Utilities - Lawn Maintenance                          [value]
-  Utilities - Office Cleaning                           [value]
-  Utilities - Pest Control                              [value]
-  Utilities - Propane Gas Tanks                         [value]
-  Utilities - Security Monitoring                       [value]
-  Utilities - Trash Removal & Recycling                 [value]
-  Warehouse Equipment Repairs                           [value]
-  Warehouse Insurance                                   [value]
-  404-749-4832                                          [value]
-  706-218-8089 -Cell Phone Vbl                          [value]
-  706-259-0155 -Lr Office                               [value]
-  706-280-4301-Chris                                    [value]
-  706-280-5055 - Cell Phone Skl                         [value]
-  706-459-8358 -Cell Phone Rl                           [value]
-  706-483-1673 -Cell Phone Colle                        [value]
-  706-847-4479 -Vonage Office                           [value]
-  Edi Services                                          [value]
-  Ele-.Equipment Lease Expenses                         [value]
-  Ele-Linde V15 Lease Expense                           [value]
-  Ele-Toshiba Printer Lease Expe                        [value]
-  Ele-Y2020 Servers Lease Expens                        [value]
-  Ele-Yale Picker Lease Expenses                        [value]
-Total General & Administrative                          [value]
-
-Selling Expenses
-  401K-Lr Contribution                                  [value]
-  Accounting                                            [value]
-  Advertising Display Rack                              [value]
-  Advertising Expenses                                  [value]
-  Advertising-Amazon                                    [value]
-  Advertising-Faire                                     [value]
-  Advertising-Home Depot                                [value]
-  Advertising-Houzz                                     [value]
-  Advertising-Others                                    [value]
-  Advertising-Overstock                                 [value]
-  Advertising-Walmart                                   [value]
-  Advertising-Wayfair                                   [value]
-  Advertising-Wm Marketplace                            [value]
-  Advertising-Zulily                                    [value]
-  Amortization                                          [value]
-  Atlanta Showroom                                      [value]
-  Atlanta Showroom Exp-Advt.                            [value]
-  Atlanta Showroom Expenses                             [value]
-  Atlanta Showroom Exp-Food                             [value]
-  Atlanta Showroom Exp-General                          [value]
-  Atlanta Showroom Exp-Hotel                            [value]
-  Atlanta Showroom Exp-Rent                             [value]
-  Atlanta Showroom Exp-Traval                           [value]
-  Atlanta Showroom Exp-Trucking                         [value]
-  Atlanta Showroom Exp-Utility                          [value]
-  Bad & Doubtful Debts                                  [value]
-  Bonus                                                 [value]
-  Car Rental                                            [value]
-  Catalog Printing-Mailing Exp.                         [value]
-  Consulting                                            [value]
-  Depreciation Expense                                  [value]
-  Dnu-User 7540-701-Adv Amazon                          [value]
-  Ecommerce Product Listing                             [value]
-  Exhibition                                            [value]
-  FUTA                                                  [value]
-  Guest House Rent                                      [value]
-  High Point - Advertising                              [value]
-  High Point - Food Expense                             [value]
-  High Point - General Expense                          [value]
-  High Point - Hotel Exepnse                            [value]
-  High Point - Rent Expense                             [value]
-  High Point - Showroom Expenses                        [value]
-  High Point - Travel Expense                           [value]
-  High Point - Trucking                                 [value]
-  High Point - Utility Expense                          [value]
-  Hp Show.Rent Old A/C.Use 7612-                        [value]
-  L R 401K Contribution A/C                             [value]
-  Legal Fees                                            [value]
-  Loss On Sale Of Assets                                [value]
-  Marketing Consultancy                                 [value]
-  Marketing Consultancy - Joe Barkley                   [value]
-  Marketing Expenses                                    [value]
-  Nfa Rebate                                            [value]
-  Outs.-G.K.Laddha                                     [value]
-  Outs.-Rajendra Maheshwari                             [value]
-  Outs.-Soumya Maheshwari                               [value]
-  Payroll                                               [value]
-  Payroll Ss & Medicare                                 [value]
-  Pocket Folders                                        [value]
-  Pr - Amy Roberts                                      [value]
-  Pr - Arthur M Thompson                                [value]
-  Pr - Eddie Davis                                      [value]
-  Pr - G K Laddha                                       [value]
-  Pr - Johnny Meendez                                   [value]
-  Pr - Katika Hadden                                    [value]
-  Pr - Kenneth R Morgan                                 [value]
-  Pr - Krishna Laddha                                   [value]
-  Pr - Mellisa Fowler                                   [value]
-  Pr - Mellisa Johnson                                  [value]
-  Pr - Paulene C Cochran                                [value]
-  Pr - Pratik Bhatter                                   [value]
-  Pr - Rajani Laddha                                    [value]
-  Pr - Seteve E Stultz                                  [value]
-  Pr - Stacey Carpenter                                 [value]
-  Pr - Tracy R Lovain                                   [value]
-  Pr - Vaibhav Laddha                                   [value]
-  Pr - Vinamra Laddha                                   [value]
-  Pr - Zubair Faridi                                    [value]
-  Product Photo Images Ai                               [value]
-  Professional Fees                                     [value]
-  Promotional Expenses                                  [value]
-  Promotional Expenses-Nebraska Furniture Mart          [value]
-  Promotional Expenses-Ox Bay                           [value]
-  Promotional Expenses-Rc Willey                        [value]
-  Promotional Expenses-Wayfair                          [value]
-  Promotional Exp-Home Depot                            [value]
-  Provision For Expenses                                [value]
-  R.C. Willey Advertisement                             [value]
-  Rent                                                  [value]
-  Sampling Expense                                      [value]
-  Social Media-Email Marketing                          [value]
-  Software Monthly Fee                                  [value]
-  SUTA                                                  [value]
-  Travel Conveyance,Toll,Parking                        [value]
-  Travel Ticketing Exp Account                          [value]
-  Travel-Hotel Expense                                  [value]
-  Traveling Expenses_Food                               [value]
-  Travel-Visa-Medical-Misc Exp.                         [value]
-  Use 6970-Business Cards                               [value]
-  Use 7730 - Visa Fees                                  [value]
-  Warehouse Rent                                        [value]
-  Warehouse Rent-Lr Realty                              [value]
-  Warehouse Rent-Lr2-3012 Parque                        [value]
-  Warehouse Rent-Lr3-3002 Parque                        [value]
-  Warehouse Rent-Lr4-3351 Box Dr                        [value]
-  Website                                               [value]
-  Website - Ecom Data Management                        [value]
-  Websites Crawling-Uploading                           [value]
-  Weekends Only Advertisement                           [value]
-  Xtra                                                  [value]
-Total Selling Expenses                                  [value]
-
-Total Operating Cost                                    [value]
-
-Operating Profit /(Loss)                                [value]
-
-
-Finance Charges
-  Bank Service Charge                                   [value]
-  Bank Wire Transfer Charges                            [value]
-  Camry Interest -2013                                  [value]
-  Credit Card Interest & Fees                           [value]
-  Credit Card Payment Processing                        [value]
-  Drip Capital Loan Interest                            [value]
-  Eidl Loan Interest                                    [value]
-  Fc-Interest On Lease                                  [value]
-  Finance Charge                                        [value]
-  Firstbank Interest                                    [value]
-  Fistbank 2Nd Line Interest                            [value]
-  Import - Bank Document Collect                        [value]
-  Ltl Equip.2019 A/C 2570037503                         [value]
-  Ltl-Equip.2021 A/C 2570065987                         [value]
-  Mb-Eqb 300 Loan Interest A/C                          [value]
-  Mercedes Car- Interest A/C                            [value]
-  Other Interest-Financial Charg                        [value]
-  Prius Loan Interest - 2017                            [value]
-  Prius Loan Interest -2016                             [value]
-  Prius Loan Interest Expenses                          [value]
-  Regions Bank Int. On Eq Loan                          [value]
-  Regions Bank Interest                                 [value]
-  Regions Loan Fees                                     [value]
-  Sienna 2015 Loan Interest                             [value]
-  Warehouse Equipment Loan Inter                        [value]
-Total Finance Charges                                   [value]
-
-
-Other Income/Expense
-  Other Income                                          [value]
-  Profit On Sale Of Asset                               [value]
-  OIN-PPP Loan Forgiven                                 [value]
-  Other Income-Interest Received                        [value]
-  Restocking Fee                                        [value]
-  Other Income-Bad Debts Recovered                      [value]
-  Abnormal Income                                       [value]
-  Free To Use                                           [value]
-  Interest Income                                       [value]
-Total Other Income/Expense                              [value]
-
-
-Taxes
-  State                                                 [value]
-  Property Tax                                          [value]
-  Licenses-Tax-Permit-Penalties                         [value]
-  Business Licenses & Permits                           [value]
-  Taxes                                                 [value]
-Total  Taxes                                            [value]
-
-Net Profit /(Loss)                                      [value]
+| | |
+| **Selling Expenses** | |
+|     401K-Lr Contribution | [value] |
+|     Accounting | [value] |
+|     Advertising Display Rack | [value] |
+|     Advertising Expenses | [value] |
+|     Advertising-Amazon | [value] |
+|     Advertising-Faire | [value] |
+|     Advertising-Home Depot | [value] |
+|     Advertising-Houzz | [value] |
+|     Advertising-Others | [value] |
+|     Advertising-Overstock | [value] |
+|     Advertising-Walmart | [value] |
+|     Advertising-Wayfair | [value] |
+|     Advertising-Wm Marketplace | [value] |
+|     Advertising-Zulily | [value] |
+|     Amortization | [value] |
+|     Atlanta Showroom | [value] |
+|     Atlanta Showroom Exp-Advt. | [value] |
+|     Atlanta Showroom Expenses | [value] |
+|     Atlanta Showroom Exp-Food | [value] |
+|     Atlanta Showroom Exp-General | [value] |
+|     Atlanta Showroom Exp-Hotel | [value] |
+|     Atlanta Showroom Exp-Rent | [value] |
+|     Atlanta Showroom Exp-Traval | [value] |
+|     Atlanta Showroom Exp-Trucking | [value] |
+|     Atlanta Showroom Exp-Utility | [value] |
+|     Bad & Doubtful Debts | [value] |
+|     Bonus | [value] |
+|     Car Rental | [value] |
+|     Catalog Printing-Mailing Exp. | [value] |
+|     Consulting | [value] |
+|     Depreciation Expense | [value] |
+|     Dnu-User 7540-701-Adv Amazon | [value] |
+|     Ecommerce Product Listing | [value] |
+|     Exhibition | [value] |
+|     FUTA | [value] |
+|     Guest House Rent | [value] |
+|     High Point - Advertising | [value] |
+|     High Point - Food Expense | [value] |
+|     High Point - General Expense | [value] |
+|     High Point - Hotel Exepnse | [value] |
+|     High Point - Rent Expense | [value] |
+|     High Point - Showroom Expenses | [value] |
+|     High Point - Travel Expense | [value] |
+|     High Point - Trucking | [value] |
+|     High Point - Utility Expense | [value] |
+|     Hp Show.Rent Old A/C.Use 7612- | [value] |
+|     L R 401K Contribution A/C | [value] |
+|     Legal Fees | [value] |
+|     Loss On Sale Of Assets | [value] |
+|     Marketing Consultancy | [value] |
+|     Marketing Consultancy - Joe Barkley | [value] |
+|     Marketing Expenses | [value] |
+|     Nfa Rebate | [value] |
+|     Outs.-G.K.Laddha | [value] |
+|     Outs.-Rajendra Maheshwari | [value] |
+|     Outs.-Soumya Maheshwari | [value] |
+|     Payroll | [value] |
+|     Payroll Ss & Medicare | [value] |
+|     Pocket Folders | [value] |
+|     Pr - Amy Roberts | [value] |
+|     Pr - Arthur M Thompson | [value] |
+|     Pr - Eddie Davis | [value] |
+|     Pr - G K Laddha | [value] |
+|     Pr - Johnny Meendez | [value] |
+|     Pr - Katika Hadden | [value] |
+|     Pr - Kenneth R Morgan | [value] |
+|     Pr - Krishna Laddha | [value] |
+|     Pr - Mellisa Fowler | [value] |
+|     Pr - Mellisa Johnson | [value] |
+|     Pr - Paulene C Cochran | [value] |
+|     Pr - Pratik Bhatter | [value] |
+|     Pr - Rajani Laddha | [value] |
+|     Pr - Seteve E Stultz | [value] |
+|     Pr - Stacey Carpenter | [value] |
+|     Pr - Tracy R Lovain | [value] |
+|     Pr - Vaibhav Laddha | [value] |
+|     Pr - Vinamra Laddha | [value] |
+|     Pr - Zubair Faridi | [value] |
+|     Product Photo Images Ai | [value] |
+|     Professional Fees | [value] |
+|     Promotional Expenses | [value] |
+|     Promotional Expenses-Nebraska Furniture Mart | [value] |
+|     Promotional Expenses-Ox Bay | [value] |
+|     Promotional Expenses-Rc Willey | [value] |
+|     Promotional Expenses-Wayfair | [value] |
+|     Promotional Exp-Home Depot | [value] |
+|     Provision For Expenses | [value] |
+|     R.C. Willey Advertisement | [value] |
+|     Rent | [value] |
+|     Sampling Expense | [value] |
+|     Social Media-Email Marketing | [value] |
+|     Software Monthly Fee | [value] |
+|     SUTA | [value] |
+|     Travel Conveyance,Toll,Parking | [value] |
+|     Travel Ticketing Exp Account | [value] |
+|     Travel-Hotel Expense | [value] |
+|     Traveling Expenses_Food | [value] |
+|     Travel-Visa-Medical-Misc Exp. | [value] |
+|     Use 6970-Business Cards | [value] |
+|     Use 7730 - Visa Fees | [value] |
+|     Warehouse Rent | [value] |
+|     Warehouse Rent-Lr Realty | [value] |
+|     Warehouse Rent-Lr2-3012 Parque | [value] |
+|     Warehouse Rent-Lr3-3002 Parque | [value] |
+|     Warehouse Rent-Lr4-3351 Box Dr | [value] |
+|     Website | [value] |
+|     Website - Ecom Data Management | [value] |
+|     Websites Crawling-Uploading | [value] |
+|     Weekends Only Advertisement | [value] |
+|     Xtra | [value] |
+| **Total Selling Expenses** | [computed] |
+| | |
+| **Total Operating Expenses** | [computed] |
+| **Operating Profit /(Loss)** | [computed] |
+| | |
+| **Interest Expenses** | |
+|     Bank Service Charge | [value] |
+|     Bank Wire Transfer Charges | [value] |
+|     Camry Interest -2013 | [value] |
+|     Credit Card Interest & Fees | [value] |
+|     Credit Card Payment Processing | [value] |
+|     Drip Capital Loan Interest | [value] |
+|     Eidl Loan Interest | [value] |
+|     Fc-Interest On Lease | [value] |
+|     Finance Charge | [value] |
+|     Firstbank Interest | [value] |
+|     Fistbank 2Nd Line Interest | [value] |
+|     Import - Bank Document Collect | [value] |
+|     Ltl Equip.2019 A/C 2570037503 | [value] |
+|     Ltl-Equip.2021 A/C 2570065987 | [value] |
+|     Mb-Eqb 300 Loan Interest A/C | [value] |
+|     Mercedes Car- Interest A/C | [value] |
+|     Other Interest-Financial Charg | [value] |
+|     Prius Loan Interest - 2017 | [value] |
+|     Prius Loan Interest -2016 | [value] |
+|     Prius Loan Interest Expenses | [value] |
+|     Regions Bank Int. On Eq Loan | [value] |
+|     Regions Bank Interest | [value] |
+|     Regions Loan Fees | [value] |
+|     Sienna 2015 Loan Interest | [value] |
+|     Warehouse Equipment Loan Inter | [value] |
+| **Total Interest Expenses** | [computed] |
+| | |
+| **Other Income/Expenses** | |
+|     Other Income | [value] |
+|     Profit On Sale Of Asset | [value] |
+|     OIN-PPP Loan Forgiven | [value] |
+|     Other Income-Interest Received | [value] |
+|     Restocking Fee | [value] |
+|     Other Income-Bad Debts Recovered | [value] |
+|     Abnormal Income | [value] |
+|     Free To Use | [value] |
+|     Interest Income | [value] |
+| **Total Other Income/Expenses** | [computed] |
+| | |
+| **Taxes** | |
+|     State | [value] |
+|     Property Tax | [value] |
+|     Licenses-Tax-Permit-Penalties | [value] |
+|     Business Licenses & Permits | [value] |
+|     Taxes | [value] |
+| **Total Taxes** | [computed] |
+| | |
+| **Net Profit /(Loss)** | [computed] |
 
 *P&L Detailed — Multi-Month (2+ months requested)*
 (Same account-level structure but one amount column per month, side-by-side. Use SQL Example 12.)
@@ -2455,7 +3138,7 @@ Net Profit /(Loss)                                      [value]
 | | | |
 | **Gross Profit/(Loss)** | [computed] | [computed] |
 | | | |
-| **Operating Cost** | | |
+| **Operating Expenses** | | |
 | **General & Administrative** | | |
 |     Auto Expenses | [value] | [value] |
 |     Auto Expenses-Auto Insurance | [value] | [value] |
@@ -2706,10 +3389,10 @@ Net Profit /(Loss)                                      [value]
 |     Xtra | [value] | [value] |
 | **Total Selling Expenses** | [computed] | [computed] |
 | | | |
-| **Total Operating Cost** | [computed] | [computed] |
+| **Total Operating Expenses** | [computed] | [computed] |
 | **Operating Profit /(Loss)** | [computed] | [computed] |
 | | | |
-| **Finance Charges** | | |
+| **Interest Expenses** | | |
 |     Bank Service Charge | [value] | [value] |
 |     Bank Wire Transfer Charges | [value] | [value] |
 |     Camry Interest -2013 | [value] | [value] |
@@ -2735,9 +3418,9 @@ Net Profit /(Loss)                                      [value]
 |     Regions Loan Fees | [value] | [value] |
 |     Sienna 2015 Loan Interest | [value] | [value] |
 |     Warehouse Equipment Loan Inter | [value] | [value] |
-| **Total Finance Charges** | [computed] | [computed] |
+| **Total Interest Expenses** | [computed] | [computed] |
 | | | |
-| **Other Income/Expense** | | |
+| **Other Income/Expenses** | | |
 |     Other Income | [value] | [value] |
 |     Profit On Sale Of Asset | [value] | [value] |
 |     OIN-PPP Loan Forgiven | [value] | [value] |
@@ -2747,7 +3430,7 @@ Net Profit /(Loss)                                      [value]
 |     Abnormal Income | [value] | [value] |
 |     Free To Use | [value] | [value] |
 |     Interest Income | [value] | [value] |
-| **Total Other Income/Expense** | [computed] | [computed] |
+| **Total Other Income/Expenses** | [computed] | [computed] |
 | | | |
 | **Taxes** | | |
 |     State | [value] | [value] |
@@ -2755,7 +3438,7 @@ Net Profit /(Loss)                                      [value]
 |     Licenses-Tax-Permit-Penalties | [value] | [value] |
 |     Business Licenses & Permits | [value] | [value] |
 |     Taxes | [value] | [value] |
-| **Total  Taxes** | [computed] | [computed] |
+| **Total Taxes** | [computed] | [computed] |
 | | | |
 | **Net Profit /(Loss)** | [computed] | [computed] |
 
@@ -2842,7 +3525,7 @@ Example 3-year P&L Sub Grouped layout (apply same logic to ALL templates):
 | | | | |
 | **Gross Profit/(Loss)** | [computed] | [computed] | [computed] |
 | | | | |
-| **Operating Cost** | | | |
+| **Operating Expenses** | | | |
 | **General & Administrative** | | | |
 |     Commission | -333,375.87 | -332,887.07 | -592,920.14 |
 |     (... other G&A sub-groups ...) | [value] | [value] | [value] |
@@ -2854,11 +3537,11 @@ Example 3-year P&L Sub Grouped layout (apply same logic to ALL templates):
 |     (... other Selling sub-groups ...) | [value] | [value] | [value] |
 | **Total Selling Expenses** | [computed] | [computed] | [computed] |
 | | | | |
-| **Total Operating Cost** | [computed] | [computed] | [computed] |
+| **Total Operating Expenses** | [computed] | [computed] | [computed] |
 | **Operating Profit /(Loss)** | [computed] | [computed] | [computed] |
 | | | | |
-| **Finance Charges** | -414,636.60 | -467,563.52 | -413,787.39 |
-| **Other Income/Expense** | 0.00 | 0.77 | 21,984.66 |
+| **Interest Expenses** | -414,636.60 | -467,563.52 | -413,787.39 |
+| **Other Income/Expenses** | 0.00 | 0.77 | 21,984.66 |
 | **Taxes** | -8,875.25 | -9,409.97 | -8,223.21 |
 | **Net Profit /(Loss)** | [computed] | [computed] | [computed] |
 
@@ -2874,7 +3557,7 @@ SAME RULE APPLIES TO ALL OTHER MULTI-PERIOD COMPARISONS:
 
 --- Financial Statement Example 1: Balance Sheet Main Grouped (VERIFIED) ---
 Question: "Show me the balance sheet" / "Balance sheet main grouped" / "Balance sheet summary" / "Balance sheet for [month] [year]"
--- Main Grouped: Section = Assets/L&E derived from Main column; Line Item = BalanceSheet_MainGroups values (Current Assets, Non Current Assets, Current Liabilities, Long Term Liabilities, Stockholder Equity)
+-- Main Grouped: Section = Assets/L&E derived from Main column; Line Item = BalanceSheet_MainGroups values (Current Assets, Non Current Assets, Current Liabilities, Non Current Liabilities, Equity, Retained Earnings, Contribution, Distributions, Profit & Loss)
 -- Returns multiple rows per section — NOT just 2 rows. Each BalanceSheet_MainGroups value is one line item under its section.
 SELECT
     CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
@@ -2898,7 +3581,9 @@ ORDER BY [Section], [Line Item]
 --- Financial Statement Example 2: Balance Sheet Sub Grouped (VERIFIED) ---
 Question: "Balance sheet sub grouped" / "Grouped balance sheet" / "Balance sheet with sub groups"
 -- Sub Grouped: Section = Assets/L&E, Sub Group = BalanceSheet_MainGroups (section header), Line Item = BalanceSheet_SubGroups values
--- Returns rows like: Assets | Current Assets | Accounts Receivable | 3,774,607.91
+-- Returns rows like: Assets | Current Assets | Accounts Receivable | [value]
+-- Sub Groups under Assets: Current Assets (8 items), Non Current Assets (10 items)
+-- Sub Groups under Liabilities & Equity: Current Liabilities (9 items), Non Current Liabilities (4 items), Equity (4 items), Retained Earnings (2 items), Contribution (3 items)
 SELECT
     CASE WHEN TRY_CAST(CM.Main AS INT) < 2000 THEN 'Assets'
          ELSE 'Liabilities & Equity' END                                              AS [Section],
@@ -3023,9 +3708,9 @@ ORDER BY [Main Group], [Sub Group], [Detail Group], [Account]
 Question: "Show me the P&L" / "Income statement" / "Profit and loss" / "P&L main grouped" / "Income statement for [month] [year]" / "Profit and loss summary" / "Grouped P&L"
 -- Use PTD_Net * -1 (NEVER YTD_Net). Filter on FAM.PeriodStartDate directly — do NOT use DimDate join or DateKey for P&L.
 -- Returns up to 7 groups: Sales, Cost Of Goods Sold, General & Administrative, Selling Expenses, Finance Charges, Other Income/Expense, Taxes
--- Bot must compute: Gross Profit = Sales + Cost Of Goods Sold; Total Operating Cost = G&A + Selling; Operating Profit = Gross Profit - Total Operating Cost; Net Profit = Operating Profit - Finance Charges + Other Income/Expense - Taxes
--- CRITICAL: Use EXACT group names from SQL. NEVER rename: "Cost Of Goods Sold" ≠ "Cost Of Sales"; "Finance Charges" must appear as its own line; "Other Income/Expense" ≠ "Other Income"; "Taxes" ≠ "Income Taxes". Show 0.00 for groups with no data.
--- Present in this fixed order: Sales → Cost Of Goods Sold → Gross Profit → Operating Cost section → Total Operating Cost → Operating Profit → Finance Charges → Other Income/Expense → Taxes → Net Profit
+-- Bot must compute: Gross Profit = Sales + Cost Of Goods Sold; Total Operating Expenses = G&A + Selling; Operating Profit = Gross Profit - Total Operating Expenses; Net Profit = Operating Profit + Interest Expenses + Other Income/Expenses + Taxes
+-- CRITICAL: Map SQL group names to display names: "Finance Charges" → display as "Interest Expenses"; "Other Income/Expense" → display as "Other Income/Expenses"; G&A + Selling → grouped under "Operating Expenses". Show 0.00 for groups with no data.
+-- Present in this fixed order: Sales → Cost Of Goods Sold → Gross Profit → Operating Expenses section → Total Operating Expenses → Operating Profit → Interest Expenses → Other Income/Expenses → Taxes → Net Profit
 SELECT
     CM.PLStatementMainGroups                  AS [Group],
     SUM(FAM.PTD_Net * -1)                     AS [Amount]
@@ -3074,7 +3759,7 @@ ORDER BY CM.PLStatementMainGroups, CM.PLStatementSubGroups, CM.PLStatementDetail
 Question: "P&L from April 2024 to May 2024" / "Income statement for [month1] and [month2]" / "Compare P&L [month] vs [month]" / "Profit and loss [month] [year] to [month] [year]"
 -- RULE: When multiple months are requested, use conditional aggregation — ONE column per month. NEVER add PeriodStartDate to GROUP BY. Filter: PeriodStartDate IN (...). Use PTD_Net * -1.
 -- Column names = month+year label e.g. [April 2024], [May 2024]. PeriodStartDate = first day of month 'YYYY-MM-01'.
--- CRITICAL: Use EXACT group names from SQL. NEVER rename: "Cost Of Goods Sold" ≠ "Cost Of Sales"; "Finance Charges" must appear; "Other Income/Expense" ≠ "Other Income"; "Taxes" ≠ "Income Taxes".
+-- CRITICAL: Map SQL group names to display names: "Finance Charges" → "Interest Expenses"; "Other Income/Expense" → "Other Income/Expenses"; G&A + Selling → grouped under "Operating Expenses". Never rename "Cost Of Goods Sold" or "Taxes".
 SELECT
     CM.PLStatementMainGroups                  AS [Group],
     SUM(CASE WHEN FAM.PeriodStartDate = '2024-04-01' THEN FAM.PTD_Net * -1 ELSE 0 END)  AS [April 2024],

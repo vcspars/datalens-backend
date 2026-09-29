@@ -1,6 +1,6 @@
 import requests, json, time, sys
 
-BASE = 'http://localhost:8007'
+BASE = 'http://localhost:8008'
 TOKEN = requests.post(BASE + '/api/auth/login', json={'email': 'test@test.com', 'password': 'testtest'}).json()['access_token']
 HEADERS = {'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json'}
 

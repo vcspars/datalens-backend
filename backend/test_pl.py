@@ -6,7 +6,7 @@ import requests, json, time, sys, os
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-BASE  = 'http://localhost:8007'
+BASE  = 'http://localhost:8008'
 CREDS = {'email': 'test@test.com', 'password': 'testtest'}
 OUT   = os.path.join(os.path.dirname(__file__), 'test_results_pl.txt')
 

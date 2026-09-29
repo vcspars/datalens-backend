@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     """Application settings"""
     # MongoDB settings
     MONGODB_URL: str = "mongodb://localhost:27017"
-    DATABASE_NAME: str = "datalens_db_c14"
+    DATABASE_NAME: str = "datalens_db_c7"
     
     # OpenAI
     OPENAI_API_KEY: str = ""
@@ -42,7 +42,7 @@ class Settings(BaseSettings):
         "http://localhost:8080",
         "http://localhost:8081",
         "http://122.129.80.228:8080",
-        "http://122.129.80.228:4177"
+        "http://122.129.80.228:7777"
     ]
      
     class Config:

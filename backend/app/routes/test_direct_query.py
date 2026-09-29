@@ -3,7 +3,7 @@ Direct SQL test endpoint — no LangChain agent involved.
 
 Flow:
   1. Receive natural-language question + role
-  2. Generate SQL with GPT-4.1 using the same role-specific schema prompt
+  2. Generate SQL with gpt-4.1 using the same role-specific schema prompt
   3. Validate the SQL is a safe SELECT
   4. Run it against the existing cached MSSQL connection
   5. Return structured JSON with columns, rows, and timing
@@ -70,7 +70,7 @@ def _is_safe_select(sql: str) -> bool:
     response_model=DirectQueryResponse,
     summary="Direct SQL generation + execution (no LangChain agent)",
     description=(
-        "Generates a SQL query from a natural-language question using GPT-4.1 "
+        "Generates a SQL query from a natural-language question using gpt-4.1 "
         "and the same role-specific schema prompt used by the main chat agent, "
         "then executes it directly against the cached MSSQL database.\n\n"
         "**role** options: `executive`, `sales`, `operations`\n\n"
@@ -103,11 +103,11 @@ def direct_query(req: DirectQueryRequest) -> DirectQueryResponse:
     )
 
     # ------------------------------------------------------------------ #
-    # Step 2: Call GPT-4.1 for SQL generation                             #
+    # Step 2: Call gpt-4.1 for SQL generation                             #
     # ------------------------------------------------------------------ #
     try:
         client = _get_openai_client()
-        print(f"[DirectQuery] Calling GPT-4.1 for SQL generation...")
+        print(f"[DirectQuery] Calling gpt-4.1 for SQL generation...")
         completion = client.chat.completions.create(
             model="gpt-4.1",
             temperature=0,

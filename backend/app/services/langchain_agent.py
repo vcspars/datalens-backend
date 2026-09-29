@@ -11,6 +11,7 @@ Each yielded chunk is one of:
 import json
 import re
 import asyncio
+from datetime import datetime
 from typing import AsyncGenerator, Optional
 
 from langchain_openai import ChatOpenAI
@@ -30,7 +31,7 @@ def _create_chat_llm(*, streaming: bool = False, callbacks: list | None = None):
     """Create the chat LLM based on USE_GEMINI setting.
 
     When USE_GEMINI=true and langchain-google-genai is installed → Gemini 2.5 Pro.
-    Otherwise → GPT-4.1 via langchain-openai.
+    Otherwise → gpt-4.1 via langchain-openai.
     Note: langchain-google-genai is not in requirements.txt because it requires langchain-core>=1.2,
     which conflicts with the SQL agent stack (langchain-core 0.3.x). Set USE_GEMINI=False for a conflict-free install.
     """
@@ -62,7 +63,7 @@ def _create_chat_llm(*, streaming: bool = False, callbacks: list | None = None):
         kwargs["callbacks"] = callbacks
     else:
         kwargs["streaming"] = False
-    print("[LangChainAgent] Using GPT-4.1")
+    print("[LangChainAgent] Using gpt-4.1")
     return ChatOpenAI(**kwargs)
 
 
@@ -70,7 +71,7 @@ def _create_mini_llm(*, streaming: bool = True, callbacks: list | None = None):
     """Create a lighter LLM for simple chat / report generation.
 
     When USE_GEMINI=true and langchain-google-genai is installed → Gemini 2.5 Pro.
-    Otherwise → GPT-4.1-mini.
+    Otherwise → gpt-4.1-mini.
     """
     if settings.USE_GEMINI and settings.GEMINI_API_KEY:
         try:
@@ -334,9 +335,21 @@ def _fix_response_table_pipes(
                     result.extend(block)
                     print(f"[TablePipeFix] Preserved LLM-computed table ({lm_data_row_count} rows > {len(captured_data)} SQL rows)")
                 else:
-                    # Same or fewer rows — rebuild with properly escaped raw SQL data
-                    result.append(block[0])
-                    result.append(block[1])
+                    # Same or fewer rows — rebuild with properly escaped raw SQL data.
+                    # Use actual SQL column names as header (not the LLM's renamed/reordered
+                    # headers) so that column header and data order always match.
+                    # Auto-detect alignment: right-align numeric columns, left-align text.
+                    def _is_numeric_col(col: str) -> bool:
+                        for r in captured_data:
+                            v = str(r.get(col, "")).strip().lstrip("-").replace(",", "").replace(".", "", 1)
+                            if v and not v.isdigit():
+                                return False
+                        return bool(captured_data)
+                    sep_parts = ["---:" if _is_numeric_col(col) else ":---" for col in captured_cols]
+                    header = "| " + " | ".join(str(c) for c in captured_cols) + " |"
+                    separator = "| " + " | ".join(sep_parts) + " |"
+                    result.append(header)
+                    result.append(separator)
                     for row in captured_data:
                         cells = [
                             str(row.get(col, "")).replace("|", "\\|")
@@ -448,6 +461,83 @@ def _build_context_messages(history: list[dict]) -> list:
 # Streaming callback handler
 # ---------------------------------------------------------------------------
 
+def _extract_sql_col_names(sql: str) -> list[str]:
+    """Extract column names/aliases from the final SELECT of a SQL statement (handles CTEs).
+    Returns actual names in SELECT order, or empty list on failure."""
+    if not sql:
+        return []
+    upper = sql.upper()
+    # Find the last top-level SELECT (after all CTE closing parens)
+    depth = 0
+    last_select_pos = -1
+    i = 0
+    while i < len(sql):
+        c = sql[i]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            if depth > 0:
+                depth -= 1
+        elif depth == 0 and upper[i:i+6] == 'SELECT':
+            last_select_pos = i
+        i += 1
+    if last_select_pos == -1:
+        return []
+    # Find FROM after this SELECT at depth 0
+    depth = 0
+    from_pos = -1
+    i = last_select_pos + 6
+    while i < len(sql):
+        c = sql[i]
+        if c == '(':
+            depth += 1
+        elif c == ')':
+            if depth > 0:
+                depth -= 1
+        elif depth == 0 and upper[i:i+5] in (' FROM', '\tFROM', '\nFROM'):
+            from_pos = i
+            break
+        i += 1
+    if from_pos == -1:
+        return []
+    select_clause = sql[last_select_pos + 6:from_pos].strip()
+    # Remove TOP N
+    select_clause = re.sub(r'^TOP\s+\d+\s+', '', select_clause, flags=re.IGNORECASE).strip()
+    # Split by comma at depth 0 (ignore commas inside function calls)
+    items: list[str] = []
+    depth = 0
+    current = ""
+    for char in select_clause:
+        if char == '(':
+            depth += 1
+            current += char
+        elif char == ')':
+            depth -= 1
+            current += char
+        elif char == ',' and depth == 0:
+            items.append(current.strip())
+            current = ""
+        else:
+            current += char
+    if current.strip():
+        items.append(current.strip())
+    # Extract alias (AS <name>) or bare column name for each item
+    names: list[str] = []
+    for item in items:
+        item = item.strip()
+        as_match = re.search(r'\bAS\b\s+([`"\[]?[\w]+[`"\]]?)\s*$', item, re.IGNORECASE)
+        if as_match:
+            names.append(as_match.group(1).strip('`"[]'))
+        else:
+            parts = item.split()
+            if parts:
+                last = parts[-1].strip('`"[]')
+                if '.' in last:
+                    last = last.split('.')[-1]
+                names.append(last if last and last != '*' else f"Col{len(names)+1}")
+    return names
+
+
 def _parse_sql_tool_result_to_table(output: str) -> Optional[tuple[list[str], list[dict]]]:
     """Parse sql_db_query tool output (e.g. '[(a, b), (c, d)]' or with Decimal) into table_columns and table_data."""
     if not output or not isinstance(output, str):
@@ -507,11 +597,18 @@ def _parse_sql_tool_result_to_table(output: str) -> Optional[tuple[list[str], li
 
 
 def _build_markdown_table(columns: list[str], data: list[dict]) -> str:
-    """Build a markdown table string from column names and list of row dicts."""
+    """Build a markdown table string from column names and list of row dicts.
+    Numeric columns are right-aligned (---:), text columns left-aligned (:---)."""
     if not columns or not data:
         return ""
+    def _is_numeric(col: str) -> bool:
+        for r in data:
+            v = str(r.get(col, "")).strip().lstrip("-").replace(",", "").replace(".", "", 1)
+            if v and not v.isdigit():
+                return False
+        return bool(data)
     header = "| " + " | ".join(str(c) for c in columns) + " |"
-    sep = "|" + "|".join(":---" for _ in columns) + "|"
+    sep = "|" + "|".join("---:" if _is_numeric(c) else ":---" for c in columns) + "|"
     rows = []
     for row in data:
         cells = [str(row.get(c, "")).replace("|", "\\|") for c in columns]
@@ -762,6 +859,16 @@ class StreamingCallbackHandler(BaseCallbackHandler):
             parsed = _parse_sql_tool_result_to_table(str(output))
             if parsed:
                 cols, data = parsed
+                # Replace generic "Column N" names with actual SQL column names/aliases
+                sql_names = _extract_sql_col_names(self._last_sql or "")
+                if sql_names and len(sql_names) == len(cols):
+                    renamed_data = [
+                        {sql_names[j]: row[cols[j]] for j in range(len(cols))}
+                        for row in data
+                    ]
+                    cols = sql_names
+                    data = renamed_data
+                    print(f"[LangChainAgent][Callback] Resolved SQL column names: {cols}")
                 self._query_result_columns = cols
                 self._query_result_table = data
                 print(f"[LangChainAgent][Callback] Parsed query result: {len(data)} rows, {len(cols)} cols")
@@ -816,16 +923,30 @@ async def stream_chat_with_database(
 
         llm = _create_chat_llm(streaming=False)
 
-        # Build context prefix from history (larger assistant context for SQL path)
-        context_prefix = _build_history_prefix(chat_history, max_assistant_chars=1500)
+        # Build context prefix from history.  SQL strings are deliberately
+        # excluded (include_sql=False) so the LLM input stays stable across
+        # repeated identical questions, ensuring deterministic SQL at temperature=0.
+        context_prefix = _build_history_prefix(chat_history, max_assistant_chars=1000, include_sql=False)
         if context_prefix:
             print(f"[LangChainAgent] Injecting {len(chat_history)} history messages as context")
 
         full_question = context_prefix + question
 
         # Create SQL agent with DB knowledge prefix (role-specific)
+        _today = datetime.now()
+        _date_injection = (
+            f"=== CURRENT DATE & TIME ===\n"
+            f"Today is {_today.strftime('%A, %B %d, %Y')}.\n"
+            f"Current year: {_today.year} | Current month: {_today.strftime('%B %Y')} | "
+            f"Yesterday: {_today.strftime('%Y-%m-%d') if True else ''}"
+            f"\nWhen the user says 'today', 'yesterday', 'this week', 'this month', 'last month', "
+            f"'this year', 'last year', or any relative date expression, always calculate from "
+            f"{_today.strftime('%Y-%m-%d')} as the reference point. "
+            f"NEVER assume a date from your training data — always use {_today.strftime('%Y-%m-%d')} as today.\n"
+        )
         db_prefix = (
-            get_system_prompt_for_role(role)
+            _date_injection
+            + get_system_prompt_for_role(role)
             + "\n\nYou are an expert SQL agent for the StarScemaSPARS star schema database. "
             + "Dialect: {dialect}. Only execute SELECT queries — never INSERT, UPDATE, DELETE, DROP, or DDL."
 
@@ -877,6 +998,17 @@ async def stream_chat_with_database(
             + "\n• Do NOT infer row counts from samples — always run SELECT COUNT(*)."
 
             + "\n\n=== OUTPUT FORMAT — FINAL ANSWER RULES ==="
+            + "\n• NEVER display surrogate key or internal ID columns in the final table."
+            + "\n  Columns ending in 'Key' (CustomerKey, DateKey, ProductKey, VendorKey, WarehouseKey, etc.)"
+            + "\n  are meaningless integers to the user. Strip them from the output even if the SQL selected them."
+            + "\n  Always show business names and descriptions instead."
+            + "\n"
+            + "\n• ABSOLUTE RULE — YOUR FINAL RESPONSE MUST NEVER CONTAIN SQL CODE."
+            + "\n  Never write SELECT, FROM, WHERE, JOIN, WITH, or any SQL statement in your reply text."
+            + "\n  The sql_db_query tool handles SQL execution. Your job is to present the results."
+            + "\n  If asked to 'generate SQL', 'write a query', or 'show me the SQL' — still execute the"
+            + "\n  query silently with the tool and return the formatted results, not the SQL text."
+            + "\n"
             + "\n• !! FINANCIAL STATEMENT EXCEPTION (Balance Sheet / P&L / Income Statement) !!"
             + "\n  TWO CASES — detect which applies BEFORE writing your response:"
             + "\n"
@@ -945,33 +1077,31 @@ async def stream_chat_with_database(
             + "\n    You MUST restructure it using the steps below, every single time."
             + "\n    Step 1 — Collect the group amounts from the result rows."
             + "\n             If any of these 6 groups is absent from the result, treat its amount as 0.00:"
-            + "\n             SALES | COST OF SALES | GENERAL & ADMINISTRATIVE | SELLING EXPENSES | OTHER INCOME | INCOME TAXES"
+            + "\n             Sales | Cost Of Goods Sold | Operating Expenses | Other Income/Expenses | Interest Expenses | Taxes"
             + "\n    Step 2 — Expense groups are stored as NEGATIVE numbers. Compute derived lines by adding:"
-            + "\n             Gross Profit/(Loss)     = SALES + COST OF SALES"
-            + "\n             Total Operating Cost    = GENERAL & ADMINISTRATIVE + SELLING EXPENSES"
-            + "\n             Operating Profit/(Loss) = Gross Profit + Total Operating Cost"
-            + "\n             Net Profit/(Loss)       = Operating Profit + OTHER INCOME + INCOME TAXES"
+            + "\n             Gross Profit/(Loss)     = Sales + Cost Of Goods Sold"
+            + "\n             Operating Profit/(Loss) = Gross Profit + Operating Expenses"
+            + "\n             Net Profit/(Loss)       = Operating Profit + Other Income/Expenses + Interest Expenses + Taxes"
             + "\n    Step 3 — Output EXACTLY this structure (apply thousands separators and 2 decimal places):"
-            + "\n      | **Sales** | <SALES amount> |"
-            + "\n      | **Cost Of Sales** | <COST OF SALES amount> |"
+            + "\n      | **Sales** | <Sales amount> |"
+            + "\n      | **Cost Of Goods Sold** | <Cost Of Goods Sold amount> |"
             + "\n      | **Gross Profit/(Loss)** | <computed Gross Profit> |"
             + "\n      | | |"
-            + "\n      | **Operating Cost** | |"
-            + "\n      |     General & Administrative | <G&A amount, 0.00 if absent> |"
-            + "\n      |     Selling Expenses | <Selling amount, 0.00 if absent> |"
-            + "\n      | **Total Operating Cost** | <computed Total Op Cost> |"
+            + "\n      | **Operating Expenses** | <Operating Expenses amount, 0.00 if absent> |"
             + "\n      | **Operating Profit/(Loss)** | <computed Operating Profit> |"
             + "\n      | | |"
-            + "\n      | **Other Income** | <Other Income amount, 0.00 if absent> |"
-            + "\n      | **Income Taxes** | <Income Taxes amount, 0.00 if absent> |"
+            + "\n      | **Other Income/Expenses** | <Other Income/Expenses amount, 0.00 if absent> |"
+            + "\n      | **Interest Expenses** | <Interest Expenses amount, 0.00 if absent> |"
+            + "\n      | **Taxes** | <Taxes amount, 0.00 if absent> |"
             + "\n      | **Net Profit/(Loss)** | <computed Net Profit> |"
             + "\n    NEVER skip any of these rows. NEVER output raw group rows without this full structure."
             + "\n"
             + "\n  LEVEL 2 — Sub Grouped (SQL returns 3 cols: Main Group, Sub Group, Amount):"
-            + "\n    For SALES and COST OF SALES: bold section header, indented sub-group items, bold Total row."
-            + "\n    For GENERAL & ADMINISTRATIVE and SELLING EXPENSES: nest them under a bold 'Operating Cost' header."
-            + "\n    Insert Gross Profit, Total Operating Cost, Operating Profit, Net Profit as computed bold rows."
-            + "\n    For OTHER INCOME and INCOME TAXES: bold section header, indented sub-group items, bold Total row."
+            + "\n    For Sales and Cost Of Goods Sold: bold section header, indented sub-group items, bold Total row."
+            + "\n    For Operating Expenses: bold section header, indented sub-group items, bold Total row."
+            + "\n    Insert Gross Profit/(Loss) and Operating Profit/(Loss) as computed bold rows."
+            + "\n    For Other Income/Expenses, Interest Expenses, and Taxes: bold section header, indented sub-group items, bold Total row."
+            + "\n    Insert Net Profit/(Loss) as final computed bold row."
             + "\n"
             + "\n  LEVEL 3 — Detailed (SQL returns 4 cols: Main Group, Sub Group, Account, Amount):"
             + "\n    3-level nesting: bold Main Group header -> bold Sub Group header -> indented Account items."
@@ -1030,8 +1160,8 @@ async def stream_chat_with_database(
             + "\n• VENDOR INVOICES: ALWAYS exclude voided vendor invoices:"
             + "\n  AND FVI.Status <> 3   -- 3=Void"
 
-            + "\n\n=== MATHEMATICAL / BDMAS RULES (CRITICAL) ==="
-            + "\n• Always follow BDMAS order of operations: Brackets → Division → Multiplication → Addition → Subtraction."
+            + "\n\n=== MATHEMATICAL / ORDER-OF-OPERATIONS RULES (CRITICAL) ==="
+            + "\n• Always follow strict order of operations: Brackets first, then Division and Multiplication, then Addition and Subtraction."
             + "\n• ALWAYS wrap compound arithmetic expressions in parentheses to make precedence explicit."
             + "  WRONG:  a + b * c        RIGHT:  a + (b * c)"
             + "  WRONG:  a - b / c        RIGHT:  a - (b / c)"
@@ -1055,6 +1185,41 @@ async def stream_chat_with_database(
             + "\n  To select the BOTTOM X%:                                          WHERE rank >= 1.0 - (X / 100.0)"
             + "\n  NEVER use >= (1 - threshold) to mean 'top X%' — that selects the BOTTOM of the distribution."
             + "\n  Safe alternative: NTILE(100) partitions rows into 100 equal buckets; WHERE Tile <= X returns the top X%."
+            + "\n\n• FOLLOW-UP CALCULATION RULE (CRITICAL):"
+            + "\n  When a follow-up question asks you to calculate, derive, compare, or summarise figures that were"
+            + "\n  already shown in a previous response, you MUST:"
+            + "\n  1. Use the COMPLETE set of values from the previous output — do NOT omit, skip, or drop any"
+            + "\n     line item, row, or figure that appeared before. Every value must be included."
+            + "\n  2. Work through the calculation step by step in the correct order of operations:"
+            + "\n     step 1 — identify ALL relevant values from the prior output,"
+            + "\n     step 2 — apply division and multiplication first,"
+            + "\n     step 3 — then apply addition and subtraction,"
+            + "\n     step 4 — state the final result clearly."
+            + "\n  3. Never treat a partial subset of the prior output as if it were the complete picture."
+
+            + "\n\n=== JOIN CONDITION SAFETY (CRITICAL) ==="
+            + "\n• Every JOIN must connect two tables via a column-to-column relationship."
+            + "\n  The ON clause MUST reference at least one column from each of the two tables being joined."
+            + "\n  A condition like  ON SomeTable.Column = 'literal_value'  is NOT a join — it is a row filter"
+            + "\n  that creates an implicit CROSS JOIN, multiplying every row on the left by every matching row"
+            + "\n  on the right. This silently inflates every aggregated metric (SUM, COUNT, AVG) by the number"
+            + "\n  of matching rows on the right side."
+            + "\n"
+            + "\n  WRONG — phantom cross join (will inflate all aggregates):"
+            + "\n    FROM FactInventorySnapshot FIS"
+            + "\n    JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey"
+            + "\n    JOIN DimCustomer DC ON DC.Status = 'Active'   ← no column from FIS or DP — CROSS JOIN!"
+            + "\n    JOIN DimPaymentTerms DPT ON DC.PaymentTermKey = DPT.PaymentTermKey"
+            + "\n"
+            + "\n  RIGHT — only join tables that share a genuine FK relationship:"
+            + "\n    FROM FactInventorySnapshot FIS"
+            + "\n    JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey"
+            + "\n    WHERE DP.IsDiscontinued = 0   ← filters belong in WHERE, not in a JOIN ON clause"
+            + "\n"
+            + "\n• Before writing any JOIN, ask: does the left table contain a column that is a foreign key"
+            + "\n  to the right table? If NO such column exists, do NOT join those tables."
+            + "\n• Filters (e.g. Status = 'Active', IsDiscontinued = 0) always go in the WHERE clause,"
+            + "\n  never in a JOIN ON clause unless they are part of a legitimate key match."
 
             + "\n\n=== SQL SERVER SYNTAX RESTRICTIONS ==="
             + "\n• COUNT(DISTINCT expr) OVER (PARTITION BY ...) is NOT valid SQL Server syntax — it raises error 10759."
@@ -1082,6 +1247,46 @@ async def stream_chat_with_database(
             + "\n  NOTE: DimCustomer has NO column called 'PaymentTerm' — the correct column is PaymentTermKey."
             + "\n  For full payment term details (due days, discount days): use FactSalesOrders.PaymentTermKey"
             + "\n  with JOIN DimPaymentTerms DPT ON FSO.PaymentTermKey = DPT.PaymentTermKey."
+            + "\n• FactInventorySnapshot has NO CustomerKey and NO PaymentTermKey column."
+            + "\n  Inventory records represent stock on hand per product — they have NO direct relationship"
+            + "\n  to customers or payment terms. NEVER join FactInventorySnapshot to DimCustomer or"
+            + "\n  DimPaymentTerms. Doing so creates an implicit CROSS JOIN and inflates every value"
+            + "\n  (quantity, inventory value) by the number of active customers or payment terms."
+            + "\n  Valid joins from FactInventorySnapshot: DimProduct (via ProductKey), DimWarehouse (via"
+            + "\n  WarehouseKey), DimDate (via DateKey)."
+            + "\n• When a user asks for 'category-wise' inventory totals, 'category' refers to product"
+            + "\n  categories (DimProduct.Category), NOT customer payment terms. Use:"
+            + "\n    SELECT DP.Category, SUM(FIS.QuantityOnHand) AS TotalQty,"
+            + "\n           SUM(FIS.InventoryValue) AS TotalValue"
+            + "\n    FROM FactInventorySnapshot FIS"
+            + "\n    JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey"
+            + "\n    WHERE DP.IsDiscontinued = 0"
+            + "\n    GROUP BY DP.Category ORDER BY TotalValue DESC"
+
+            + "\n\n=== FEW-SHOT: INVENTORY CATEGORY QUERY (WRONG vs RIGHT) ==="
+            + "\nUser question: 'Prepare category-wise totals for on-hand quantity and inventory value.'"
+            + "\n"
+            + "\nWRONG (creates phantom cross join — never do this):"
+            + "\n  SELECT DPT.Description AS PaymentTerm,"
+            + "\n         SUM(FIS.QuantityOnHand) AS TotalOnHandQty,"
+            + "\n         SUM(FIS.InventoryValue)  AS TotalInventoryValue"
+            + "\n  FROM FactInventorySnapshot FIS"
+            + "\n  JOIN DimProduct DP  ON FIS.ProductKey = DP.ProductKey"
+            + "\n  JOIN DimCustomer DC ON DC.Status = 'Active'          -- ← no FK link; CROSS JOIN"
+            + "\n  JOIN DimPaymentTerms DPT ON DC.PaymentTermKey = DPT.PaymentTermKey"
+            + "\n  WHERE DP.IsDiscontinued = 0"
+            + "\n  GROUP BY DPT.Description"
+            + "\n  -- Result: every inventory row × every active customer → all values inflated by millions"
+            + "\n"
+            + "\nRIGHT (use DimProduct.Category as the grouping dimension):"
+            + "\n  SELECT DP.Category,"
+            + "\n         SUM(FIS.QuantityOnHand) AS TotalOnHandQty,"
+            + "\n         SUM(FIS.InventoryValue)  AS TotalInventoryValue"
+            + "\n  FROM FactInventorySnapshot FIS"
+            + "\n  JOIN DimProduct DP ON FIS.ProductKey = DP.ProductKey"
+            + "\n  WHERE DP.IsDiscontinued = 0"
+            + "\n  GROUP BY DP.Category"
+            + "\n  ORDER BY TotalInventoryValue DESC"
         )
         print("[LangChainAgent] Creating SQL agent (with DB knowledge prefix)...")
         try:
@@ -1176,9 +1381,14 @@ async def stream_chat_with_database(
                         parsed = _parse_sql_tool_result_to_table(raw_result)
                         if parsed:
                             cols, data = parsed
+                            sql_names = _extract_sql_col_names(candidate_sql)
+                            if sql_names and len(sql_names) == len(cols):
+                                data = [{sql_names[j]: row[cols[j]] for j in range(len(cols))} for row in data]
+                                cols = sql_names
                             handler._last_sql = candidate_sql
                             handler._query_result_columns = cols
                             handler._query_result_table = data
+                            agent_output = _build_markdown_table(cols, data)
                             sql_query = candidate_sql
                             print(f"[LangChainAgent] Auto-executed LLM output as SQL: {len(data)} rows, {len(cols)} cols")
                         else:
@@ -1202,6 +1412,18 @@ async def stream_chat_with_database(
         qdata = getattr(handler, "_query_result_table", None)
         qrows = len(qdata) if qdata else 0
         has_captured_sql = bool((getattr(handler, "_last_sql", None) or "").strip())
+
+        # Guard: if the agent's raw output starts with a SQL keyword it almost certainly
+        # leaked raw SQL instead of a natural language response.  Check against agent_output
+        # (before stripping) not against full_response so we are not fooled by prose that
+        # mentions "select" or "from" in ordinary English.
+        # No natural language response ever begins with SELECT / WITH / INSERT / CREATE.
+        _ao_stripped = agent_output.strip()
+        _sql_starters = ("SELECT", "WITH ", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER")
+        _output_is_sql = _ao_stripped.upper().startswith(_sql_starters)
+        if _output_is_sql and qcols and qdata and qrows > 0:
+            full_response = _build_markdown_table(qcols, qdata)
+            print(f"[LangChainAgent] agent_output starts with SQL keyword — replaced with captured table ({qrows} rows)")
 
         # When the DB query returned 0 rows, never show fabricated tables — force no-data message
         if has_captured_sql and qrows == 0:
@@ -1297,8 +1519,18 @@ async def stream_chat_with_database(
         yield f"data: {error_event}\n\n"
 
 
-def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 1500) -> str:
-    """Build [User]/[Assistant] history prefix for context (shared by SQL and simple chat). Includes sql_query when present for assistant messages."""
+def _build_history_prefix(
+    chat_history: list[dict],
+    max_assistant_chars: int = 1500,
+    include_sql: bool = True,
+) -> str:
+    """Build [User]/[Assistant] history prefix for context.
+
+    When include_sql=False (SQL agent path) previous SQL strings are omitted
+    from the injected history so the LLM receives a stable input and generates
+    deterministic SQL at temperature=0.  The conversation text (user questions
+    and assistant summaries) is still included for contextual continuity.
+    """
     if not chat_history:
         return ""
     parts = ["Previous conversation (oldest first):"]
@@ -1307,7 +1539,7 @@ def _build_history_prefix(chat_history: list[dict], max_assistant_chars: int = 1
         content = msg.get("content") or ""
         if msg.get("role") == "assistant" and len(content) > max_assistant_chars:
             content = content[:max_assistant_chars] + "... [truncated]"
-        if msg.get("role") == "assistant":
+        if include_sql and msg.get("role") == "assistant":
             sql_query = msg.get("sql_query") or ""
             if sql_query:
                 content = content + "\n(SQL that was run: " + (sql_query[:400] + "..." if len(sql_query) > 400 else sql_query) + ")"
@@ -1336,10 +1568,19 @@ async def stream_simple_chat(
     try:
         handler = StreamingCallbackHandler(token_queue)
         llm = _create_mini_llm(streaming=True, callbacks=[handler])
+        _today_simple = datetime.now()
+        _date_ctx = (
+            f"TODAY'S DATE: {_today_simple.strftime('%A, %B %d, %Y')} "
+            f"(year={_today_simple.year}, month={_today_simple.strftime('%B')}).\n"
+            f"Always use this as the reference for 'today', 'yesterday', 'this month', "
+            f"'last month', 'this year', 'last year', etc. "
+            f"NEVER use a date from your training knowledge — today is always {_today_simple.strftime('%Y-%m-%d')}.\n\n"
+        )
         schema_context = get_system_prompt_for_role(role)
         history_prefix = _build_history_prefix(chat_history)
         full_prompt = (
-            f"{schema_context}\n\n"
+            _date_ctx
+            + f"{schema_context}\n\n"
             "Think step by step. You are a helpful assistant for a database analytics app. "
             "Answer briefly and naturally using plain English only.\n"
             "STRICT RULES — never break these:\n"
@@ -1347,14 +1588,23 @@ async def stream_simple_chat(
             "  2. If the user asks about their previous questions or conversation history, read the conversation above and list them as plain numbered text.\n"
             "  3. For greetings, thanks, or clarification requests, respond in a short friendly way.\n"
             "  4. For advisory questions (e.g. 'how can this help me', 'what should I do'), give a concise plain-English answer based on what has already been discussed.\n"
-            "  5. MATHEMATICAL / BDMAS RULES — when explaining or computing any numbers:\n"
-            "     • Follow BDMAS order: Brackets → Division → Multiplication → Addition → Subtraction.\n"
+            "  5. MATHEMATICAL / ORDER-OF-OPERATIONS RULES — when explaining or computing any numbers:\n"
+            "     • Follow strict order of operations: resolve Division and Multiplication before Addition and Subtraction.\n"
             "     • Always resolve brackets/parentheses first before any other operation.\n"
-            "     • Multiplication and Division are evaluated before Addition and Subtraction.\n"
             "     • Percentage: divide first, then multiply by 100.  e.g. (part / total) × 100.\n"
             "     • Growth rate: (current − previous) / |previous| × 100.\n"
             "     • Never divide by zero — if denominator is zero, state 'N/A' or 'undefined'.\n"
-            "     • Show intermediate steps when explaining a calculation so the user can verify.\n\n"
+            "     • Show intermediate steps when explaining a calculation so the user can verify.\n"
+            "  6. FOLLOW-UP CALCULATION RULE (CRITICAL) — when a follow-up question asks you to calculate, derive,\n"
+            "     compare, or summarise figures based on a previous response:\n"
+            "     • Use the COMPLETE set of values from the previous output — do NOT skip, drop, or omit any line item,\n"
+            "       row, or figure that was shown before. Every value in the prior response must be included.\n"
+            "     • Work through the calculation step by step in the correct order of operations:\n"
+            "       step 1 — identify all relevant values from the previous output,\n"
+            "       step 2 — apply division / multiplication first,\n"
+            "       step 3 — then apply addition / subtraction,\n"
+            "       step 4 — state the final result clearly.\n"
+            "     • Never reference a partial subset of the prior output as if it were the whole.\n\n"
             f"{history_prefix}{question}"
         )
 
