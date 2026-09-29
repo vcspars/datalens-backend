@@ -18,7 +18,9 @@ class User:
         role: str = "executive",
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
-        _id: Optional[ObjectId] = None
+        _id: Optional[ObjectId] = None,
+        preferred_provider: Optional[str] = None,
+        preferred_model: Optional[str] = None,
     ):
         self._id = _id or ObjectId()
         self.email = email
@@ -27,6 +29,10 @@ class User:
         self.role = role if role in VALID_ROLES else "executive"
         self.created_at = created_at or datetime.utcnow()
         self.updated_at = updated_at or datetime.utcnow()
+        # Per-user OpenRouter model preference (only used when
+        # settings.OPENROUTER_ENABLED=true — see app/services/llm_provider.py).
+        self.preferred_provider = preferred_provider
+        self.preferred_model = preferred_model
     
     def to_dict(self) -> dict:
         """Convert user to dictionary"""
@@ -37,7 +43,9 @@ class User:
             "full_name": self.full_name,
             "role": self.role,
             "created_at": self.created_at,
-            "updated_at": self.updated_at
+            "updated_at": self.updated_at,
+            "preferred_provider": self.preferred_provider,
+            "preferred_model": self.preferred_model,
         }
     
     @classmethod
@@ -50,6 +58,7 @@ class User:
             full_name=data["full_name"],
             role=data.get("role", "executive"),
             created_at=data.get("created_at"),
-            updated_at=data.get("updated_at")
+            updated_at=data.get("updated_at"),
+            preferred_provider=data.get("preferred_provider"),
+            preferred_model=data.get("preferred_model"),
         )
-

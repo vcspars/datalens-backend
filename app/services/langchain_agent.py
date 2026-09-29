@@ -25,89 +25,14 @@ from langgraph.prebuilt import create_react_agent
 from app.config import settings
 from app.services.db_knowledge_router import get_system_prompt_for_role
 from app.services.skill_loader import load_skill
+from app.services.llm_provider import (
+    get_chat_llm,
+    usage_from_response,
+    sum_usage_from_messages,
+    record_llm_usage,
+)
 
 print("[LangChainAgent] Module loaded")
-
-
-def _create_chat_llm(*, streaming: bool = False, callbacks: list | None = None):
-    """Create the chat LLM based on USE_GEMINI setting.
-
-    When USE_GEMINI=true and langchain-google-genai is installed → Gemini 2.5 Pro.
-    Otherwise → gpt-4.1 via langchain-openai.
-    Note: langchain-google-genai is not in requirements.txt because it requires langchain-core>=1.2,
-    which conflicts with the SQL agent stack (langchain-core 0.3.x). Set USE_GEMINI=False for a conflict-free install.
-    """
-    if settings.USE_GEMINI and settings.GEMINI_API_KEY:
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            kwargs: dict = dict(
-                model="gemini-2.5-pro",
-                temperature=0,
-                google_api_key=settings.GEMINI_API_KEY,
-            )
-            if streaming and callbacks:
-                kwargs["streaming"] = True
-                kwargs["callbacks"] = callbacks
-            print("[LangChainAgent] Using Gemini 2.5 Pro")
-            return ChatGoogleGenerativeAI(**kwargs)
-        except ImportError as e:
-            print(f"[LangChainAgent] USE_GEMINI=True but langchain_google_genai not available: {e}. Falling back to GPT.")
-        except Exception as e:
-            print(f"[LangChainAgent] Gemini init failed: {e}. Falling back to GPT.")
-
-    kwargs = dict(
-        model="gpt-4.1",
-        temperature=0,
-        seed=42,
-        frequency_penalty=0,
-        presence_penalty=0,
-        openai_api_key=settings.OPENAI_API_KEY,
-    )
-    if streaming and callbacks:
-        kwargs["streaming"] = True
-        kwargs["callbacks"] = callbacks
-    else:
-        kwargs["streaming"] = False
-    print("[LangChainAgent] Using gpt-4.1")
-    return ChatOpenAI(**kwargs)
-
-
-def _create_mini_llm(*, streaming: bool = True, callbacks: list | None = None):
-    """Create a lighter LLM for simple chat / report generation.
-
-    When USE_GEMINI=true and langchain-google-genai is installed → Gemini 2.5 Pro.
-    Otherwise → gpt-4.1-mini.
-    """
-    if settings.USE_GEMINI and settings.GEMINI_API_KEY:
-        try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            kwargs: dict = dict(
-                model="gemini-2.5-pro",
-                temperature=0,
-                google_api_key=settings.GEMINI_API_KEY,
-            )
-            if streaming and callbacks:
-                kwargs["streaming"] = True
-                kwargs["callbacks"] = callbacks
-            return ChatGoogleGenerativeAI(**kwargs)
-        except ImportError:
-            pass
-        except Exception:
-            pass
-
-    kwargs = dict(
-        model="gpt-4.1",
-        temperature=0,
-        seed=42,
-        frequency_penalty=0,
-        presence_penalty=0,
-        openai_api_key=settings.OPENAI_API_KEY,
-    )
-    if streaming:
-        kwargs["streaming"] = True
-    if callbacks:
-        kwargs["callbacks"] = callbacks
-    return ChatOpenAI(**kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -624,6 +549,52 @@ def _build_markdown_table(columns: list[str], data: list[dict]) -> str:
     return "\n".join([header, sep] + rows)
 
 
+_ALLOWED_CHART_TYPES = {"bar", "line", "pie", "area", "scatter"}
+
+
+def validate_charts(raw_charts, all_tables: list[dict]) -> list[dict]:
+    """Validate/normalize an LLM-proposed ``charts`` array against the tables it
+    references.  A chart is only kept when it points at a real table and both
+    axes match actual columns of that table — this prevents the frontend from
+    trying to render a chart against a column that does not exist.
+
+    Each returned chart is a dict: {type, tableIndex, xKey, yKey, title}.
+    Returns [] for anything malformed so callers can always trust the shape.
+    """
+    if not isinstance(raw_charts, list) or not all_tables:
+        return []
+
+    valid: list[dict] = []
+    for c in raw_charts:
+        if not isinstance(c, dict):
+            continue
+        ctype = str(c.get("type") or "").strip().lower()
+        if ctype not in _ALLOWED_CHART_TYPES:
+            continue
+        try:
+            t_idx = int(c.get("tableIndex", 0))
+        except (TypeError, ValueError):
+            t_idx = 0
+        if t_idx < 0 or t_idx >= len(all_tables):
+            continue
+        cols = all_tables[t_idx].get("columns") or []
+        x_key = str(c.get("xKey") or "").strip()
+        y_key = str(c.get("yKey") or "").strip()
+        if not x_key or not y_key or x_key not in cols or y_key not in cols:
+            continue
+        title = str(c.get("title") or "").strip()[:120]
+        valid.append({
+            "type": ctype,
+            "tableIndex": t_idx,
+            "xKey": x_key,
+            "yKey": y_key,
+            "title": title,
+        })
+        if len(valid) >= 4:  # hard cap — never flood the UI with charts
+            break
+    return valid
+
+
 # Phrases that must not appear in user-facing responses (replace with friendly wording)
 _USER_FACING_FORBIDDEN = [
     (r"the query returned no results?", "no data matches that criteria", re.IGNORECASE),
@@ -1030,6 +1001,7 @@ async def stream_chat_with_database(
     question: str,
     chat_history: list[dict],
     role: str = "executive",
+    llm_ctx: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that streams SSE events for a user question.
@@ -1038,6 +1010,8 @@ async def stream_chat_with_database(
         question: The natural language question from the user.
         chat_history: List of {"role": ..., "content": ...} dicts (last 5 pairs).
         role: User role for selecting the appropriate DB knowledge prompt.
+        llm_ctx: Optional per-request LLM context (model preference + usage
+            accumulator) built by app.services.llm_provider.new_llm_ctx().
 
     Yields:
         SSE-formatted strings.
@@ -1056,7 +1030,7 @@ async def stream_chat_with_database(
                 return
             raise
 
-        llm = _create_chat_llm(streaming=False)
+        llm, _provider, _model_id = get_chat_llm(llm_ctx=llm_ctx)
 
         # Build context prefix from history.  SQL strings are deliberately
         # excluded (include_sql=False) so the LLM input stays stable across
@@ -1100,6 +1074,13 @@ async def stream_chat_with_database(
         elapsed = _time.time() - t0
         messages = result.get("messages", []) if isinstance(result, dict) else []
         tool_call_count = sum(1 for m in messages if getattr(m, "type", "") == "tool")
+        record_llm_usage(
+            sum_usage_from_messages(messages),
+            step="sql_agent_legacy",
+            provider=_provider,
+            model=_model_id,
+            llm_ctx=llm_ctx,
+        )
 
         final_text = ""
         for m in reversed(messages):
@@ -1152,6 +1133,8 @@ async def stream_chat_with_database(
         response_text = _sanitize_user_response(response_text)
         has_table = has_table and bool(all_tables)
 
+        charts = validate_charts(answer.get("charts"), all_tables) if all_tables else []
+
         table_data = all_tables[0]["data"] if all_tables else []
         table_columns = all_tables[0]["columns"] if all_tables else []
 
@@ -1173,7 +1156,7 @@ async def stream_chat_with_database(
         # Yield the complete response payload BEFORE any token chunks so that
         # chat.py can persist it to MongoDB the instant the agent finishes.
         # This event is never forwarded to the frontend (chat.py intercepts it).
-        yield f"data: {json.dumps({'type': 'pre_done', 'full_response': full_response, 'has_table': has_table, 'table_data': table_data, 'table_columns': table_columns, 'tables': all_tables, 'sql_query': sql_query or ''})}\n\n"
+        yield f"data: {json.dumps({'type': 'pre_done', 'full_response': full_response, 'has_table': has_table, 'table_data': table_data, 'table_columns': table_columns, 'tables': all_tables, 'charts': charts, 'sql_query': sql_query or ''})}\n\n"
 
         # Simulate streaming: send the final response in small chunks so the UI feels responsive
         chunk_size = 12
@@ -1191,6 +1174,7 @@ async def stream_chat_with_database(
             "table_data": table_data,
             "table_columns": table_columns,
             "tables": all_tables,
+            "charts": charts,
             "full_response": full_response,
             "sql_query": sql_query,
         })
@@ -1216,12 +1200,17 @@ async def _run_sql_react_agent(
     question: str,
     chat_history: list[dict],
     role: str = "executive",
+    llm_ctx: dict | None = None,
 ) -> dict:
     """Run the SQL ReAct subagent and return a structured result dict.
 
     This is the non-streaming core of stream_chat_with_database(), extracted
     so that mcp_agent.py can call it directly as the implementation of the
     `query_sql_database` tool without duplicating any logic.
+
+    Args:
+        llm_ctx: Optional per-request LLM context (model preference + usage
+            accumulator) built by app.services.llm_provider.new_llm_ctx().
 
     Returns a dict with keys:
         response    (str)  — narrative text
@@ -1239,7 +1228,7 @@ async def _run_sql_react_agent(
             raise RuntimeError("The database connection is temporarily unavailable. Please try again in a moment.") from conn_err
         raise
 
-    llm = _create_chat_llm(streaming=False)
+    llm, _provider, _model_id = get_chat_llm(llm_ctx=llm_ctx)
 
     context_prefix = _build_history_prefix(chat_history, max_assistant_chars=1000, include_sql=False)
     full_question = (context_prefix + question) if context_prefix else question
@@ -1271,6 +1260,13 @@ async def _run_sql_react_agent(
     elapsed = _time.time() - t0
     messages = result.get("messages", []) if isinstance(result, dict) else []
     tool_call_count = sum(1 for m in messages if getattr(m, "type", "") == "tool")
+    record_llm_usage(
+        sum_usage_from_messages(messages),
+        step="sql_subagent",
+        provider=_provider,
+        model=_model_id,
+        llm_ctx=llm_ctx,
+    )
 
     final_text = ""
     for m in reversed(messages):
@@ -1315,6 +1311,9 @@ async def _run_sql_react_agent(
     response_text = _sanitize_user_response(response_text)
     has_table = has_table and bool(all_tables)
 
+    # Charts are only meaningful when we actually have tabular data to plot.
+    charts = validate_charts(answer.get("charts"), all_tables) if all_tables else []
+
     response_parts = [response_text] if response_text else []
     for t in all_tables:
         md = _build_markdown_table(t["columns"], t["data"])
@@ -1328,6 +1327,7 @@ async def _run_sql_react_agent(
         "response": response_text,
         "has_table": has_table,
         "tables": all_tables,
+        "charts": charts,
         "sql_query": sql_query or "",
         "full_response": full_response,
     }
@@ -1368,6 +1368,7 @@ async def stream_simple_chat(
     question: str,
     chat_history: list[dict],
     role: str = "executive",
+    llm_ctx: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream a simple LLM response (no SQL agent). Used for greetings, thanks, follow-ups.
@@ -1381,7 +1382,7 @@ async def stream_simple_chat(
 
     try:
         handler = StreamingCallbackHandler(token_queue)
-        llm = _create_mini_llm(streaming=True, callbacks=[handler])
+        llm, _provider, _model_id = get_chat_llm(llm_ctx=llm_ctx, streaming=True, callbacks=[handler])
         schema_context = get_system_prompt_for_role(role)
         history_prefix = _build_history_prefix(chat_history)
         full_prompt = (
@@ -1411,7 +1412,27 @@ async def stream_simple_chat(
                     None,
                     lambda: llm.invoke(full_prompt, config={"callbacks": [handler]}),
                 )
-                return result.content if hasattr(result, "content") else str(result)
+                record_llm_usage(
+                    usage_from_response(result),
+                    step="simple_chat",
+                    provider=_provider,
+                    model=_model_id,
+                    llm_ctx=llm_ctx,
+                )
+                content = result.content if hasattr(result, "content") else str(result)
+                # Reasoning-only models (e.g. openai/gpt-oss-20b:free via OpenRouter)
+                # return content=null — all output is in additional_kwargs["reasoning"].
+                # Inject those chunks into the queue so the consumer loop picks them up.
+                if not content:
+                    akw = getattr(result, "additional_kwargs", {}) or {}
+                    reasoning_text = akw.get("reasoning") or akw.get("thinking") or ""
+                    if reasoning_text:
+                        print(f"[LangChainAgent] stream_simple_chat reasoning-only model detected, injecting {len(reasoning_text)} chars")
+                        chunk_size = 80
+                        for i in range(0, len(reasoning_text), chunk_size):
+                            await token_queue.put(reasoning_text[i : i + chunk_size])
+                        content = reasoning_text
+                return content
             except Exception as e:
                 print(f"[LangChainAgent] stream_simple_chat LLM error: {e}")
                 raise
@@ -1423,7 +1444,8 @@ async def stream_simple_chat(
         print("[LangChainAgent] stream_simple_chat streaming tokens...")
         while True:
             try:
-                token = await asyncio.wait_for(token_queue.get(), timeout=60.0)
+                # Use 120s for the first token to allow slow reasoning models to complete
+                token = await asyncio.wait_for(token_queue.get(), timeout=120.0)
             except asyncio.TimeoutError:
                 print("[LangChainAgent] stream_simple_chat token timeout")
                 break
@@ -1435,7 +1457,7 @@ async def stream_simple_chat(
             yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
         try:
-            await asyncio.wait_for(llm_task, timeout=5.0)
+            await asyncio.wait_for(llm_task, timeout=30.0)
         except asyncio.TimeoutError:
             pass
 
@@ -1448,6 +1470,7 @@ async def stream_simple_chat(
             "table_data": [],
             "table_columns": [],
             "tables": [],
+            "charts": [],
             "full_response": full_response,
             "sql_query": "",
         })
@@ -1461,6 +1484,204 @@ async def stream_simple_chat(
 
 
 # ---------------------------------------------------------------------------
+# Visualize-from-history fast path (re-chart already-shown data, NO SQL)
+# ---------------------------------------------------------------------------
+
+_VISUALIZE_SYSTEM_PROMPT = """You are a data-visualization assistant. You are given the data table(s) that were ALREADY shown to the user in the previous turn, plus the user's request to visualize data. Your job has TWO steps.
+
+STEP 1 — Does the shown data actually contain what the user wants to visualize?
+Compare the user's request against the provided table columns and rows.
+- If the request refers to THIS data (e.g. "visualize this", "make a graph of these results", "chart the numbers above", or names a metric/entity/period that IS present in the table) → set "needs_new_data": false and proceed to STEP 2.
+- If the request needs data that is NOT in the shown table — a different metric, a different entity, a different or additional time period, more rows than shown, or a comparison the table doesn't contain (e.g. table has only 2024 but the user wants "compare with 2025") → set "needs_new_data": true, set "charts": [] and "response": "". Do NOT try to chart mismatched data. A separate data path will handle fetching.
+
+STEP 2 — (only when needs_new_data is false) Choose the single best chart.
+- `xKey` and `yKey` MUST be EXACT column names copied from the provided table columns.
+- `xKey` is the category/label/date axis; `yKey` is the numeric measure to plot.
+- `type` is one of: bar | line | pie | area | scatter.
+- **EXPLICIT TYPE OVERRIDE (highest priority):** If the user's request explicitly names a chart type — "line graph", "line chart", "bar chart", "bar graph", "pie chart", "area chart", "scatter plot/chart", or similar — you MUST set `type` to EXACTLY that type. The user's stated choice ALWAYS wins, even if you personally think another type fits the data better. Never substitute your own preferred type for one the user explicitly named.
+- Only when the user did NOT name a specific type, pick the most suitable one yourself:
+  • time trend over months/quarters/years → "line" or "area"
+  • comparing a measure across ~2–20 categories → "bar"
+  • share of a whole (parts that sum to ~100%) → "pie"
+  • relationship between two numeric measures → "scatter"
+- If the user asks for a "better" or "different" graph WITHOUT naming a type, and the current best type is already what was shown, you may keep it — but prefer switching to a genuinely more insightful type when one applies (e.g. a "line" for a monthly trend instead of a bar).
+- Emit exactly ONE chart. If the data is present but genuinely NOT chartable (e.g. a single value with nothing to compare), return "charts": [] with needs_new_data false and briefly say so in "response". (A request that explicitly names a chart type is always an instruction to produce that chart — honor it.)
+- NEVER invent columns that are not in the table.
+- `response` is ONE short business sentence describing the chart (e.g. "Here's the monthly trend of average order value."). Do NOT mention Excel, Google Sheets, tools, axes, legends, or how to build a chart.
+
+Output ONLY a raw JSON object (no markdown, no code fence) with exactly these keys:
+{
+  "needs_new_data": true or false,
+  "response": "<one short sentence, or empty when needs_new_data is true>",
+  "charts": [ { "type": "bar", "tableIndex": 0, "xKey": "Column Name", "yKey": "Column Name", "title": "Short title" } ]
+}"""
+
+
+def _find_last_history_tables(chat_history: list[dict]) -> list[dict]:
+    """Return the most recent assistant message's structured tables (validated
+    to {columns, data} shape), or [] if none present in history."""
+    if not chat_history:
+        return []
+    for m in reversed(chat_history):
+        if m.get("role") != "assistant":
+            continue
+        raw = m.get("tables")
+        if not isinstance(raw, list) or not raw:
+            continue
+        valid: list[dict] = []
+        for t in raw:
+            if not isinstance(t, dict):
+                continue
+            cols = t.get("columns") or []
+            data = t.get("data") or []
+            if isinstance(cols, list) and isinstance(data, list) and cols and data:
+                valid.append({"columns": cols, "data": data})
+        if valid:
+            return valid
+    return []
+
+
+def _summarize_tables_for_prompt(all_tables: list[dict], max_rows: int = 12) -> str:
+    """Compact text description of tables (columns + a few sample rows) for the
+    chart-picker LLM. Keeps token cost low — we never send the full table."""
+    parts = []
+    for idx, t in enumerate(all_tables):
+        cols = t.get("columns") or []
+        data = t.get("data") or []
+        parts.append(f"Table {idx} columns: {json.dumps(cols)}")
+        sample = data[:max_rows]
+        parts.append(f"Sample rows (first {len(sample)} of {len(data)}): {json.dumps(sample, default=str)}")
+    return "\n".join(parts)
+
+
+async def _stream_sql_fallback(
+    question: str,
+    chat_history: list[dict],
+    role: str,
+    reason: str,
+    llm_ctx: dict | None = None,
+) -> AsyncGenerator[str, None]:
+    """Delegate to the full SQL/orchestrator path and relay its SSE stream.
+
+    Used whenever the visualize fast path cannot safely chart already-shown
+    data (no usable table, data mismatch, or an internal error). Imported
+    lazily to avoid a circular import (mcp_agent imports from this module).
+    """
+    print(f"[LangChainAgent] Visualize -> SQL fallback ({reason})")
+    from app.services.mcp_agent import stream_chat_with_database_with_mcp
+    async for chunk in stream_chat_with_database_with_mcp(question, chat_history, role=role, llm_ctx=llm_ctx):
+        yield chunk
+
+
+async def stream_visualize_from_history(
+    question: str,
+    chat_history: list[dict],
+    role: str = "executive",
+    llm_ctx: dict | None = None,
+) -> AsyncGenerator[str, None]:
+    """Re-chart data already shown in a previous turn — WITHOUT re-running SQL.
+
+    Robust, self-guarding design (no fragile "is there any recent table" flag):
+      1. Look for the most recent assistant table in the conversation context.
+      2. Make ONE lightweight LLM call that BOTH decides whether that shown data
+         actually matches the user's request AND (if so) picks the best chart.
+      3. If there is no usable table, the data does not match the request, or
+         anything fails → transparently fall back to the full SQL/orchestrator
+         path (which fetches fresh data and can itself produce a chart).
+
+    This guarantees we never chart the wrong/stale table: when in doubt we defer
+    to the data path. Emits the same SSE contract (pre_done → tokens → done) as
+    every other path so persistence and the frontend are unchanged.
+    """
+    # ── Phase 1: decide (never emits) ───────────────────────────────────────
+    all_tables = _find_last_history_tables(chat_history)
+    decision: dict | None = None  # {response_text, charts, tables} when chartable
+
+    if not all_tables:
+        async for chunk in _stream_sql_fallback(question, chat_history, role, "no prior table in context", llm_ctx):
+            yield chunk
+        return
+
+    try:
+        print(f"[LangChainAgent] Visualize fast path | evaluating {len(all_tables)} shown table(s) | rows={len(all_tables[0]['data'])}")
+        table_text = _summarize_tables_for_prompt(all_tables)
+        user_prompt = (
+            f"User request: {question}\n\n"
+            f"Data already shown to the user in the previous turn:\n{table_text}\n\n"
+            f"Return the JSON object only (needs_new_data, response, charts):"
+        )
+        llm, _provider, _model_id = get_chat_llm(llm_ctx=llm_ctx)
+        import time as _time
+        t0 = _time.time()
+        result = await asyncio.wait_for(
+            llm.ainvoke([HumanMessage(content=_VISUALIZE_SYSTEM_PROMPT + "\n\n" + user_prompt)]),
+            timeout=60.0,
+        )
+        record_llm_usage(
+            usage_from_response(result),
+            step="visualize_picker",
+            provider=_provider,
+            model=_model_id,
+            llm_ctx=llm_ctx,
+        )
+        raw = (getattr(result, "content", "") or "").strip()
+        # Reasoning-only model: content may be null; check additional_kwargs
+        if not raw:
+            akw = getattr(result, "additional_kwargs", {}) or {}
+            raw = (akw.get("reasoning") or akw.get("thinking") or "").strip()
+        print(f"[LangChainAgent] Visualize decision done | {(_time.time() - t0):.2f}s | raw_len={len(raw)}")
+
+        answer = _parse_json_final_answer(raw)
+        if answer.get("needs_new_data"):
+            # Shown data doesn't match the request — let the data path fetch it.
+            async for chunk in _stream_sql_fallback(question, chat_history, role, "shown data does not match request", llm_ctx):
+                yield chunk
+            return
+
+        response_text = _sanitize_user_response(str(answer.get("response") or "").strip())
+        charts = validate_charts(answer.get("charts"), all_tables)
+        _picked = [f"{c.get('type')}({c.get('xKey')}→{c.get('yKey')})" for c in charts]
+        print(f"[LangChainAgent] Visualize picked charts: {_picked or 'none'}")
+        if not response_text:
+            response_text = "Here's a chart of the data." if charts else "This data isn't well suited to a chart."
+        decision = {"response_text": response_text, "charts": charts, "tables": all_tables}
+    except Exception as e:
+        # Any failure in the fast path is non-fatal — defer to the data path so
+        # the user still gets a correct answer.
+        print(f"[LangChainAgent] Visualize fast path errored ({type(e).__name__}: {e}) — falling back to SQL")
+        async for chunk in _stream_sql_fallback(question, chat_history, role, "fast-path error", llm_ctx):
+            yield chunk
+        return
+
+    # ── Phase 2: emit (committed — no fallback past this point) ──────────────
+    response_text = decision["response_text"]
+    charts = decision["charts"]
+    all_tables = decision["tables"]
+
+    response_parts = [response_text]
+    for t in all_tables:
+        md = _build_markdown_table(t["columns"], t["data"])
+        if md:
+            response_parts.append(md)
+    full_response = "\n\n".join(p for p in response_parts if p).strip()
+
+    table_data = all_tables[0]["data"]
+    table_columns = all_tables[0]["columns"]
+
+    yield f"data: {json.dumps({'type': 'pre_done', 'full_response': full_response, 'has_table': True, 'table_data': table_data, 'table_columns': table_columns, 'tables': all_tables, 'charts': charts, 'sql_query': ''})}\n\n"
+
+    chunk_size = 12
+    for i in range(0, len(full_response), chunk_size):
+        chunk = full_response[i:i + chunk_size]
+        yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+        if (i // chunk_size) % 5 == 4:
+            await asyncio.sleep(0.01)
+
+    yield f"data: {json.dumps({'type': 'done', 'has_table': True, 'table_data': table_data, 'table_columns': table_columns, 'tables': all_tables, 'charts': charts, 'full_response': full_response, 'sql_query': ''})}\n\n"
+    print(f"[LangChainAgent] Visualize fast path complete | charts={len(charts)}")
+
+
+# ---------------------------------------------------------------------------
 # Report generation streaming
 # ---------------------------------------------------------------------------
 
@@ -1469,6 +1690,7 @@ async def stream_generate_report(
     items_context: str,
     template: str,
     custom_system_prompt: Optional[str] = None,
+    llm_ctx: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream a markdown report based on selected dashboard items and user prompt.
@@ -1480,6 +1702,8 @@ async def stream_generate_report(
         custom_system_prompt: If provided, replaces the default report-style system
             prompt.  Use this to avoid the LLM prepending "Data Summary Report /
             Executive Summary" headers when you just want plain content.
+        llm_ctx: Optional per-request LLM context (model preference + usage
+            accumulator) built by app.services.llm_provider.new_llm_ctx().
 
     Yields SSE strings:
       data: {"type": "token",  "content": "..."}\n\n
@@ -1489,7 +1713,7 @@ async def stream_generate_report(
     print(f"[LangChainAgent] stream_generate_report | template={template} | prompt='{prompt[:100]}'")
 
     try:
-        llm = _create_mini_llm(streaming=True)
+        llm, _provider, _model_id = get_chat_llm(llm_ctx=llm_ctx, streaming=True)
 
         if custom_system_prompt:
             system_prompt = custom_system_prompt
@@ -1526,8 +1750,25 @@ async def stream_generate_report(
                     None,
                     lambda: llm.invoke(full_prompt, config={"callbacks": [handler]}),
                 )
+                record_llm_usage(
+                    usage_from_response(result),
+                    step="report_generation",
+                    provider=_provider,
+                    model=_model_id,
+                    llm_ctx=llm_ctx,
+                )
                 print(f"[LangChainAgent] Report LLM complete")
-                return result.content if hasattr(result, "content") else str(result)
+                content = result.content if hasattr(result, "content") else str(result)
+                # Reasoning-only model: inject from additional_kwargs when content is null
+                if not content:
+                    akw = getattr(result, "additional_kwargs", {}) or {}
+                    reasoning_text = akw.get("reasoning") or akw.get("thinking") or ""
+                    if reasoning_text:
+                        chunk_size = 80
+                        for i in range(0, len(reasoning_text), chunk_size):
+                            await token_queue.put(reasoning_text[i : i + chunk_size])
+                        content = reasoning_text
+                return content
             except Exception as e:
                 print(f"[LangChainAgent] Report LLM error: {e}")
                 raise
@@ -1550,7 +1791,7 @@ async def stream_generate_report(
             yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
         try:
-            llm_output = await asyncio.wait_for(llm_task, timeout=10.0)
+            llm_output = await asyncio.wait_for(llm_task, timeout=30.0)
         except asyncio.TimeoutError:
             llm_output = "".join(full_report_parts)
 

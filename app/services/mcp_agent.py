@@ -15,7 +15,7 @@ Architecture:
     non-LLM short-circuit is a free static check: if MCP has no cached tools,
     skip the live-catalog text and run with just the SQL tool.
 
-Public entry point: stream_chat_with_database_with_mcp(question, chat_history, role)
+Public entry point: stream_chat_with_database_with_mcp(question, chat_history, role, llm_ctx)
   — yields the exact same SSE event shapes as stream_chat_with_database() in
   langchain_agent.py, so app/routes/chat.py needs zero changes.
 """
@@ -43,7 +43,9 @@ from app.services.langchain_agent import (
     _sanitize_user_response,
     _build_history_prefix,
     _build_markdown_table,
+    validate_charts,
 )
+from app.services.llm_provider import get_chat_llm, sum_usage_from_messages, record_llm_usage
 
 print("[MCPAgent] Module loaded")
 
@@ -56,12 +58,12 @@ print("[MCPAgent] Module loaded")
 # the closure captured when _make_sql_tool() builds the tool at request time.
 # Using a factory avoids module-level global state for per-request context.
 
-def _make_sql_tool(question_context: str, chat_history: list[dict], role: str):
+def _make_sql_tool(question_context: str, chat_history: list[dict], role: str, llm_ctx: dict | None = None):
     """Return a @tool-decorated function that calls the SQL ReAct subagent.
 
-    All three context values are captured in the closure so the outer
-    orchestrator agent only needs to pass a sub-question string as the
-    tool argument — no hidden globals needed.
+    All context values are captured in the closure so the outer orchestrator
+    agent only needs to pass a sub-question string as the tool argument — no
+    hidden globals needed.
     """
 
     @tool
@@ -86,7 +88,7 @@ def _make_sql_tool(question_context: str, chat_history: list[dict], role: str):
             # layer. By the time sub_question arrives here it is fully self-contained,
             # so feeding chat_history into the SQL subagent only introduces variation
             # (different history on each run → different SQL for the same question).
-            result = await _run_sql_react_agent(sub_question, [], role=role)
+            result = await _run_sql_react_agent(sub_question, [], role=role, llm_ctx=llm_ctx)
             return json.dumps(result)
         except Exception as e:
             print(f"[MCPAgent] query_sql_database tool error: {type(e).__name__}: {e}")
@@ -105,12 +107,15 @@ def _make_sql_tool(question_context: str, chat_history: list[dict], role: str):
 # Orchestrator agent builder
 # ---------------------------------------------------------------------------
 
-def _build_unified_agent(tools: list, role: str):
-    """Build the unified orchestrator ReAct agent for one request."""
-    from langchain_openai import ChatOpenAI
+def _build_unified_agent(tools: list, role: str, llm_ctx: dict | None = None):
+    """Build the unified orchestrator ReAct agent for one request.
+
+    Returns (agent, provider, model_id) — provider/model_id are needed by the
+    caller to attribute the orchestrator's LLM usage/cost correctly.
+    """
     from langgraph.prebuilt import create_react_agent
 
-    llm = ChatOpenAI(model="gpt-4.1", temperature=0, seed=42, frequency_penalty=0, presence_penalty=0, openai_api_key=settings.OPENAI_API_KEY)
+    llm, provider, model_id = get_chat_llm(llm_ctx=llm_ctx)
 
     # Dynamic catalog text — empty string if no MCP tools; the skill file
     # already describes how to use query_sql_database without any catalog.
@@ -120,7 +125,7 @@ def _build_unified_agent(tools: list, role: str):
     role_scope = get_role_scope_text(role)
     system_prompt = build_orchestrator_system_prompt(catalog, role_scope)
 
-    return create_react_agent(model=llm, tools=tools, prompt=system_prompt)
+    return create_react_agent(model=llm, tools=tools, prompt=system_prompt), provider, model_id
 
 
 # ---------------------------------------------------------------------------
@@ -131,12 +136,17 @@ async def stream_chat_with_database_with_mcp(
     question: str,
     chat_history: list[dict],
     role: str = "executive",
+    llm_ctx: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Unified orchestrator for SQL-intent queries.
 
     Builds one ReAct agent with MCP tools (if available) + the SQL subagent
     tool, runs it to completion, then streams the result as SSE events.
+
+    Args:
+        llm_ctx: Optional per-request LLM context (model preference + usage
+            accumulator) built by app.services.llm_provider.new_llm_ctx().
 
     Yields the exact same event types as stream_chat_with_database() so
     app/routes/chat.py needs no changes.
@@ -158,10 +168,10 @@ async def stream_chat_with_database_with_mcp(
                 print(f"[MCPAgent] Could not fetch MCP tools: {e}. Continuing with SQL only.")
                 mcp_tools = []
 
-        sql_tool = _make_sql_tool(question, chat_history, role)
+        sql_tool = _make_sql_tool(question, chat_history, role, llm_ctx)
         all_tools = mcp_tools + [sql_tool]
 
-        agent = _build_unified_agent(all_tools, role)
+        agent, _provider, _model_id = _build_unified_agent(all_tools, role, llm_ctx)
         recursion_limit = max(4, settings.ORCHESTRATOR_MAX_TOOL_CALLS * 2 + 2)
 
         history_prefix = _build_history_prefix(chat_history, include_sql=False)
@@ -267,6 +277,13 @@ async def stream_chat_with_database_with_mcp(
 
         elapsed = time.time() - t0
         tool_call_count = sum(1 for m in messages if getattr(m, "type", "") == "tool")
+        record_llm_usage(
+            sum_usage_from_messages(messages),
+            step="orchestrator",
+            provider=_provider,
+            model=_model_id,
+            llm_ctx=llm_ctx,
+        )
 
         # ── Short-circuit: if query_sql_database was the ONLY tool called,
         #    use its result directly — skip the orchestrator's final LLM re-wrap.
@@ -342,6 +359,11 @@ async def stream_chat_with_database_with_mcp(
         response_text = _sanitize_user_response(response_text)
         has_table = has_table and bool(all_tables)
 
+        # Chart specs — either the SQL subagent already validated them (short-circuit
+        # path) or the orchestrator proposed them in its final JSON. Re-validate
+        # against the tables we accepted above so the frontend can trust the shape.
+        charts = validate_charts(answer.get("charts"), all_tables) if all_tables else []
+
         # Build full_response (narrative + rendered markdown tables).
         # For the short-circuit path the subagent already built full_response;
         # reuse it only when the tables match what we validated above.
@@ -389,6 +411,7 @@ async def stream_chat_with_database_with_mcp(
                 "table_data": table_data,
                 "table_columns": table_columns,
                 "tables": all_tables,
+                "charts": charts,
                 "sql_query": sql_query,
             })
             + "\n\n"
@@ -408,11 +431,12 @@ async def stream_chat_with_database_with_mcp(
             "table_data": table_data,
             "table_columns": table_columns,
             "tables": all_tables,
+            "charts": charts,
             "full_response": full_response,
             "sql_query": sql_query,
         })
         yield f"data: {done_event}\n\n"
-        print("[MCPAgent] Stream complete")
+        print(f"[MCPAgent] Stream complete | charts={len(charts)}")
 
     except Exception as e:
         print(f"[MCPAgent] EXCEPTION: {type(e).__name__}: {e}")

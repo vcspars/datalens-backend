@@ -1,6 +1,6 @@
 """Authentication schemas"""
 from pydantic import BaseModel, EmailStr, Field
-from typing import Literal
+from typing import Literal, Optional
 
 
 class SignupRequest(BaseModel):
@@ -30,7 +30,15 @@ class UserResponse(BaseModel):
     email: str
     full_name: str
     role: str = "executive"
-    
+    preferred_provider: Optional[str] = None
+    preferred_model: Optional[str] = None
+
     class Config:
         from_attributes = True
+
+
+class ModelPreferenceRequest(BaseModel):
+    """Body for PUT /auth/model-preference"""
+    provider: str = Field(..., description="Currently only 'openrouter' is supported")
+    model: str = Field(..., min_length=1)
 

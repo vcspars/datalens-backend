@@ -13,6 +13,8 @@ from app.routes import auth, datasets
 from app.routes import chat as chat_routes
 from app.routes import dashboard as dashboard_routes
 from app.routes import test_direct_query
+from app.routes import models as models_routes
+from app.routes import usage as usage_routes
 from app.services.langchain_agent import _get_sql_db
 
 
@@ -56,6 +58,16 @@ async def lifespan(app: FastAPI):
         print("[Main] MCP tool cache warm-up task launched in background")
     except Exception as e:
         print(f"[Main] MCP tool cache warm-up task launch failed: {e}")
+
+    # Warm up the OpenRouter model catalog cache, if configured. A no-op
+    # (returns immediately) when OPENROUTER_ENABLED=false — never blocks or
+    # affects startup when the feature is off.
+    try:
+        from app.services.openrouter_manager import init_openrouter_models
+        asyncio.create_task(init_openrouter_models())
+        print("[Main] OpenRouter model catalog warm-up task launched in background")
+    except Exception as e:
+        print(f"[Main] OpenRouter model catalog warm-up task launch failed: {e}")
 
     yield
     # Shutdown
@@ -108,6 +120,8 @@ app.include_router(datasets.router, prefix="/api")
 app.include_router(chat_routes.router, prefix="/api")
 app.include_router(dashboard_routes.router, prefix="/api")
 app.include_router(test_direct_query.router, prefix="/api")
+app.include_router(models_routes.router, prefix="/api")
+app.include_router(usage_routes.router, prefix="/api")
 
 
 @app.get("/")

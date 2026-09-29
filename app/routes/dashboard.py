@@ -14,6 +14,7 @@ from app.models.user import User
 from app.models.dashboard import DashboardItem
 from app.services.langchain_agent import stream_generate_report
 from app.services.report_renderer import render_report_html, render_pdf_from_html
+from app.services.llm_provider import resolve_model_pref, new_llm_ctx, flush_usage_log
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -305,6 +306,7 @@ async def generate_report(
         user_id=user_id,
         item_ids=request.item_ids,
     )
+    llm_ctx = new_llm_ctx(resolve_model_pref(current_user))
 
     async def event_generator():
         full_report = ""
@@ -313,6 +315,7 @@ async def generate_report(
                 prompt=request.prompt,
                 items_context=items_context,
                 template=request.template,
+                llm_ctx=llm_ctx,
             ):
                 yield chunk
                 # Track full report
@@ -327,6 +330,8 @@ async def generate_report(
         except Exception as e:
             print(f"[DashboardRoute] event_generator error: {e}")
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+        finally:
+            await flush_usage_log(db, llm_ctx, user_id=user_id, session_id=user_id, user_message_id=f"report_gen:{ObjectId()}")
 
     return StreamingResponse(
         event_generator(),
@@ -393,11 +398,13 @@ async def generate_report_pdf(
     )
 
     # Run the same streaming generator but aggregate full_report server-side.
+    llm_ctx = new_llm_ctx(resolve_model_pref(current_user))
     full_report = ""
     async for chunk in stream_generate_report(
         prompt=request.prompt,
         items_context=items_context,
         template=request.template,
+        llm_ctx=llm_ctx,
     ):
         try:
             raw = chunk.strip()
@@ -409,6 +416,7 @@ async def generate_report_pdf(
                     full_report += payload.get("content", "")
         except Exception:
             continue
+    await flush_usage_log(db, llm_ctx, user_id=user_id, session_id=user_id, user_message_id=f"report_pdf:{ObjectId()}")
 
     if not full_report:
         raise HTTPException(status_code=500, detail="Failed to generate report content")

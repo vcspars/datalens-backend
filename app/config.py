@@ -48,6 +48,32 @@ class Settings(BaseSettings):
     SQL_AGENT_MAX_TOOL_CALLS: int = 16        # max SQL tool calls per query_sql_database invocation
     SQL_AGENT_TIMEOUT_SECONDS: float = 280.0  # wall-clock budget per query_sql_database invocation
 
+    # --- OpenRouter multi-model support ---
+    # Admin-only toggle (.env). When true, EVERY LLM call in the app (resolver,
+    # orchestrator, SQL subagent, visualize chart-picker, simple chat, report
+    # generation, legacy Vanna path) uses the model the signed-in user picked
+    # from the OpenRouter catalog, instead of the default OpenAI/Gemini setup.
+    # Takes precedence over USE_GEMINI when both are true. When false (default)
+    # every LLM call site behaves EXACTLY as it did before this feature existed.
+    OPENROUTER_ENABLED: bool = False
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_DEFAULT_MODEL: str = ""        # used until a user picks one of their own
+    OPENROUTER_MODELS_REFRESH_MINUTES: float = 60.0  # auto-refresh cached model catalog after this long
+    OPENROUTER_APP_URL: str = ""              # optional — sent as HTTP-Referer (OpenRouter attribution)
+    OPENROUTER_APP_NAME: str = "SPARSLens"    # optional — sent as X-Title (OpenRouter attribution)
+
+    # Manual per-token USD pricing for providers that don't return price info in
+    # their API responses (OpenRouter's own /models response already includes
+    # pricing, so it isn't listed here). Keyed by "<provider>:<model>". Values
+    # are approximate published list prices — correct here if a provider
+    # changes pricing; no code change required.
+    LLM_PRICING_TABLE: dict = {
+        "openai:gpt-4.1": {"prompt_per_token": 0.000002, "completion_per_token": 0.000008},
+        "openai:gpt-4.1-mini": {"prompt_per_token": 0.0000004, "completion_per_token": 0.0000016},
+        "gemini:gemini-2.5-pro": {"prompt_per_token": 0.00000125, "completion_per_token": 0.00001},
+    }
+
     # Swagger /docs password gate
     DOCS_PASSWORD: str = "sdf@#FDF23fd"
 

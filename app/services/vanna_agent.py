@@ -225,6 +225,7 @@ def _ensure_trained(vn):
 async def stream_chat_with_database_vanna(
     question: str,
     chat_history: list[dict],
+    llm_ctx: dict | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Async generator that streams SSE events for a user question (Vanna path).
@@ -275,21 +276,17 @@ async def stream_chat_with_database_vanna(
         context = f"Question: {question}\n\nResult data (markdown table):\n{table_md}" if table_md else f"Question: {question}\n\nNo rows returned."
 
         # 4) Stream natural language response from LLM (sync stream in executor + queue)
-        from langchain_openai import ChatOpenAI
         from langchain_core.messages import HumanMessage, SystemMessage
+        from app.services.llm_provider import get_chat_llm, usage_from_response, record_llm_usage
 
-        llm = ChatOpenAI(
-            model="gpt-4.1-mini",
-            temperature=0,
-            streaming=True,
-            openai_api_key=settings.OPENAI_API_KEY,
-        ) 
+        llm, _provider, _model_id = get_chat_llm(llm_ctx=llm_ctx, streaming=True)
         system = (
             "You are a helpful data analyst. Answer the user's question based on the result data provided. "
             "If there is a markdown table, you may summarize it and/or include it in your response. "
             "Format tables in markdown (| col | col |). Be concise."
         )
         full_parts = []
+        last_usage_chunk = [None]
         token_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
 
         def run_stream():
@@ -298,6 +295,8 @@ async def stream_chat_with_database_vanna(
                     SystemMessage(content=system),
                     HumanMessage(content=context),
                 ]):
+                    if getattr(chunk, "usage_metadata", None):
+                        last_usage_chunk[0] = chunk
                     if chunk.content:
                         full_parts.append(chunk.content)
                         try:
@@ -316,6 +315,13 @@ async def stream_chat_with_database_vanna(
             yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"
 
         await fut  # re-raise any exception from run_stream
+        record_llm_usage(
+            usage_from_response(last_usage_chunk[0]),
+            step="vanna",
+            provider=_provider,
+            model=_model_id,
+            llm_ctx=llm_ctx,
+        )
         text_response = "".join(full_parts)
 
         # Append the actual data table so the UI can render it in markdown

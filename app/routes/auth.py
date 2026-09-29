@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from app.database import get_database
-from app.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse
+from app.schemas.auth import SignupRequest, LoginRequest, TokenResponse, UserResponse, ModelPreferenceRequest
 from app.models.user import User
 from app.models.chat import ChatSession
 from app.utils.security import (
@@ -174,4 +174,56 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         email=current_user.email,
         full_name=current_user.full_name,
         role=current_user.role,
+        preferred_provider=current_user.preferred_provider,
+        preferred_model=current_user.preferred_model,
+    )
+
+
+@router.put("/model-preference", response_model=UserResponse)
+async def update_model_preference(
+    body: ModelPreferenceRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Set the signed-in user's preferred OpenRouter model.
+
+    Only meaningful when OPENROUTER_ENABLED=true (the frontend hides the
+    picker otherwise, but this endpoint also validates defensively). The
+    model id must currently be in the cached free+tool-capable catalog.
+    """
+    from app.config import settings
+    from app.services.openrouter_manager import get_cached_openrouter_models
+
+    if not settings.OPENROUTER_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OpenRouter model selection is not enabled on this server",
+        )
+    if body.provider != "openrouter":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only 'openrouter' is a supported provider for model preference",
+        )
+
+    catalog = await get_cached_openrouter_models()
+    allowed_ids = {m.get("id") for m in catalog}
+    if body.model not in allowed_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected model is not currently available (must be free + tool-capable)",
+        )
+
+    db = get_database()
+    await db.users.update_one(
+        {"_id": current_user._id},
+        {"$set": {"preferred_provider": body.provider, "preferred_model": body.model}},
+    )
+    print(f"[AuthRoute] Updated model preference | user={current_user._id} | provider={body.provider} | model={body.model}")
+
+    return UserResponse(
+        id=str(current_user._id),
+        email=current_user.email,
+        full_name=current_user.full_name,
+        role=current_user.role,
+        preferred_provider=body.provider,
+        preferred_model=body.model,
     )

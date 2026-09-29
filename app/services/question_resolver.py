@@ -8,27 +8,10 @@ import time
 from typing import Any
 
 from app.config import settings
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
+from app.services.llm_provider import get_chat_llm, usage_from_response, record_llm_usage
 
 print("[QuestionResolver] Module loaded")
-
-_RESOLVER_LLM = None
-
-
-def _get_resolver_llm() -> ChatOpenAI:
-    global _RESOLVER_LLM
-    if _RESOLVER_LLM is None:
-        _RESOLVER_LLM = ChatOpenAI(
-            model="gpt-4.1",
-            temperature=0,
-            seed=42,
-            frequency_penalty=0,
-            presence_penalty=0,
-            max_tokens=600,
-            openai_api_key=settings.OPENAI_API_KEY,
-        )
-    return _RESOLVER_LLM
 
 
 # ---------------------------------------------------------------------------
@@ -111,21 +94,43 @@ Your task:
        • "now sort this differently" (when referring to data already shown)
      KEY TEST: Ask yourself — does answering this require fetching NEW data from the database?
      If the data is already in the previous response and the user just wants a different view of it → "simple".
+     EXCEPTION — VISUALIZATION/CHART REQUESTS: never classify these as "simple". They are either "visualize"
+     (re-chart data already shown) or "sql" (chart needs new/more data) — see the visualization rule below.
 
    ALWAYS classify as "sql" (database query IS needed):
    - Requests for counts, totals, lists, reports, summaries that require fetching fresh data (e.g. "how many", "what are the top", "show me sales for", "list all customers", "give me a summary of").
    - Schema / structure questions (e.g. "what tables exist", "what columns does X have").
    - Comparisons or trends that require new data (e.g. "compare last year vs this year", "show monthly breakdown").
    - Requests for a DIFFERENT time period, different filter, or different dimension not present in the previous result.
+   - VISUALIZATION / CHART / GRAPH requests that need NEW or MORE data than what was already shown → "sql". Examples:
+       • "graph sales by month for 2025" (no such data shown yet)
+       • "make a graph comparing this year with last year" (last year not shown yet)
+       • "add 2025 and chart it", "chart the top 20 instead" (needs a bigger/different fetch)
+     When it IS a follow-up, the resolved_question MUST fully restate the underlying data request (metric, entity,
+     grouping, time period) AND ask for the visualization.
 
-   DECISION RULE: If the question is asking the assistant to THINK, ADVISE, or RE-ANALYZE data already shown (not fetch new data), it is "simple". If it is asking the assistant to FETCH or COUNT or LIST fresh data from the database, it is "sql".
+   ALWAYS classify as "visualize" (re-chart data ALREADY shown — NO new database query needed):
+   - The user asks to visualize / graph / chart / plot the data that is ALREADY present in the most recent
+     assistant table, and NO new/different/additional data is required. Examples:
+       • "visualize this", "make a graph of this", "plot this", "chart these results"
+       • "make a better graph", "make a meaningful graph", "show this as a bar/line/pie chart"
+       • "graph the numbers above", "can you draw a chart for this"
+     KEY TEST: Is the exact data to be charted already in the previous assistant message, with nothing new to
+     fetch? If yes → "visualize". If the request needs any data not already shown → "sql".
+     IMPORTANT: Only use "visualize" when a previous assistant message actually contains a data table. If there is
+     no prior table to chart (e.g. the very first message, or the prior turn had no data), use "sql" instead.
+     For a "visualize" follow-up, still produce a fully self-contained resolved_question that names what to chart
+     (e.g. "Visualize the average sales order value for FRANK1 by month for 2024 that was just shown, as a chart.").
+
+   DECISION RULE: THINK/ADVISE/RE-ANALYZE already-shown data → "simple". Re-CHART already-shown data with nothing
+   new to fetch → "visualize". FETCH/COUNT/LIST/CHART data that needs a new database query → "sql".
 
 6. If a ROLE RESTRICTION block is provided below, check whether the resolved question falls outside the user's allowed scope. If it does, set "access_denied" to true and write "denial_reason" following the exact format specified in the ROLE RESTRICTION block. Never reference internal table names.
 
 Output ONLY valid JSON with exactly these keys (no markdown, no code fence):
 {
   "resolved_question": "<the self-contained question string>",
-  "intent": "sql" or "simple",
+  "intent": "sql" or "simple" or "visualize",
   "is_followup": true or false,
   "access_denied": true or false,
   "denial_reason": "<reason string or empty>"
@@ -149,7 +154,12 @@ def _build_context_block(chat_history: list[dict], max_assistant_chars: int = 12
     return "\n".join(parts)
 
 
-def resolve_question(question: str, chat_history: list[dict], role: str = "executive") -> dict[str, Any]:
+def resolve_question(
+    question: str,
+    chat_history: list[dict],
+    role: str = "executive",
+    llm_ctx: dict | None = None,
+) -> dict[str, Any]:
     """
     Resolve the user's question using conversation history and classify intent.
 
@@ -157,6 +167,12 @@ def resolve_question(question: str, chat_history: list[dict], role: str = "execu
         question: The current user message.
         chat_history: List of {"role": "user"|"assistant", "content": str, optional "sql_query": str}.
         role: User role – "executive", "sales", or "operations".
+        llm_ctx: Optional per-request LLM context (model preference + usage
+            accumulator) built by app.services.llm_provider.new_llm_ctx(). This
+            function is synchronous and typically called via run_in_executor,
+            so usage is only appended to the in-memory list here — never
+            written to the database directly (that happens once, later, from
+            the async caller via llm_provider.flush_usage_log()).
 
     Returns:
         {
@@ -193,11 +209,22 @@ Current user message: {question_stripped}{role_block}
 Output the JSON object only (resolved_question, intent, is_followup, access_denied, denial_reason):"""
 
     try:
-        llm = _get_resolver_llm()
+        llm, _provider, _model_id = get_chat_llm(llm_ctx=llm_ctx, max_tokens=600)
         messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=user_prompt)]
-        print(f"[QuestionResolver] Calling LLM (model=gpt-4.1-mini) ...")
+        print(f"[QuestionResolver] Calling LLM (provider={_provider} model={_model_id}) ...")
         result = llm.invoke(messages)
+        record_llm_usage(
+            usage_from_response(result),
+            step="resolver",
+            provider=_provider,
+            model=_model_id,
+            llm_ctx=llm_ctx,
+        )
         raw = (result.content or "").strip()
+        # Reasoning-only model: content may be null; check additional_kwargs
+        if not raw:
+            akw = getattr(result, "additional_kwargs", {}) or {}
+            raw = (akw.get("reasoning") or akw.get("thinking") or "").strip()
         elapsed = time.time() - t_start
         print(f"[QuestionResolver] LLM response received | {elapsed:.2f}s | raw_len={len(raw)}")
         print(f"[QuestionResolver] LLM raw output: {raw}")
@@ -215,7 +242,7 @@ Output the JSON object only (resolved_question, intent, is_followup, access_deni
         data = json.loads(raw)
         resolved = (data.get("resolved_question") or question_stripped).strip()
         intent = (data.get("intent") or "simple").lower()
-        if intent not in ("sql", "simple"):
+        if intent not in ("sql", "simple", "visualize"):
             print(f"[QuestionResolver] WARNING: unexpected intent value {intent!r} -> defaulting to 'simple'")
             intent = "simple"
         is_followup = bool(data.get("is_followup", False))
@@ -259,8 +286,17 @@ Output the JSON object only (resolved_question, intent, is_followup, access_deni
         data_keywords = (
             "how many", "what are", "which", "list", "show", "total", "count", "sum",
             "sales", "customer", "order", "product", "table", "tables", "database",
+            # visualization requests must reach the data path (only it emits charts)
+            "graph", "chart", "visualize", "visualise", "plot",
         )
-        if any(w in question_lower for w in advisory_keywords):
+        # Visualization requests win even if an advisory word is also present.
+        # Default to "visualize" (re-chart existing data); chat.py falls back to
+        # the SQL path automatically when there is no prior table to chart.
+        viz_keywords = ("graph", "chart", "visualize", "visualise", "plot")
+        if any(w in question_lower for w in viz_keywords):
+            intent = "visualize"
+            print(f"[QuestionResolver] Fallback: matched visualization keyword -> intent=visualize")
+        elif any(w in question_lower for w in advisory_keywords):
             intent = "simple"
             print(f"[QuestionResolver] Fallback: matched advisory keyword -> intent=simple")
         elif any(w in question_lower for w in data_keywords):

@@ -37,6 +37,7 @@ class ChatHistoryItem(BaseModel):
     table_data: list
     table_columns: list
     tables: list = []
+    charts: list = []
     sql_query: str = ""
     created_at: str
 
@@ -89,8 +90,14 @@ async def _get_last_n_pairs(db, user_id: str, session_id: str, n: int = 5) -> li
     out = []
     for m in messages:
         item = {"role": m["role"], "content": m["content"]}
-        if m.get("role") == "assistant" and m.get("sql_query"):
-            item["sql_query"] = m["sql_query"]
+        if m.get("role") == "assistant":
+            if m.get("sql_query"):
+                item["sql_query"] = m["sql_query"]
+            # Carry the structured tables so the "visualize" fast path can
+            # re-chart already-shown data without re-running SQL. Other paths
+            # ignore this key (they only read role/content/sql_query).
+            if m.get("tables"):
+                item["tables"] = m["tables"]
         out.append(item)
     return out
 
@@ -240,6 +247,7 @@ async def _upsert_assistant_for_generation(
     table_columns=None,
     all_tables=None,
     sql_query: str = "",
+    charts=None,
 ) -> str:
     """Insert or update the assistant reply for an in-flight generation (partial save)."""
     content = (content or "").strip()
@@ -252,6 +260,8 @@ async def _upsert_assistant_for_generation(
         table_columns = []
     if all_tables is None:
         all_tables = []
+    if charts is None:
+        charts = []
 
     fields = {
         "content": content,
@@ -259,6 +269,7 @@ async def _upsert_assistant_for_generation(
         "table_data": table_data,
         "table_columns": table_columns,
         "tables": all_tables,
+        "charts": charts,
         "sql_query": sql_query or "",
     }
 
@@ -288,6 +299,7 @@ async def _upsert_assistant_for_generation(
         table_data=table_data,
         table_columns=table_columns,
         tables=all_tables,
+        charts=charts,
         sql_query=sql_query or "",
     )
     result = await db.chat_messages.insert_one(assistant_msg.to_dict())
@@ -310,6 +322,7 @@ async def _save_partial_for_keep_cancel(
     table_columns=None,
     all_tables=None,
     sql_query: str = "",
+    charts=None,
 ) -> str:
     """Persist partial assistant content when the user stops mid-stream."""
     doc = await db.chat_generations.find_one({"user_message_id": user_message_id})
@@ -327,6 +340,7 @@ async def _save_partial_for_keep_cancel(
         table_columns,
         all_tables,
         sql_query,
+        charts,
     )
 
 
@@ -399,6 +413,10 @@ async def chat_stream(
     })
 
     user_role = getattr(current_user, "role", "executive") or "executive"
+
+    from app.services.llm_provider import resolve_model_pref, new_llm_ctx, flush_usage_log
+    llm_ctx = new_llm_ctx(resolve_model_pref(current_user))
+
     chunk_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
 
     full_response = ""
@@ -407,6 +425,7 @@ async def chat_stream(
     table_data = []
     table_columns = []
     all_tables: list = []
+    charts: list = []
     sql_query = ""
     error_occurred = False
     already_saved = False
@@ -436,6 +455,7 @@ async def chat_stream(
             table_columns,
             all_tables,
             sql_query,
+            charts,
         )
         if new_id:
             pre_saved_id = new_id
@@ -444,7 +464,7 @@ async def chat_stream(
     async def _run_pipeline() -> None:
         """Resolve, stream, save — survives client disconnect/reload."""
         nonlocal full_response, full_response_parts, has_table
-        nonlocal table_data, table_columns, all_tables, sql_query
+        nonlocal table_data, table_columns, all_tables, charts, sql_query
         nonlocal error_occurred, already_saved, pre_saved_id
 
         try:
@@ -465,12 +485,12 @@ async def chat_stream(
                 print("[ChatRoute] Using Vanna AI agent")
             else:
                 from app.services.question_resolver import resolve_question
-                from app.services.langchain_agent import stream_simple_chat
+                from app.services.langchain_agent import stream_simple_chat, stream_visualize_from_history
                 from app.services.mcp_agent import stream_chat_with_database_with_mcp
                 loop = asyncio.get_event_loop()
                 resolved = await loop.run_in_executor(
                     None,
-                    lambda: resolve_question(question, history, role=user_role),
+                    lambda: resolve_question(question, history, role=user_role, llm_ctx=llm_ctx),
                 )
                 resolved_question = resolved.get("resolved_question", question) or question
                 intent = resolved.get("intent", "sql")
@@ -484,6 +504,14 @@ async def chat_stream(
                 )
                 if access_denied:
                     print(f"[ChatRoute] Access denied for role={user_role}: {denial_reason}")
+                elif intent == "visualize":
+                    # Self-guarding fast path: it re-charts already-shown data
+                    # only when that data actually matches the request, and
+                    # transparently falls back to the SQL path otherwise (no
+                    # usable/relevant table, mismatch, or error). No fragile
+                    # "recent table exists" heuristic here.
+                    stream_fn = stream_visualize_from_history
+                    print("[ChatRoute] Routing to visualize path (re-chart shown data; auto SQL fallback when needed)")
                 elif intent == "sql":
                     stream_fn = stream_chat_with_database_with_mcp
                     print("[ChatRoute] Routing to SQL path (MCP tools tried first, LangChain SQL agent as fallback)")
@@ -507,9 +535,9 @@ async def chat_stream(
                 )
             else:
                 if settings.USE_VANNA_AI:
-                    stream_iter = stream_fn(resolved_question, history)
+                    stream_iter = stream_fn(resolved_question, history, llm_ctx=llm_ctx)
                 else:
-                    stream_iter = stream_fn(resolved_question, history, role=user_role)
+                    stream_iter = stream_fn(resolved_question, history, role=user_role, llm_ctx=llm_ctx)
 
                 async for _chunk in stream_iter:
                     if await _is_generation_cancelled(db, user_message_id):
@@ -531,6 +559,7 @@ async def chat_stream(
                                 table_data = _p.get("table_data", [])
                                 table_columns = _p.get("table_columns", [])
                                 all_tables = _p.get("tables", [])
+                                charts = _p.get("charts", [])
                                 sql_query = _p.get("sql_query", "") or ""
                                 if full_response:
                                     if await _is_generation_cancelled(db, user_message_id):
@@ -548,6 +577,7 @@ async def chat_stream(
                                             table_columns,
                                             all_tables,
                                             sql_query,
+                                            charts,
                                         )
                                         if pre_saved_id:
                                             already_saved = True
@@ -567,6 +597,7 @@ async def chat_stream(
                                 table_data = _p.get("table_data", [])
                                 table_columns = _p.get("table_columns", [])
                                 all_tables = _p.get("tables", [])
+                                charts = _p.get("charts", [])
                                 sql_query = _p.get("sql_query", "") or ""
                                 # Finalize immediately so reload/poll clears stop UI
                                 # even while cosmetic token chunks finish draining.
@@ -585,6 +616,7 @@ async def chat_stream(
                                                 table_columns,
                                                 all_tables,
                                                 sql_query,
+                                                charts,
                                             )
                                             if pre_saved_id:
                                                 already_saved = True
@@ -634,6 +666,7 @@ async def chat_stream(
                             table_data=table_data,
                             table_columns=table_columns,
                             tables=all_tables,
+                            charts=charts,
                             sql_query=sql_query or "",
                         )
                         result = await db.chat_messages.insert_one(assistant_msg.to_dict())
@@ -676,6 +709,7 @@ async def chat_stream(
                     table_columns,
                     all_tables,
                     sql_query,
+                    charts,
                 )
                 if saved_id:
                     pre_saved_id = saved_id
@@ -695,6 +729,7 @@ async def chat_stream(
                             table_data=table_data,
                             table_columns=table_columns,
                             tables=all_tables,
+                            charts=charts,
                             sql_query=sql_query or "",
                         )
                         _r2 = await db.chat_messages.insert_one(_am2.to_dict())
@@ -713,6 +748,10 @@ async def chat_stream(
                 print(
                     f"[ChatRoute] Safety-completed stuck generation | id={user_message_id}"
                 )
+            try:
+                await flush_usage_log(db, llm_ctx, user_id=user_id, session_id=session_id, user_message_id=user_message_id)
+            except Exception as _ue:
+                print(f"[ChatRoute] Failed to flush usage log: {_ue}")
             try:
                 chunk_queue.put_nowait(None)
             except asyncio.QueueFull:
@@ -872,6 +911,7 @@ async def get_chat_history(
                 table_data=m.get("table_data", []),
                 table_columns=m.get("table_columns", []),
                 tables=m.get("tables", []),
+                charts=m.get("charts", []),
                 sql_query=m.get("sql_query", "") or "",
                 created_at=m["created_at"].isoformat() + "Z" if isinstance(m["created_at"], datetime) else str(m["created_at"]),
             )
@@ -918,6 +958,8 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
 
     from app.services.langchain_agent import stream_generate_report, get_table_row_counts
     from app.services.db_snapshot import get_snapshot_context
+    from app.services.llm_provider import resolve_model_pref, new_llm_ctx, flush_usage_log
+    llm_ctx = new_llm_ctx(resolve_model_pref(current_user))
 
     # --- Build context: snapshot KPIs (role-specific, real numbers) + row counts ---
     print(f"[ChatRoute] Loading snapshot context for role={user_role}...")
@@ -994,6 +1036,7 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
                 items_context=combined_context,
                 template="summary",
                 custom_system_prompt=_summary_system,
+                llm_ctx=llm_ctx,
             ):
                 yield chunk
                 try:
@@ -1014,6 +1057,7 @@ async def stream_db_summary(current_user: User = Depends(get_current_user)):
                     upsert=True,
                 )
                 print(f"[ChatRoute] Saved db_summary | user={user_id} | role={user_role} | len={len(full_content)}")
+            await flush_usage_log(db, llm_ctx, user_id=user_id, session_id=user_id, user_message_id=f"db_summary:{ObjectId()}")
 
     return StreamingResponse(
         event_generator(),
@@ -1041,6 +1085,8 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
 
     from app.services.langchain_agent import stream_generate_report
     from app.services.db_snapshot import get_snapshot_context, get_schema_summary_for_role
+    from app.services.llm_provider import resolve_model_pref, new_llm_ctx, flush_usage_log
+    llm_ctx = new_llm_ctx(resolve_model_pref(current_user))
 
     print(f"[ChatRoute] Loading snapshot + schema for questions | role={user_role}...")
     snapshot_context = await get_snapshot_context(user_role)
@@ -1092,6 +1138,7 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
                 items_context=questions_context,
                 template="summary",
                 custom_system_prompt=_questions_system,
+                llm_ctx=llm_ctx,
             ):
                 yield chunk
                 try:
@@ -1118,6 +1165,7 @@ async def stream_db_questions(current_user: User = Depends(get_current_user)):
                     upsert=True,
                 )
                 print(f"[ChatRoute] Saved {len(questions)} db_questions | user={user_id} | role={user_role}")
+            await flush_usage_log(db, llm_ctx, user_id=user_id, session_id=user_id, user_message_id=f"db_questions:{ObjectId()}")
 
     return StreamingResponse(
         event_generator(),
@@ -1141,6 +1189,8 @@ async def stream_db_report(current_user: User = Depends(get_current_user)):
 
     from app.services.langchain_agent import stream_generate_report
     from app.services.db_snapshot import get_snapshot_context
+    from app.services.llm_provider import resolve_model_pref, new_llm_ctx, flush_usage_log
+    llm_ctx = new_llm_ctx(resolve_model_pref(current_user))
 
     print(f"[ChatRoute] Loading snapshot context for report | role={user_role}...")
     snapshot_context = await get_snapshot_context(user_role)
@@ -1199,6 +1249,7 @@ async def stream_db_report(current_user: User = Depends(get_current_user)):
                 items_context=snapshot_context,
                 template="technical",
                 custom_system_prompt=_report_system,
+                llm_ctx=llm_ctx,
             ):
                 yield chunk
                 try:
@@ -1219,6 +1270,7 @@ async def stream_db_report(current_user: User = Depends(get_current_user)):
                     upsert=True,
                 )
                 print(f"[ChatRoute] Saved db_report | user={user_id} | role={user_role} | len={len(full_content)}")
+            await flush_usage_log(db, llm_ctx, user_id=user_id, session_id=user_id, user_message_id=f"db_report:{ObjectId()}")
 
     return StreamingResponse(
         event_generator(),

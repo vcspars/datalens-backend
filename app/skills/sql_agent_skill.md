@@ -342,6 +342,15 @@ Exact schema:
       "columns": ["Column Name 1", "Column Name 2", ...],
       "data": [ { "Column Name 1": "value", "Column Name 2": "value" }, ... ]
     }
+  ],
+  "charts": [
+    {
+      "type": "bar | line | pie | area | scatter",
+      "tableIndex": 0,
+      "xKey": "Column Name 1",
+      "yKey": "Column Name 2",
+      "title": "Short human-readable chart title"
+    }
   ]
 }
 ```
@@ -349,9 +358,45 @@ Exact schema:
 - `tables` is a list so more than one distinct result set can be returned in one answer —
   almost always this list has exactly one entry (the results of your last/main query).
 - If there is nothing to show as a table (pure narrative answer, or no data found), set
-  `has_table` to `false` and `tables` to `[]` — do not omit the key.
+  `has_table` to `false`, `tables` to `[]`, and `charts` to `[]` — do not omit any key.
 - Every object in `data` MUST have exactly the same keys as `columns`, in the same order.
 - Do NOT include surrogate/ID columns ending in `Key` in `columns`/`data` — strip them even
   if you selected them in SQL for filtering/sorting purposes.
+
+### CHART RULES — WHEN AND HOW TO ADD A GRAPH
+
+**VISUALIZATION REQUESTS ("make a graph / visualize this / chart this / plot this"):**
+When the user explicitly asks to visualize, graph, chart, or plot data, you MUST
+execute the query, return the data in `tables`, AND populate `charts` with a
+matching chart — the chart is the answer. NEVER explain how to build a chart in
+Excel, Google Sheets, or any external tool; NEVER mention "X-axis", "Y-axis",
+"legend", "insert a chart", or step-by-step instructions. Keep `response` to a
+short business sentence. If asked for a "better" or "different" graph, pick a
+genuinely more suitable chart `type` (e.g. `line` for a time trend instead of a
+bar), do not repeat the same one. If the user NAMES a specific chart type ("line
+graph", "bar chart", "pie chart", "area chart", "scatter plot"), set `type` to
+EXACTLY that — the user's explicit choice overrides your own preference.
+
+Otherwise, add ONE chart to `charts` only when a graph genuinely helps the user
+see a pattern in the table, and return `"charts": []` when it does not.
+
+- **Time series / trend over months, quarters, years** → `"line"` or `"area"`.
+- **Comparing a numeric measure across ~2–20 categories/products/regions/reps** → `"bar"`.
+- **Share of a whole (percentages summing to ~100%)** → `"pie"`.
+- **Relationship between two numeric measures** → `"scatter"`.
+
+Leave `charts` empty (`[]`) when:
+- `has_table` is false, or the table has a single row / single number.
+- The table is a **financial statement** (Balance Sheet, P&L, Income Statement,
+  Trial Balance) — these multi-level structured tables are NOT chartable.
+- No clear (label, numeric) column pair exists to plot.
+
+How to build the chart entry:
+- `xKey` and `yKey` MUST be exact column names present in the referenced
+  table's `columns`. `xKey` = category/label/date axis; `yKey` = numeric measure.
+- `tableIndex` is the 0-based index into `tables` (usually `0`).
+- Emit at most 1 chart (never more than 2). Pick the single most insightful pair.
+- If you cannot confidently map real columns, emit `"charts": []` — never guess.
+
 - Example of a complete, valid final answer for a simple listing question:
-  `{"response": "Here are the **top 5 customers** by revenue this quarter.", "has_table": true, "tables": [{"columns": ["Customer", "Revenue ($)"], "data": [{"Customer": "Acme Corp", "Revenue ($)": "1,234,567.89"}, {"Customer": "Globex Inc", "Revenue ($)": "987,654.32"}]}]}`
+  `{"response": "Here are the **top 5 customers** by revenue this quarter.", "has_table": true, "tables": [{"columns": ["Customer", "Revenue ($)"], "data": [{"Customer": "Acme Corp", "Revenue ($)": "1,234,567.89"}, {"Customer": "Globex Inc", "Revenue ($)": "987,654.32"}]}], "charts": [{"type": "bar", "tableIndex": 0, "xKey": "Customer", "yKey": "Revenue ($)", "title": "Top Customers by Revenue"}]}`
