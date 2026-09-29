@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = [
         "http://localhost:5173",
         "http://localhost:3000", 
+        "http://localhost:4173", 
+        "http://127.0.0.1:4173", 
+        "http://localhost:4777", 
+        "http://127.0.0.1:4777",
         "http://localhost:8080",
         "http://localhost:8081",
         "http://122.129.80.228:8080",
