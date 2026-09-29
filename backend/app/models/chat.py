@@ -84,8 +84,10 @@ class ChatMessage:
         sql_query: Optional[str] = None,
         created_at: Optional[datetime] = None,
         _id: Optional[ObjectId] = None,
+        status: str = "done",  # 'generating' | 'done'
     ):
         self._id = _id or ObjectId()
+        self.status = status
         self.session_id = session_id
         self.user_id = user_id
         self.role = role
@@ -110,6 +112,7 @@ class ChatMessage:
             "table_columns": self.table_columns,
             "tables": self.tables,
             "sql_query": self.sql_query,
+            "status": self.status,
             "created_at": self.created_at,
         }
 
@@ -127,4 +130,5 @@ class ChatMessage:
             tables=data.get("tables", []),
             sql_query=data.get("sql_query", ""),
             created_at=data.get("created_at"),
+            status=data.get("status", "done"),
         )

@@ -84,6 +84,187 @@ async def _get_last_n_pairs(db, user_id: str, session_id: str, n: int = 5) -> li
 
 
 # ---------------------------------------------------------------------------
+# Background generation registry
+# ---------------------------------------------------------------------------
+# Generation runs in its own asyncio task, decoupled from the HTTP request, so
+# it survives page reloads / client disconnects. The SSE response merely drains
+# a queue fed by the worker.
+
+_active_generations: dict[str, dict] = {}
+_PARTIAL_FLUSH_SECONDS = 0.7
+
+
+def _get_active_generation(user_id: str) -> Optional[dict]:
+    gen = _active_generations.get(user_id)
+    if gen and gen["task"] is not None and gen["task"].done():
+        _active_generations.pop(user_id, None)
+        return None
+    return gen
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+async def _upsert_assistant(db, gen: dict, fields: dict) -> None:
+    """Create-or-update the assistant message for a generation."""
+    base = ChatMessage(
+        session_id=gen["session_id"],
+        user_id=gen["user_id"],
+        role="assistant",
+        content="",
+    ).to_dict()
+    base.pop("_id", None)
+    on_insert = {k: v for k, v in base.items() if k not in fields}
+    await db.chat_messages.update_one(
+        {"_id": gen["assistant_id"]},
+        {"$set": fields, "$setOnInsert": on_insert},
+        upsert=True,
+    )
+
+
+async def _generation_worker(
+    gen: dict,
+    queue: "asyncio.Queue",
+    db,
+    question: str,
+    history: list,
+    user_role: str,
+) -> None:
+    user_id = gen["user_id"]
+    full_response = ""
+    partial = ""
+    has_table = False
+    table_data: list = []
+    table_columns: list = []
+    all_tables: list = []
+    sql_query = ""
+    error_occurred = False
+    last_flush = 0.0
+    loop = asyncio.get_event_loop()
+
+    try:
+        # Persist user message first so a reload sees a pending turn.
+        user_msg = ChatMessage(
+            session_id=gen["session_id"],
+            user_id=user_id,
+            role="user",
+            content=question,
+        )
+        user_msg._id = gen["user_message_id"]
+        await db.chat_messages.insert_one(user_msg.to_dict())
+        print("[ChatRoute] Saved user message to MongoDB")
+        await queue.put(_sse({"type": "user_saved", "user_message_id": str(gen["user_message_id"])}))
+
+        access_denied = False
+        denial_reason = ""
+        if settings.USE_VANNA_AI:
+            from app.services.vanna_agent import stream_chat_with_database_vanna
+            stream_fn = stream_chat_with_database_vanna
+            resolved_question = question
+            print("[ChatRoute] Using Vanna AI agent")
+        else:
+            from app.services.question_resolver import resolve_question
+            from app.services.langchain_agent import stream_chat_with_database, stream_simple_chat
+            resolved = await loop.run_in_executor(
+                None,
+                lambda: resolve_question(question, history, role=user_role),
+            )
+            resolved_question = resolved.get("resolved_question", question) or question
+            intent = resolved.get("intent", "sql")
+            access_denied = resolved.get("access_denied", False)
+            denial_reason = resolved.get("denial_reason", "")
+            print(f"[ChatRoute] Resolved: intent={intent!r} access_denied={access_denied} | resolved='{resolved_question[:60]}'")
+            if access_denied:
+                stream_fn = None
+            elif intent == "sql":
+                stream_fn = stream_chat_with_database
+            else:
+                stream_fn = stream_simple_chat
+
+        if access_denied:
+            denial_msg = denial_reason or "You don't have rights to access this information. As per your current role, you are only assigned access to topics relevant to your team."
+            full_response = denial_msg
+            await queue.put(_sse({"type": "token", "content": denial_msg}))
+            await queue.put(_sse({
+                "type": "done",
+                "has_table": False,
+                "table_data": [],
+                "table_columns": [],
+                "tables": [],
+                "full_response": denial_msg,
+                "sql_query": "",
+            }))
+        else:
+            if settings.USE_VANNA_AI:
+                stream_iter = stream_fn(resolved_question, history)
+            else:
+                stream_iter = stream_fn(resolved_question, history, role=user_role)
+            async for chunk in stream_iter:
+                await queue.put(chunk)
+                try:
+                    raw = chunk.strip()
+                    if not raw.startswith("data: "):
+                        continue
+                    payload = json.loads(raw[6:])
+                    ptype = payload.get("type")
+                    if ptype == "token":
+                        partial += payload.get("content", "") or ""
+                        gen["partial"] = partial
+                        now = loop.time()
+                        if partial.strip() and now - last_flush >= _PARTIAL_FLUSH_SECONDS:
+                            last_flush = now
+                            await _upsert_assistant(db, gen, {"content": partial, "status": "generating"})
+                    elif ptype == "done":
+                        full_response = payload.get("full_response", "") or ""
+                        has_table = payload.get("has_table", False)
+                        table_data = payload.get("table_data", [])
+                        table_columns = payload.get("table_columns", [])
+                        all_tables = payload.get("tables", [])
+                        sql_query = payload.get("sql_query", "") or ""
+                    elif ptype == "error":
+                        error_occurred = True
+                except Exception:
+                    pass
+
+        if gen.get("cancelled"):
+            return
+
+        if full_response and not error_occurred:
+            await _upsert_assistant(db, gen, {
+                "content": full_response,
+                "has_table": has_table,
+                "table_data": table_data,
+                "table_columns": table_columns,
+                "tables": all_tables,
+                "sql_query": sql_query or "",
+                "status": "done",
+            })
+            print(f"[ChatRoute] Saved assistant message | id={gen['assistant_id']} | tables={len(all_tables)}")
+            await queue.put(_sse({"type": "saved", "assistant_db_id": str(gen["assistant_id"])}))
+        else:
+            print(f"[ChatRoute] Skipping assistant save | empty={not full_response} | error={error_occurred}")
+            await db.chat_messages.delete_one({"_id": gen["assistant_id"]})
+
+    except asyncio.CancelledError:
+        print("[ChatRoute] Generation task cancelled")
+    except Exception as e:
+        print(f"[ChatRoute] generation worker error: {e}")
+        import traceback
+        traceback.print_exc()
+        await queue.put(_sse({"type": "error", "content": str(e)}))
+        if not gen.get("cancelled"):
+            try:
+                await db.chat_messages.delete_one({"_id": gen["assistant_id"], "status": "generating"})
+            except Exception:
+                pass
+    finally:
+        await queue.put(None)
+        if _active_generations.get(user_id) is gen:
+            _active_generations.pop(user_id, None)
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -94,7 +275,8 @@ async def chat_stream(
 ):
     """
     SSE streaming endpoint for chat with SQL Server database.
-    Streams LangChain agent tokens, then saves the Q/A pair to MongoDB.
+    Generation runs in a background task (survives reloads); this response
+    just relays the worker's events.
     """
     user_id = str(current_user._id)
     question = request.question.strip()
@@ -102,141 +284,38 @@ async def chat_stream(
     if not question:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question cannot be empty")
 
+    if _get_active_generation(user_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A response is already being generated")
+
     print(f"[ChatRoute] /stream called | user={user_id} | question='{question[:100]}'")
 
     db = get_database()
     session_id = await _get_or_create_session(db, user_id)
     history = await _get_last_n_pairs(db, user_id, session_id, n=5)
+    user_role = getattr(current_user, "role", "executive") or "executive"
+
+    queue: asyncio.Queue = asyncio.Queue()
+    gen = {
+        "user_id": user_id,
+        "session_id": session_id,
+        "question": question,
+        "user_message_id": ObjectId(),
+        "assistant_id": ObjectId(),
+        "partial": "",
+        "cancelled": False,
+        "task": None,
+    }
+    _active_generations[user_id] = gen
+    gen["task"] = asyncio.create_task(
+        _generation_worker(gen, queue, db, question, history, user_role)
+    )
 
     async def event_generator():
-        full_response = ""
-        has_table = False
-        table_data = []
-        table_columns = []
-        all_tables: list = []
-        sql_query = ""
-        error_occurred = False
-
-        user_role = getattr(current_user, "role", "executive") or "executive"
-
-        if settings.USE_VANNA_AI:
-            from app.services.vanna_agent import stream_chat_with_database_vanna
-            stream_fn = stream_chat_with_database_vanna
-            resolved_question = question
-            access_denied = False
-            denial_reason = ""
-            print("[ChatRoute] Using Vanna AI agent")
-        else:
-            from app.services.question_resolver import resolve_question
-            from app.services.langchain_agent import stream_chat_with_database, stream_simple_chat
-            loop = asyncio.get_event_loop()
-            resolved = await loop.run_in_executor(
-                None,
-                lambda: resolve_question(question, history, role=user_role),
-            )
-            resolved_question = resolved.get("resolved_question", question) or question
-            intent = resolved.get("intent", "sql")
-            is_followup = resolved.get("is_followup", False)
-            access_denied = resolved.get("access_denied", False)
-            denial_reason = resolved.get("denial_reason", "")
-            print(f"[ChatRoute] Resolved: intent={intent!r} is_followup={is_followup} access_denied={access_denied} | original='{question[:60]}' | resolved='{resolved_question[:60]}'")
-
-            if access_denied:
-                print(f"[ChatRoute] Access denied for role={user_role}: {denial_reason}")
-            elif intent == "sql":
-                stream_fn = stream_chat_with_database
-                print("[ChatRoute] Routing to LangChain SQL agent")
-            else:
-                stream_fn = stream_simple_chat
-                print("[ChatRoute] Routing to simple LLM (no SQL)")
-
-        try:
-            # Save user message first
-            user_msg = ChatMessage(
-                session_id=session_id,
-                user_id=user_id,
-                role="user",
-                content=question,
-            )
-            await db.chat_messages.insert_one(user_msg.to_dict())
-            print(f"[ChatRoute] Saved user message to MongoDB")
-
-            # If access is denied for this role, yield a polite denial and stop streaming
-            if access_denied:
-                denial_msg = denial_reason or "You don't have rights to access this information. As per your current role, you are only assigned access to topics relevant to your team."
-                full_response = denial_msg
-                token_event = json.dumps({"type": "token", "content": denial_msg})
-                yield f"data: {token_event}\n\n"
-                done_event = json.dumps({
-                    "type": "done",
-                    "has_table": False,
-                    "table_data": [],
-                    "table_columns": [],
-                    "tables": [],
-                    "full_response": denial_msg,
-                    "sql_query": "",
-                })
-                yield f"data: {done_event}\n\n"
-                # fall through — save block below will persist the denial response
-
-            else:
-                if settings.USE_VANNA_AI:
-                    stream_iter = stream_fn(resolved_question, history)
-                else:
-                    stream_iter = stream_fn(resolved_question, history, role=user_role)
-                async for chunk in stream_iter:
-                    yield chunk
-
-                    # Parse chunk to track state
-                    try:
-                        raw = chunk.strip()
-                        if raw.startswith("data: "):
-                            payload = json.loads(raw[6:])
-                            if payload.get("type") == "done":
-                                full_response = payload.get("full_response", "")
-                                has_table = payload.get("has_table", False)
-                                table_data = payload.get("table_data", [])
-                                table_columns = payload.get("table_columns", [])
-                                all_tables = payload.get("tables", [])
-                                sql_query = payload.get("sql_query", "") or ""
-                            elif payload.get("type") == "error":
-                                error_occurred = True
-                    except Exception:
-                        pass
-
-        except Exception as e:
-            print(f"[ChatRoute] event_generator error: {e}")
-            import traceback
-            traceback.print_exc()
-            error_event = json.dumps({"type": "error", "content": str(e)})
-            yield f"data: {error_event}\n\n"
-            error_occurred = True
-
-        # Save assistant response to MongoDB.
-        # This runs outside finally so we can yield the 'saved' event containing
-        # the real MongoDB _id — the frontend uses it for message deletion.
-        if full_response and not error_occurred:
-            try:
-                assistant_msg = ChatMessage(
-                    session_id=session_id,
-                    user_id=user_id,
-                    role="assistant",
-                    content=full_response,
-                    has_table=has_table,
-                    table_data=table_data,
-                    table_columns=table_columns,
-                    tables=all_tables,
-                    sql_query=sql_query or "",
-                )
-                result = await db.chat_messages.insert_one(assistant_msg.to_dict())
-                saved_id = str(result.inserted_id)
-                print(f"[ChatRoute] Saved assistant message | id={saved_id} | has_table={has_table} | tables={len(all_tables)}")
-                # Notify the frontend of the real DB id so delete works immediately
-                yield f"data: {json.dumps({'type': 'saved', 'assistant_db_id': saved_id})}\n\n"
-            except Exception as save_err:
-                print(f"[ChatRoute] Failed to save assistant message: {save_err}")
-        else:
-            print(f"[ChatRoute] Skipping assistant message save | full_response empty={not full_response} | error={error_occurred}")
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
 
     return StreamingResponse(
         event_generator(),
@@ -247,6 +326,91 @@ async def chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/pending")
+async def get_chat_pending(current_user: User = Depends(get_current_user)):
+    """Report whether a generation is currently running for this user."""
+    user_id = str(current_user._id)
+    gen = _get_active_generation(user_id)
+    if gen:
+        return {
+            "active": True,
+            "user_message_id": str(gen["user_message_id"]),
+            "question": gen["question"],
+        }
+
+    # No live task: clean up stubs left behind by a server restart.
+    db = get_database()
+    try:
+        await db.chat_messages.delete_many(
+            {"user_id": user_id, "status": "generating", "content": ""}
+        )
+        await db.chat_messages.update_many(
+            {"user_id": user_id, "status": "generating"},
+            {"$set": {"status": "done"}},
+        )
+    except Exception as e:
+        print(f"[ChatRoute] pending cleanup failed: {e}")
+    return {"active": False}
+
+
+class ChatCancelRequest(BaseModel):
+    user_message_id: Optional[str] = None
+    keep_partial: bool = False
+    partial_content: Optional[str] = None
+
+
+@router.post("/cancel")
+async def cancel_chat_generation(
+    body: ChatCancelRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Cancel the active generation, optionally keeping the partial answer."""
+    user_id = str(current_user._id)
+    gen = _get_active_generation(user_id)
+    if not gen:
+        return {"cancelled": False}
+    if body.user_message_id and body.user_message_id != str(gen["user_message_id"]):
+        return {"cancelled": False}
+
+    db = get_database()
+    gen["cancelled"] = True
+    task = gen["task"]
+    if task and not task.done():
+        task.cancel()
+        try:
+            await task
+        except BaseException:
+            pass
+    _active_generations.pop(user_id, None)
+
+    question = gen["question"]
+    content = (body.partial_content or "").strip() or (gen.get("partial") or "").strip()
+
+    if body.keep_partial and content:
+        await _upsert_assistant(db, gen, {"content": content, "status": "done"})
+        print(f"[ChatRoute] Cancelled, kept partial | assistant={gen['assistant_id']}")
+        return {
+            "cancelled": True,
+            "user_message_id": str(gen["user_message_id"]),
+            "question": question,
+            "user_message_deleted": False,
+            "assistant_db_id": str(gen["assistant_id"]),
+        }
+
+    await db.chat_messages.delete_many(
+        {"_id": {"$in": [gen["user_message_id"], gen["assistant_id"]]}}
+    )
+    print("[ChatRoute] Cancelled, removed user/assistant messages")
+    return {
+        "cancelled": True,
+        "user_message_id": str(gen["user_message_id"]),
+        "question": question,
+        "user_message_deleted": True,
+        "assistant_db_id": None,
+    }
+
 
 
 @router.get("/history", response_model=ChatHistoryResponse)
