@@ -1,5 +1,6 @@
 """Dashboard CRUD routes and streaming report generation"""
 import json
+import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict, Tuple
 
@@ -280,6 +281,18 @@ async def get_reports(current_user: User = Depends(get_current_user)):
     docs = await cursor.to_list(length=100)
     print(f"[DashboardRoute] Found {len(docs)} reports")
 
+    # Reports marked "generating" with no live task were interrupted (e.g. server restart)
+    for d in docs:
+        md = d.get("metadata") or {}
+        if md.get("status") == "generating" and str(d["_id"]) not in _report_tasks:
+            await db.dashboard_items.update_one(
+                {"_id": d["_id"]},
+                {"$set": {"metadata.status": "failed", "metadata.error": "Generation was interrupted. Please try again."}},
+            )
+            md["status"] = "failed"
+            md["error"] = "Generation was interrupted. Please try again."
+            d["metadata"] = md
+
     return {"reports": [_serialize_item(d) for d in docs], "total": len(docs)}
 
 
@@ -337,6 +350,91 @@ async def generate_report(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# Background report generation -------------------------------------------------
+# A placeholder report document is inserted immediately with
+# metadata.status == "generating"; a background task fills in the content and
+# flips the status to "done" (or "failed"). It is independent of the HTTP
+# request, so reloads / other dashboard actions never interrupt it.
+
+_report_tasks: dict[str, "asyncio.Task"] = {}
+
+
+async def _report_worker(db, oid: ObjectId, user_id: str, request: GenerateReportRequest) -> None:
+    try:
+        items_context, _items = await _collect_report_items_and_context(
+            db=db, user_id=user_id, item_ids=request.item_ids,
+        )
+        full_report = ""
+        partial = ""
+        error_msg = ""
+        async for chunk in stream_generate_report(
+            prompt=request.prompt,
+            items_context=items_context,
+            template=request.template,
+        ):
+            try:
+                raw = chunk.strip()
+                if raw.startswith("data: "):
+                    payload = json.loads(raw[6:])
+                    ptype = payload.get("type")
+                    if ptype == "done":
+                        full_report = payload.get("full_report", full_report) or full_report
+                    elif ptype == "token":
+                        partial += payload.get("content", "") or ""
+                    elif ptype == "error":
+                        error_msg = payload.get("content", "") or "Report generation failed"
+            except Exception:
+                continue
+        full_report = full_report or partial
+        if not full_report:
+            raise RuntimeError(error_msg or "Failed to generate report content")
+        await db.dashboard_items.update_one(
+            {"_id": oid},
+            {"$set": {
+                "report_content": full_report,
+                "metadata.status": "done",
+                "updated_at": datetime.utcnow(),
+            }},
+        )
+        print(f"[DashboardRoute] Report {oid} generated | len={len(full_report)}")
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        print(f"[DashboardRoute] Report {oid} failed: {e}")
+        try:
+            await db.dashboard_items.update_one(
+                {"_id": oid},
+                {"$set": {"metadata.status": "failed", "metadata.error": str(e), "updated_at": datetime.utcnow()}},
+            )
+        except Exception:
+            pass
+    finally:
+        _report_tasks.pop(str(oid), None)
+
+
+@router.post("/reports/generate-async", status_code=status.HTTP_202_ACCEPTED)
+async def generate_report_async(
+    request: GenerateReportRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Start background report generation; returns the placeholder report id."""
+    user_id = str(current_user._id)
+    print(f"[DashboardRoute] POST /reports/generate-async | user={user_id} | name={request.name}")
+    db = get_database()
+    item = DashboardItem(
+        user_id=user_id,
+        item_type="report",
+        name=request.name,
+        report_content="",
+        report_template=request.template,
+        metadata={"item_ids": request.item_ids, "status": "generating"},
+    )
+    result = await db.dashboard_items.insert_one(item.to_dict())
+    oid = result.inserted_id
+    _report_tasks[str(oid)] = asyncio.create_task(_report_worker(db, oid, user_id, request))
+    return {"id": str(oid), "status": "generating"}
 
 
 @router.post("/reports/save", status_code=status.HTTP_201_CREATED)
@@ -452,6 +550,9 @@ async def download_saved_report_pdf(
     if not doc or doc.get("user_id") != user_id or doc.get("item_type") != "report":
         raise HTTPException(status_code=404, detail="Report not found")
 
+    if (doc.get("metadata") or {}).get("status") in ("generating", "failed"):
+        raise HTTPException(status_code=409, detail="Report is not ready yet")
+
     full_report = doc.get("report_content", "") or ""
     metadata = doc.get("metadata") or {}
     item_ids = metadata.get("item_ids") or []
@@ -507,6 +608,9 @@ async def delete_report(
     if doc.get("user_id") != user_id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
+    task = _report_tasks.pop(report_id, None)
+    if task and not task.done():
+        task.cancel()
     await db.dashboard_items.delete_one({"_id": oid})
     print(f"[DashboardRoute] Deleted report {report_id}")
     return None
