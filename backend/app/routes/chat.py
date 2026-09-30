@@ -1,7 +1,8 @@
 """Chat with Database routes — SSE streaming via LangChain SQL agent"""
 import json
+import os
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -38,6 +39,8 @@ class ChatHistoryItem(BaseModel):
     table_columns: list
     tables: list = []
     sql_query: str = ""
+    # True when this assistant message is a stored failure/timeout notice
+    is_error: bool = False
     created_at: str
 
 
@@ -66,8 +69,9 @@ async def _get_or_create_session(db, user_id: str) -> str:
 
 async def _get_last_n_pairs(db, user_id: str, session_id: str, n: int = 5) -> list[dict]:
     """Retrieve the last n Q/A pairs for context injection. Includes sql_query for assistant messages so the resolver and agent have full context."""
+    # Failure/timeout notices are not real answers — keep them out of the LLM context.
     cursor = db.chat_messages.find(
-        {"user_id": user_id, "session_id": session_id}
+        {"user_id": user_id, "session_id": session_id, "is_error": {"$ne": True}}
     ).sort("created_at", -1).limit(n * 2)
 
     messages = await cursor.to_list(length=n * 2)
@@ -92,6 +96,81 @@ async def _get_last_n_pairs(db, user_id: str, session_id: str, n: int = 5) -> li
 
 _active_generations: dict[str, dict] = {}
 _PARTIAL_FLUSH_SECONDS = 0.7
+
+# Hard ceiling for one question (resolve + SQL agent + answer): 1.5 minutes.
+CHAT_TIMEOUT_SECONDS = float(os.getenv("CHAT_TIMEOUT_SECONDS", "90"))
+
+TIMEOUT_MESSAGE = (
+    "Response took much time to complete. Please try again "
+    "(a more specific question may help)."
+)
+GENERIC_ERROR_MESSAGE = (
+    "I wasn't able to get an answer for this question just now. This is usually "
+    "temporary. Please try again in a moment, and if it keeps happening, try "
+    "rephrasing your question."
+)
+INTERRUPTED_MESSAGE = (
+    "I didn't get to finish answering this question because the request was interrupted "
+    "(for example by connection drop). Please send your "
+    "question again and I'll take another look."
+)
+OFF_TOPIC_MESSAGE = (
+    "I can only help with questions about your business data in this database "
+    "(for example sales, customers, products, vendors, purchases and inventory) "
+    "and about this chat. I can't answer general-knowledge or unrelated questions. "
+    "Please ask something related to SPARS."
+)
+
+
+def _friendly_error_message(raw: Optional[str]) -> str:
+    """Map a raw agent/exception message to something safe to show the user."""
+    low = (raw or "").lower()
+    if "database connection" in low:
+        return raw or GENERIC_ERROR_MESSAGE
+    if "took too long" in low or "timed out" in low or "timeout" in low:
+        return TIMEOUT_MESSAGE
+    return GENERIC_ERROR_MESSAGE
+
+
+async def _repair_orphaned_questions(db, user_id: str) -> int:
+    """
+    Give every unanswered user question a stored answer.
+
+    A question ends up unanswered when its worker died (server restart, crash,
+    interrupted request) or from older versions that saved nothing on failure.
+    Without an answer the chat would show a question with an empty reply, so we
+    insert a friendly notice right after it. The question that is being
+    generated right now (if any) is left alone.
+    """
+    gen = _get_active_generation(user_id)
+    active_user_msg_id = gen["user_message_id"] if gen else None
+
+    docs = await db.chat_messages.find(
+        {"user_id": user_id},
+        {"role": 1, "created_at": 1, "session_id": 1},
+    ).sort("created_at", 1).to_list(length=None)
+
+    orphans = []
+    for i, d in enumerate(docs):
+        if d.get("role") != "user" or d["_id"] == active_user_msg_id:
+            continue
+        nxt = docs[i + 1] if i + 1 < len(docs) else None
+        if nxt is None or nxt.get("role") == "user":
+            orphans.append(d)
+
+    for d in orphans:
+        notice = ChatMessage(
+            session_id=d["session_id"],
+            user_id=user_id,
+            role="assistant",
+            content=INTERRUPTED_MESSAGE,
+            created_at=d["created_at"] + timedelta(milliseconds=1),
+        ).to_dict()
+        notice["is_error"] = True
+        await db.chat_messages.insert_one(notice)
+    if orphans:
+        print(f"[ChatRoute] Added interrupted-notice for {len(orphans)} unanswered question(s) | user={user_id}")
+    return len(orphans)
 
 
 def _get_active_generation(user_id: str) -> Optional[dict]:
@@ -132,32 +211,43 @@ async def _generation_worker(
     user_role: str,
 ) -> None:
     user_id = gen["user_id"]
-    full_response = ""
-    partial = ""
-    has_table = False
-    table_data: list = []
-    table_columns: list = []
-    all_tables: list = []
-    sql_query = ""
-    error_occurred = False
-    last_flush = 0.0
     loop = asyncio.get_event_loop()
+    # Shared between the worker and the (time-limited) producer coroutine.
+    st: dict = {
+        "full_response": "",
+        "partial": "",
+        "has_table": False,
+        "table_data": [],
+        "table_columns": [],
+        "all_tables": [],
+        "sql_query": "",
+        "error": None,  # user-facing error text, set on timeout / failure
+        "last_flush": 0.0,
+    }
 
-    try:
-        # Persist user message first so a reload sees a pending turn.
-        user_msg = ChatMessage(
-            session_id=gen["session_id"],
-            user_id=user_id,
-            role="user",
-            content=question,
-        )
-        user_msg._id = gen["user_message_id"]
-        await db.chat_messages.insert_one(user_msg.to_dict())
-        print("[ChatRoute] Saved user message to MongoDB")
-        await queue.put(_sse({"type": "user_saved", "user_message_id": str(gen["user_message_id"])}))
+    async def _save_error_answer(message: str) -> None:
+        """Store `message` as the answer to this question and tell the client."""
+        await _upsert_assistant(db, gen, {
+            "content": message,
+            "has_table": False,
+            "table_data": [],
+            "table_columns": [],
+            "tables": [],
+            "sql_query": "",
+            "status": "done",
+            "is_error": True,
+        })
+        print(f"[ChatRoute] Saved error answer | id={gen['assistant_id']} | {message[:80]!r}")
+        await queue.put(_sse({"type": "error", "content": message}))
+        await queue.put(_sse({
+            "type": "saved",
+            "assistant_db_id": str(gen["assistant_id"]),
+            "is_error": True,
+        }))
 
-        access_denied = False
-        denial_reason = ""
+    async def _produce() -> None:
+        """Resolve the question and run the agent. Bounded by CHAT_TIMEOUT_SECONDS."""
+        canned_reply: Optional[str] = None
         if settings.USE_VANNA_AI:
             from app.services.vanna_agent import stream_chat_with_database_vanna
             stream_fn = stream_chat_with_database_vanna
@@ -175,76 +265,114 @@ async def _generation_worker(
             access_denied = resolved.get("access_denied", False)
             denial_reason = resolved.get("denial_reason", "")
             print(f"[ChatRoute] Resolved: intent={intent!r} access_denied={access_denied} | resolved='{resolved_question[:60]}'")
+            stream_fn = None
             if access_denied:
-                stream_fn = None
+                canned_reply = denial_reason or (
+                    "You don't have rights to access this information. As per your current role, "
+                    "you are only assigned access to topics relevant to your team."
+                )
+            elif intent == "off_topic":
+                # Guardrail: general-knowledge / unrelated questions are not answered.
+                canned_reply = OFF_TOPIC_MESSAGE
             elif intent == "sql":
                 stream_fn = stream_chat_with_database
             else:
                 stream_fn = stream_simple_chat
 
-        if access_denied:
-            denial_msg = denial_reason or "You don't have rights to access this information. As per your current role, you are only assigned access to topics relevant to your team."
-            full_response = denial_msg
-            await queue.put(_sse({"type": "token", "content": denial_msg}))
+        if canned_reply is not None:
+            st["full_response"] = canned_reply
+            await queue.put(_sse({"type": "token", "content": canned_reply}))
             await queue.put(_sse({
                 "type": "done",
                 "has_table": False,
                 "table_data": [],
                 "table_columns": [],
                 "tables": [],
-                "full_response": denial_msg,
+                "full_response": canned_reply,
                 "sql_query": "",
             }))
+            return
+
+        if settings.USE_VANNA_AI:
+            stream_iter = stream_fn(resolved_question, history)
         else:
-            if settings.USE_VANNA_AI:
-                stream_iter = stream_fn(resolved_question, history)
-            else:
-                stream_iter = stream_fn(resolved_question, history, role=user_role)
-            async for chunk in stream_iter:
-                await queue.put(chunk)
-                try:
-                    raw = chunk.strip()
-                    if not raw.startswith("data: "):
-                        continue
+            stream_iter = stream_fn(resolved_question, history, role=user_role)
+
+        async for chunk in stream_iter:
+            payload = None
+            try:
+                raw = chunk.strip()
+                if raw.startswith("data: "):
                     payload = json.loads(raw[6:])
-                    ptype = payload.get("type")
-                    if ptype == "token":
-                        partial += payload.get("content", "") or ""
-                        gen["partial"] = partial
-                        now = loop.time()
-                        if partial.strip() and now - last_flush >= _PARTIAL_FLUSH_SECONDS:
-                            last_flush = now
-                            await _upsert_assistant(db, gen, {"content": partial, "status": "generating"})
-                    elif ptype == "done":
-                        full_response = payload.get("full_response", "") or ""
-                        has_table = payload.get("has_table", False)
-                        table_data = payload.get("table_data", [])
-                        table_columns = payload.get("table_columns", [])
-                        all_tables = payload.get("tables", [])
-                        sql_query = payload.get("sql_query", "") or ""
-                    elif ptype == "error":
-                        error_occurred = True
-                except Exception:
-                    pass
+            except Exception:
+                payload = None
+            ptype = payload.get("type") if isinstance(payload, dict) else None
+
+            if ptype == "error":
+                # Never forward raw agent errors; a friendly one is saved/sent after the loop.
+                raw_err = payload.get("content", "")
+                print(f"[ChatRoute] Agent error event: {raw_err!r}")
+                st["error"] = _friendly_error_message(raw_err)
+                continue
+
+            await queue.put(chunk)
+
+            if ptype == "token":
+                st["partial"] += payload.get("content", "") or ""
+                gen["partial"] = st["partial"]
+                now = loop.time()
+                if st["partial"].strip() and now - st["last_flush"] >= _PARTIAL_FLUSH_SECONDS:
+                    st["last_flush"] = now
+                    await _upsert_assistant(db, gen, {"content": st["partial"], "status": "generating"})
+            elif ptype == "done":
+                st["full_response"] = payload.get("full_response", "") or ""
+                st["has_table"] = payload.get("has_table", False)
+                st["table_data"] = payload.get("table_data", [])
+                st["table_columns"] = payload.get("table_columns", [])
+                st["all_tables"] = payload.get("tables", [])
+                st["sql_query"] = payload.get("sql_query", "") or ""
+
+    try:
+        # Persist user message first so a reload sees a pending turn.
+        user_msg = ChatMessage(
+            session_id=gen["session_id"],
+            user_id=user_id,
+            role="user",
+            content=question,
+        )
+        user_msg._id = gen["user_message_id"]
+        await db.chat_messages.insert_one(user_msg.to_dict())
+        print("[ChatRoute] Saved user message to MongoDB")
+        await queue.put(_sse({"type": "user_saved", "user_message_id": str(gen["user_message_id"])}))
+
+        try:
+            await asyncio.wait_for(_produce(), timeout=CHAT_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError:
+            print(f"[ChatRoute] Generation timed out after {CHAT_TIMEOUT_SECONDS:.0f}s")
+            st["error"] = TIMEOUT_MESSAGE
 
         if gen.get("cancelled"):
             return
 
-        if full_response and not error_occurred:
-            await _upsert_assistant(db, gen, {
-                "content": full_response,
-                "has_table": has_table,
-                "table_data": table_data,
-                "table_columns": table_columns,
-                "tables": all_tables,
-                "sql_query": sql_query or "",
-                "status": "done",
-            })
-            print(f"[ChatRoute] Saved assistant message | id={gen['assistant_id']} | tables={len(all_tables)}")
-            await queue.put(_sse({"type": "saved", "assistant_db_id": str(gen["assistant_id"])}))
+        error_text = st["error"]
+        if error_text is None and not st["full_response"].strip():
+            error_text = GENERIC_ERROR_MESSAGE
+
+        if error_text:
+            await _save_error_answer(error_text)
         else:
-            print(f"[ChatRoute] Skipping assistant save | empty={not full_response} | error={error_occurred}")
-            await db.chat_messages.delete_one({"_id": gen["assistant_id"]})
+            await _upsert_assistant(db, gen, {
+                "content": st["full_response"],
+                "has_table": st["has_table"],
+                "table_data": st["table_data"],
+                "table_columns": st["table_columns"],
+                "tables": st["all_tables"],
+                "sql_query": st["sql_query"] or "",
+                "status": "done",
+                "is_error": False,
+            })
+            print(f"[ChatRoute] Saved assistant message | id={gen['assistant_id']} | tables={len(st['all_tables'])}")
+            await queue.put(_sse({"type": "saved", "assistant_db_id": str(gen["assistant_id"])}))
 
     except asyncio.CancelledError:
         print("[ChatRoute] Generation task cancelled")
@@ -252,12 +380,12 @@ async def _generation_worker(
         print(f"[ChatRoute] generation worker error: {e}")
         import traceback
         traceback.print_exc()
-        await queue.put(_sse({"type": "error", "content": str(e)}))
         if not gen.get("cancelled"):
             try:
-                await db.chat_messages.delete_one({"_id": gen["assistant_id"], "status": "generating"})
-            except Exception:
-                pass
+                await _save_error_answer(_friendly_error_message(str(e)))
+            except Exception as save_err:
+                print(f"[ChatRoute] Could not store error answer: {save_err}")
+                await queue.put(_sse({"type": "error", "content": _friendly_error_message(str(e))}))
     finally:
         await queue.put(None)
         if _active_generations.get(user_id) is gen:
@@ -350,6 +478,7 @@ async def get_chat_pending(current_user: User = Depends(get_current_user)):
             {"user_id": user_id, "status": "generating"},
             {"$set": {"status": "done"}},
         )
+        await _repair_orphaned_questions(db, user_id)
     except Exception as e:
         print(f"[ChatRoute] pending cleanup failed: {e}")
     return {"active": False}
@@ -429,6 +558,15 @@ async def get_chat_history(
     db = get_database()
     session_id = await _get_or_create_session(db, user_id)
 
+    # Never return a question with an empty reply: repair unanswered ones first.
+    # (Skipped while a generation is running — the frontend polls this endpoint
+    # every second then, and the running question must stay "pending".)
+    if not _get_active_generation(user_id):
+        try:
+            await _repair_orphaned_questions(db, user_id)
+        except Exception as e:
+            print(f"[ChatRoute] orphan repair failed: {e}")
+
     # Sort descending to grab the LATEST messages, then reverse for display
     cursor = db.chat_messages.find(
         {"user_id": user_id, "session_id": session_id}
@@ -450,6 +588,7 @@ async def get_chat_history(
                 table_columns=m.get("table_columns", []),
                 tables=m.get("tables", []),
                 sql_query=m.get("sql_query", "") or "",
+                is_error=bool(m.get("is_error", False)),
                 created_at=m["created_at"].isoformat() + "Z" if isinstance(m["created_at"], datetime) else str(m["created_at"]),
             )
             for m in messages

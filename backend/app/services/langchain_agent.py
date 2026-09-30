@@ -1298,7 +1298,7 @@ async def stream_chat_with_database(
                 handle_parsing_errors=True,
                 prefix=db_prefix,
                 max_iterations=16,
-                max_execution_time=240.0,
+                max_execution_time=85.0,
                 top_k=70,
             )
         except TypeError:
@@ -1312,7 +1312,7 @@ async def stream_chat_with_database(
                     handle_parsing_errors=True,
                     prefix=db_prefix,
                     max_iterations=16,
-                    max_execution_time=240.0,
+                    max_execution_time=85.0,
                     top_k=70,
                 )
             except TypeError:
@@ -1325,7 +1325,7 @@ async def stream_chat_with_database(
                     verbose=True,
                     handle_parsing_errors=True,
                     max_iterations=16,
-                    max_execution_time=240.0,
+                    max_execution_time=85.0,
                     top_k=70,
                 )
         print("[LangChainAgent] SQL agent created, invoking...")
@@ -1349,9 +1349,9 @@ async def stream_chat_with_database(
             return output
 
         try:
-            agent_output = await asyncio.wait_for(run_agent(), timeout=300.0)
+            agent_output = await asyncio.wait_for(run_agent(), timeout=88.0)
         except asyncio.TimeoutError:
-            print("[LangChainAgent] Agent timed out after 300s")
+            print("[LangChainAgent] Agent timed out after 88s")
             raise RuntimeError("The database query took too long. Please try a simpler question.")
 
         elapsed = _time.time() - t0
@@ -1588,6 +1588,10 @@ async def stream_simple_chat(
             "  2. If the user asks about their previous questions or conversation history, read the conversation above and list them as plain numbered text.\n"
             "  3. For greetings, thanks, or clarification requests, respond in a short friendly way.\n"
             "  4. For advisory questions (e.g. 'how can this help me', 'what should I do'), give a concise plain-English answer based on what has already been discussed.\n"
+            "  4b. GUARDRAIL: You ONLY discuss this business database, the data already shown in this conversation, and what this app can do. "
+            "If the user asks anything unrelated (general knowledge, trivia, celebrities, geography, news, weather, coding help, jokes, poems, medical/legal advice, etc.), "
+            "do NOT answer it. Reply ONLY with: \"I can only help with questions about your business data in this database and about this chat. "
+            "Please ask something related to your data.\"\n"
             "  5. MATHEMATICAL / ORDER-OF-OPERATIONS RULES — when explaining or computing any numbers:\n"
             "     • Follow strict order of operations: resolve Division and Multiplication before Addition and Subtraction.\n"
             "     • Always resolve brackets/parentheses first before any other operation.\n"
