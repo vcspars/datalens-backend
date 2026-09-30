@@ -1109,6 +1109,19 @@ async def clear_chat_history(current_user: User = Depends(get_current_user)):
     user_id = str(current_user._id)
     print(f"[ChatRoute] /history DELETE called | user={user_id}")
 
+    # Stop any in-flight generation first so it can't re-save an answer after the wipe.
+    gen = _get_active_generation(user_id)
+    if gen:
+        gen["cancelled"] = True
+        task = gen.get("task")
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except BaseException:
+                pass
+        _active_generations.pop(user_id, None)
+
     db = get_database()
     result = await db.chat_messages.delete_many({"user_id": user_id})
     print(f"[ChatRoute] Deleted {result.deleted_count} messages")
